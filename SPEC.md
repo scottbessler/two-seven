@@ -220,8 +220,8 @@ tests/                           # eval, holdem, bank, bot, routes, dockerfile
 1. Scaffolding: Cargo, CI, Docker, Fly, hooks, auth/users/session, lobby shell. **Done.**
 2. Cards, evaluator, betting engine with side pots + unit tests. **Done.**
 3. Bank + tables: create/join/leave/rebuy, no-debt enforcement, settlement. **Done in the initial HTTP/store implementation; crash recovery and driver scheduling remain outstanding.**
-4. Bots + driver.
-5. Table UI: SSR page, SSE, island, bank widget.
+4. Bots + driver. **Done: deterministic policy bots, bankroll seating, and ticking driver.**
+5. Table UI: SSR page, SSE, island, bank widget. **Done: responsive island, lobby, bank widget, and asset contracts.**
 6. Sit-and-go tournaments.
 7. Polish: e2e snapshots, mobile layout.
 
@@ -230,6 +230,7 @@ Mark each milestone done here as it lands.
 ## 13. Outstanding tasks
 
 - [ ] Action clock / auto-fold for idle humans (today a table waits forever).
+- [ ] Seat-owner bank balances in the table projection (the current widget shows the signed-in user's ledger).
 - [ ] Multi-table tournaments, late registration, rebuy periods.
 - [ ] More variants: Omaha, and 2-7 triple draw (the repo's namesake).
 - [ ] Push notifications for "it's your turn" (screwball has the VAPID plumbing).
@@ -266,3 +267,5 @@ Mark each milestone done here as it lands.
 - Seven-card evaluation allocated all 21 combinations; fixed with fixed-index recursive enumeration.
 - `SeatView` was duplicated and spectator views could panic; consolidated views and made viewer optional.
 - Cents lived in `table.rs` and bot occupants used strings; moved money into `money.rs` and introduced `BotKind`.
+- Concurrent no-debt buy-ins could both pass a stale balance check; fixed by checking and appending under one bank lock.
+- Bot account filenames used debug formatting; fixed with stable `BotKind` slugs and `FromStr`.
