@@ -9,7 +9,7 @@ use crate::{
         BlindLevel, BotKind, SeatOccupant, Stakes, Table, TableMode, TournamentConfig,
         TournamentState, maybe_start_hand, settle_finished_hand,
     },
-    view::table_view_with_banks,
+    view::{LobbyTableView, LobbyTournamentView, table_view_with_banks},
 };
 use axum::{
     Json,
@@ -32,7 +32,11 @@ pub async fn index(State(s): State<AppState>, MaybeUser(user): MaybeUser) -> Htm
         Some(id) => s.users.get(id).await.map(|u| (id, u.display_name)),
         None => None,
     };
-    Html(render::home(current))
+    if let Some((id, name)) = current {
+        Html(render::home_lobby(&name, &lobby_views(&s, id).await))
+    } else {
+        Html(render::home(None))
+    }
 }
 
 #[derive(Deserialize)]
@@ -190,26 +194,47 @@ pub async fn register_tournament(
     Ok(Json(serde_json::json!({"ok":true})))
 }
 pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+    Html(render::lobby(&lobby_views(&s, user).await))
+}
+
+async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
     let mut tables = Vec::new();
-    for id in s.tables.ids().await {
-        if let Some(table) = s.tables.get(id).await {
+    for id in state.tables.ids().await {
+        if let Some(table) = state.tables.get(id).await {
             let table = table.lock().await;
-            let occupied = table
-                .seats
-                .iter()
-                .filter(|seat| !matches!(seat.occupant, SeatOccupant::Empty))
-                .count();
-            tables.push((
-                table.name.clone(),
+            let tournament = match &table.mode {
+                TableMode::Tournament(state) => Some(LobbyTournamentView {
+                    buy_in: state.config.buy_in,
+                    registered: state.registered,
+                    seat_count: state.config.seat_count,
+                    finished: state.finished,
+                    paid_out: state.paid_out,
+                }),
+                TableMode::Cash { .. } => None,
+            };
+            let no_debt = match &table.mode {
+                TableMode::Cash { no_debt } => *no_debt,
+                TableMode::Tournament(state) => state.config.no_debt,
+            };
+            tables.push(LobbyTableView {
                 id,
-                table.stakes,
-                occupied,
-                table.max_seats,
-                matches!(table.mode, TableMode::Tournament(_)),
-            ));
+                name: table.name.clone(),
+                stakes: table.stakes,
+                occupied: table
+                    .seats
+                    .iter()
+                    .filter(|seat| !matches!(seat.occupant, SeatOccupant::Empty))
+                    .count(),
+                max_seats: table.max_seats,
+                no_debt,
+                tournament,
+                your_seat: table.seats.iter().position(|seat| {
+                    matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
+                }),
+            });
         }
     }
-    Html(render::lobby(&user, &tables))
+    tables
 }
 pub async fn create_table(
     AuthUser(_user): AuthUser,
@@ -248,9 +273,22 @@ pub async fn table_page(
         |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
     );
     let banks = seat_banks(&s, &table).await;
+    let names = seat_names(&s, &table).await;
     Ok(Html(render::table_page(&table_view_with_banks(
-        &table, viewer, &banks,
+        &table, viewer, &banks, &names,
     ))))
+}
+
+async fn seat_names(state: &AppState, table: &Table) -> std::collections::HashMap<usize, String> {
+    let mut names = std::collections::HashMap::new();
+    for (index, seat) in table.seats.iter().enumerate() {
+        if let SeatOccupant::Human { user_id } = seat.occupant
+            && let Some(user) = state.users.get(user_id).await
+        {
+            names.insert(index, user.display_name);
+        }
+    }
+    names
 }
 
 async fn seat_banks(
@@ -289,7 +327,8 @@ pub async fn table_state(
         )
     });
     let banks = seat_banks(&s, &table).await;
-    Ok(Json(table_view_with_banks(&table, viewer, &banks)))
+    let names = seat_names(&s, &table).await;
+    Ok(Json(table_view_with_banks(&table, viewer, &banks, &names)))
 }
 
 pub async fn table_events(
@@ -310,7 +349,8 @@ pub async fn table_events(
             )
         });
         let banks = seat_banks(&s, &table).await;
-        serde_json::to_string(&table_view_with_banks(&table, viewer, &banks))
+        let names = seat_names(&s, &table).await;
+        serde_json::to_string(&table_view_with_banks(&table, viewer, &banks, &names))
             .map_err(AppError::internal)?
     };
     let rx = s.tables.subscribe();
@@ -333,8 +373,9 @@ pub async fn table_events(
                             let table = table.lock().await;
                             let viewer = user.and_then(|uid|table.seats.iter().position(|seat|matches!(seat.occupant,SeatOccupant::Human{user_id} if user_id==uid)));
                             let banks = seat_banks(&state, &table).await;
+                            let names = seat_names(&state, &table).await;
                             let data = serde_json::to_string(&table_view_with_banks(
-                                &table, viewer, &banks,
+                                &table, viewer, &banks, &names,
                             ))
                             .unwrap_or_else(|_| "{}".into());
                             return Some((

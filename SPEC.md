@@ -223,7 +223,7 @@ tests/                           # eval, holdem, bank, bot, routes, dockerfile
 4. Bots + driver. **Done: deterministic policy bots, bankroll seating, and ticking driver.**
 5. Table UI: SSR page, SSE, island, bank widget. **Done: responsive island, lobby, bank widget, and asset contracts.**
 6. Sit-and-go tournaments. **Done: registration, scheduled antes/blinds, bot fill, elimination, payout, and tournament views.**
-7. Polish: e2e snapshots, mobile layout.
+7. Polish: e2e snapshots, mobile layout. **In progress: lobby, money-entry, table layout, showdown, tournament and bank-widget UX are implemented; browser/e2e polish remains.**
 
 Mark each milestone done here as it lands.
 
@@ -235,6 +235,7 @@ Mark each milestone done here as it lands.
 - [ ] Push notifications for "it's your turn" (screwball has the VAPID plumbing).
 - [ ] Hand history browser + replay from the recorded shuffle seed.
 - [ ] Playwright snapshot coverage for the table page.
+- [ ] Browser-driven regression snapshots for lobby, showdown, bank panel, and tournament layouts.
 - [ ] Bank statement page (paginated ledger) beyond the hover panel.
 - [ ] Rake / house account, if tables ever need a sink.
 - [ ] Tournament crash-recovery reconciliation if a prize ledger write fails mid-payout.
@@ -272,3 +273,6 @@ Mark each milestone done here as it lands.
 - Tournament stacks were incorrectly eligible for cash-out on leave/replacement; fixed by forfeiting tournament stacks and reserving bank movement for buy-ins/prizes.
 - Tournament table listings were indistinguishable from cash tables; fixed with explicit lobby mode labels.
 - Table SSR rendered a duplicate island fallback in browsers; fixed by placing the plain fallback inside `noscript`.
+- Raw cents inputs and hard-coded frontend stakes hid the actual game configuration; fixed with dollar inputs and boundary conversion plus configurable schedule fields.
+- Mobile table controls could run below the viewport and seats overlapped the felt grid; fixed with positioned seats and a fixed mobile action bar.
+- Bank widget navigation exposed raw JSON and interpolated ledger text as HTML; fixed with a toggle button and DOM text nodes.

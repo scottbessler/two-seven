@@ -16,6 +16,12 @@ fn table_island_has_live_state_and_action_contracts() {
         "all_in",
         "Sit out",
         "Leave",
+        "empty-seat",
+        "Wager slider",
+        "½ pot",
+        "Showdown",
+        "bot bank",
+        "Tournament registration",
     ] {
         assert!(
             TABLE_JS.contains(literal),
@@ -32,6 +38,10 @@ fn table_css_is_mobile_poker_layout() {
         ".seats",
         "@media(max-width:640px)",
         ".actions",
+        ".table-center",
+        ".empty-seat",
+        ".bank-widget[aria-expanded=true]",
+        "position:absolute",
     ] {
         assert!(
             APP_CSS.contains(literal),
@@ -44,4 +54,7 @@ fn table_css_is_mobile_poker_layout() {
 fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("fetch(\"/api/bank\""));
     assert!(BANK_JS.contains("bank-balance"));
+    assert!(BANK_JS.contains("textContent"));
+    assert!(BANK_JS.contains("bank-delta"));
+    assert!(BANK_JS.contains("aria-expanded"));
 }

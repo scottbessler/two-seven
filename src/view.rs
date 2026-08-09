@@ -12,6 +12,7 @@ pub struct SeatView {
     pub index: usize,
     pub stack: Cents,
     pub occupant: String,
+    pub display_name: Option<String>,
     pub sitting_out: bool,
     pub hole_cards: Option<Vec<Card>>,
     pub bank_balance: Option<Cents>,
@@ -38,6 +39,27 @@ pub struct TableView {
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub tournament: Option<TournamentView>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LobbyTableView {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub stakes: crate::table::Stakes,
+    pub occupied: usize,
+    pub max_seats: usize,
+    pub no_debt: bool,
+    pub tournament: Option<LobbyTournamentView>,
+    pub your_seat: Option<usize>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LobbyTournamentView {
+    pub buy_in: Cents,
+    pub registered: usize,
+    pub seat_count: usize,
+    pub finished: bool,
+    pub paid_out: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -70,6 +92,7 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             index: player.seat,
             stack: player.stack,
             occupant: format!("seat {}", player.seat),
+            display_name: None,
             sitting_out: false,
             hole_cards: viewer
                 .filter(|seat| *seat == player.seat)
@@ -102,13 +125,19 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
 }
 
 pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
-    table_view_with_banks(table, viewer, &std::collections::HashMap::new())
+    table_view_with_banks(
+        table,
+        viewer,
+        &std::collections::HashMap::new(),
+        &std::collections::HashMap::new(),
+    )
 }
 
 pub fn table_view_with_banks(
     table: &Table,
     viewer: Option<usize>,
     banks: &std::collections::HashMap<usize, Account>,
+    names: &std::collections::HashMap<usize, String>,
 ) -> TableView {
     TableView {
         id: table.id,
@@ -118,7 +147,7 @@ pub fn table_view_with_banks(
             .seats
             .iter()
             .enumerate()
-            .map(|(index, seat)| seat_view(index, seat, banks.get(&index)))
+            .map(|(index, seat)| seat_view(index, seat, banks.get(&index), names.get(&index)))
             .collect(),
         button: table.button,
         hand: table.hand.as_ref().map(|hand| hand_view(hand, viewer)),
@@ -162,7 +191,12 @@ pub fn table_view_with_banks(
         },
     }
 }
-fn seat_view(index: usize, seat: &Seat, account: Option<&Account>) -> SeatView {
+fn seat_view(
+    index: usize,
+    seat: &Seat,
+    account: Option<&Account>,
+    display_name: Option<&String>,
+) -> SeatView {
     SeatView {
         index,
         stack: seat.stack,
@@ -171,6 +205,7 @@ fn seat_view(index: usize, seat: &Seat, account: Option<&Account>) -> SeatView {
             SeatOccupant::Human { .. } => "human".into(),
             SeatOccupant::Bot { kind } => format!("{kind:?}"),
         },
+        display_name: display_name.cloned(),
         sitting_out: seat.sitting_out,
         hole_cards: None,
         bank_balance: account.map(|account| account.balance),
