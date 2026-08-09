@@ -1,12 +1,15 @@
 pub mod app;
 pub mod auth;
+pub mod bank;
 pub mod cards;
 pub mod error;
 pub mod eval;
 pub mod holdem;
+pub mod money;
 pub mod render;
 pub mod routes;
 pub mod session;
+pub mod store;
 pub mod table;
 pub mod users;
 pub mod view;

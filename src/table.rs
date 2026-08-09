@@ -1,12 +1,16 @@
-use crate::cards::Card;
+use crate::{
+    holdem::{Hand, HandSummary},
+    money::Cents,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-pub type Cents = i64;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Variant {
     Holdem,
 }
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Stakes {
     Limit {
@@ -29,23 +33,35 @@ impl Stakes {
         }
     }
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum BotKind {
+    Fish,
+    Rock,
+    Grinder,
+    Shark,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TableMode {
     Cash { no_debt: bool },
     Tournament,
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SeatOccupant {
     Empty,
     Human { user_id: Uuid },
-    Bot { kind: String },
+    Bot { kind: BotKind },
 }
-#[derive(Clone, Debug, Serialize, Deserialize)]
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Seat {
     pub occupant: SeatOccupant,
     pub stack: Cents,
     pub sitting_out: bool,
 }
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Table {
     pub id: Uuid,
@@ -61,15 +77,43 @@ pub struct Table {
     pub hand_no: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub hand: Option<crate::holdem::Hand>,
-    pub last_hand: Option<crate::holdem::HandSummary>,
+    pub hand: Option<Hand>,
+    pub last_hand: Option<HandSummary>,
     pub next_action_at: Option<DateTime<Utc>>,
 }
-#[derive(Clone, Debug, Serialize)]
-pub struct SeatView {
-    pub index: usize,
-    pub stack: Cents,
-    pub occupant: String,
-    pub sitting_out: bool,
-    pub hole_cards: Option<Vec<Card>>,
+impl Table {
+    pub fn new(
+        name: String,
+        stakes: Stakes,
+        mode: TableMode,
+        max_seats: usize,
+        min_buy_in: Cents,
+        max_buy_in: Cents,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4(),
+            name,
+            variant: Variant::Holdem,
+            stakes,
+            mode,
+            max_seats,
+            min_buy_in,
+            max_buy_in,
+            seats: (0..max_seats)
+                .map(|_| Seat {
+                    occupant: SeatOccupant::Empty,
+                    stack: 0,
+                    sitting_out: false,
+                })
+                .collect(),
+            button: 0,
+            hand_no: 0,
+            created_at: now,
+            updated_at: now,
+            hand: None,
+            last_hand: None,
+            next_action_at: None,
+        }
+    }
 }
