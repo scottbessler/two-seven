@@ -20,10 +20,12 @@ fn table_island_has_live_state_and_action_contracts() {
         "Wager slider",
         "½ pot",
         "Showdown",
-        "bot bank",
+        "· bot",
         "Tournament registration",
         "table-pot",
-        "bot bank",
+        "shared bot account",
+        "award-list",
+        "waiting-status",
     ] {
         assert!(
             TABLE_JS.contains(literal),

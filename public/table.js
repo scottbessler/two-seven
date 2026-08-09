@@ -25,8 +25,8 @@ function Card({ card, empty = false }) {
 function Seat({ seat, button, openSeat, total }) {
   const angle = -Math.PI / 2 + (seat.index * 2 * Math.PI) / total;
   const position = {
-    left: `${50 + 43 * Math.cos(angle)}%`,
-    top: `${50 + 40 * Math.sin(angle)}%`,
+    left: `${50 + 38 * Math.cos(angle)}%`,
+    top: `${50 + 34 * Math.sin(angle)}%`,
     transform: "translate(-50%, -50%)",
   };
   if (seat.occupant === "empty") {
@@ -35,8 +35,8 @@ function Seat({ seat, button, openSeat, total }) {
   const label = seat.display_name || seat.occupant;
   const shared = seat.occupant !== "human" && seat.occupant !== "empty";
   return html`<article class="seat ${seat.index === button ? "dealer" : ""}" style=${position}>
-    <strong>${label} <span class="coin">🪙</span></strong>
-    <span>Seat ${seat.index}${shared ? " · bot bank" : ""}</span>
+    <strong>${label} <span class="coin" title=${shared ? "shared bot account" : "bank details"}>🪙</span></strong>
+    <span>Seat ${seat.index}${shared ? " · bot" : ""}</span>
     <b>${cents(seat.stack)}</b>
     ${seat.bank_balance != null && html`<small class="seat-bank" title=${seat.bank_entries.map((entry) => entry.memo).join(", ")}>${cents(seat.bank_balance)}</small>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
@@ -74,7 +74,13 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
 
 function LastHand({ summary }) {
   if (!summary) return null;
-  return html`<section class="card last-hand"><h2>Showdown</h2><div class="showdown-board">${summary.board.map((card) => html`<${Card} card=${card} />`)}</div>${summary.results.map((result) => html`<article class="showdown-row"><strong>Seat ${result.seat}</strong><span>${result.hand.label}</span><span>${summary.revealed_hole_cards.find(([seat]) => seat === result.seat)?.[1]?.join(" ") || ""}</span></article>`)}<p>${summary.awards.map((award) => html`<span>Seat ${award.seat} won ${cents(award.amount)}</span>`)}</p></section>`;
+  const awards = [];
+  for (const award of summary.awards) {
+    const existing = awards.find((entry) => entry.seat === award.seat);
+    if (existing) existing.amounts.push(award.amount);
+    else awards.push({ seat: award.seat, amounts: [award.amount] });
+  }
+  return html`<section class="card last-hand"><h2>Showdown</h2><div class="showdown-board">${summary.board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - summary.board.length }).map(() => html`<${Card} empty />`)}</div>${summary.results.map((result) => html`<article class="showdown-row"><strong>Seat ${result.seat}</strong><span>${result.hand.label}</span><span>${summary.revealed_hole_cards.find(([seat]) => seat === result.seat)?.[1]?.join(" ") || ""}</span></article>`)}<p class="award-list">${awards.map((award) => html`<span>Seat ${award.seat} won ${award.amounts.map((amount, index) => `${index === 0 ? "main pot" : "side pot"} ${cents(amount)}`).join(" and ")}</span>`)}</p></section>`;
 }
 
 function TournamentPanel({ tournament }) {
@@ -101,7 +107,7 @@ function TableApp() {
     <div class="table-top"><h1>${state.name}</h1></div>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="felt" aria-label="Poker table">
-      <div class="table-center"><p class="table-pot">${hand ? `Pot ${cents(hand.pot)}` : "Waiting for players"}</p><div class="board">${(hand?.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand?.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${hand ? `${hand.street} · ${currentName}'s turn · To call ${cents(hand.to_call || 0)}` : "Waiting for players"}</p></div>
+      <div class="table-center">${hand ? html`<p class="table-pot">Pot ${cents(hand.pot)}</p><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${hand.street} · ${currentName}'s turn · To call ${cents(hand.to_call || 0)}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
       <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
     </section>
     ${hand && html`<section class="hand-info"><div class="hole-cards">${(hand.your_hole_cards || []).map((card) => html`<${Card} card=${card} />`)}</div><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
