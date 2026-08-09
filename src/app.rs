@@ -1,5 +1,6 @@
 use crate::{
-    auth, bank::BankStore, render, routes, session::MaybeUser, store::TableStore, users::UserStore,
+    auth, bank::BankStore, driver, render, routes, session::MaybeUser, store::TableStore,
+    users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -35,7 +36,10 @@ pub fn router(s: AppState) -> Router {
         .route("/", get(routes::index))
         .route("/healthcheck", get(routes::healthcheck))
         .route("/tables/new", get(routes::new_table))
-        .route("/tables", axum::routing::post(routes::create_table))
+        .route(
+            "/tables",
+            axum::routing::get(routes::tables).post(routes::create_table),
+        )
         .route("/tables/{id}", get(routes::table_page))
         .route("/tables/{id}/state", get(routes::table_state))
         .route("/tables/{id}/events", get(routes::table_events))
@@ -112,14 +116,16 @@ pub async fn run() -> Result<()> {
     let users = Arc::new(UserStore::load(&data).await?);
     let bank = BankStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
-    let app = router(AppState {
+    let state = AppState {
         users,
         bank,
         tables,
         webauthn: Arc::new(build_webauthn()?),
         key: load_key(),
         passkey_disabled: env_flag("PASSKEY_DISABLED"),
-    });
+    };
+    driver::spawn(state.clone());
+    let app = router(state);
     let port = env::var("PORT").unwrap_or_else(|_| "8080".into());
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     axum::serve(listener, app).await?;
@@ -157,7 +163,14 @@ fn load_key() -> Key {
 fn asset_version() -> String {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    for f in ["public/app.css", "public/auth.js"] {
+    for f in [
+        "public/app.css",
+        "public/auth.js",
+        "public/bank.js",
+        "public/lobby.js",
+        "public/table.js",
+        "public/vendor/htm-preact.js",
+    ] {
         if let Ok(b) = std::fs::read(f) {
             b.hash(&mut h)
         }

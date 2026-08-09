@@ -19,11 +19,12 @@ pub fn escape(s: &str) -> String {
 }
 pub fn layout(title: &str, body: &str, head: &str) -> String {
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><link rel="stylesheet" href="{}">{}</head><body><main class="page">{}</main></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><link rel="stylesheet" href="{}">{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a><a class="bank-widget" href="/api/bank" title="Account balance">🪙 <span id="bank-balance">—</span></a></header>{}</main><script src="{}" defer></script></body></html>"#,
         escape(title),
         asset("/public/app.css"),
         head,
-        body
+        body,
+        asset("/public/bank.js")
     )
 }
 pub fn error_page(t: &str, m: &str) -> String {
@@ -50,7 +51,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>You are signed in. Tables are coming soon.</p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Browse tables</a> · <a href="/tables/new">Create a table</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
                 escape(&name)
             ),
             "",
@@ -61,7 +62,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
 pub fn table_create() -> String {
     layout(
         "New table",
-        "<section class=\"card\"><h1>New table</h1><p>Create tables through the JSON endpoint.</p></section>",
+        "<section class=\"card\"><h1>New table</h1><form id=\"create-table-form\"><input name=\"name\" required placeholder=\"Table name\"><select name=\"limit\"><option value=\"no-limit\">No-limit</option><option value=\"limit\">Limit</option></select><label><input type=\"checkbox\" name=\"no_debt\"> No-debt table</label><input name=\"min_buy_in\" type=\"number\" min=\"1\" value=\"1000\"><input name=\"max_buy_in\" type=\"number\" min=\"1\" value=\"10000\"><button>Create table</button></form><p id=\"create-error\" class=\"error\"></p><script type=\"module\" src=\"/public/lobby.js\"></script></section>",
         "",
     )
 }
@@ -89,14 +90,42 @@ pub fn table_page(view: &crate::view::TableView) -> String {
                 .join(" ")
         })
         .unwrap_or_default();
+    let app = format!("<div id=\"table-app\" data-table-id=\"{}\"></div>", view.id);
     layout(
         &view.name,
         &format!(
-            "<section class=card><h1>{}</h1><p>Board: {}</p><p>Pot: {}</p><ul>{}</ul></section>",
+            "<section class=card><h1>{}</h1><p>Board: {}</p><p>Pot: {}</p><ul>{}</ul></section>{}",
             escape(&view.name),
             escape(&board),
             view.hand.as_ref().map(|hand| hand.pot).unwrap_or(0),
-            seats
+            seats,
+            app
+        ),
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/table.js")
+        ),
+    )
+}
+
+pub fn lobby(
+    _user: &Uuid,
+    tables: &[(String, Uuid, crate::table::Stakes, usize, usize)],
+) -> String {
+    let rows = tables
+        .iter()
+        .map(|(name, id, stakes, occupied, max)| {
+            format!(
+                "<li><a href=\"/tables/{id}\">{}</a> · {:?} · {occupied}/{max} seats</li>",
+                escape(name),
+                stakes
+            )
+        })
+        .collect::<String>();
+    layout(
+        "Tables",
+        &format!(
+            "<section class=card><h1>Cash tables</h1><p><a href=\"/tables/new\">Create a table</a></p><ul>{rows}</ul></section>"
         ),
         "",
     )
