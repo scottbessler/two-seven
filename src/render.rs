@@ -57,3 +57,47 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         ),
     }
 }
+
+pub fn table_create() -> String {
+    layout(
+        "New table",
+        "<section class=\"card\"><h1>New table</h1><p>Create tables through the JSON endpoint.</p></section>",
+        "",
+    )
+}
+pub fn table_page(view: &crate::view::TableView) -> String {
+    let seats = view
+        .seats
+        .iter()
+        .map(|seat| {
+            format!(
+                "<li>Seat {}: {} — {}</li>",
+                seat.index,
+                escape(&seat.occupant),
+                seat.stack
+            )
+        })
+        .collect::<String>();
+    let board = view
+        .hand
+        .as_ref()
+        .map(|hand| {
+            hand.board
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default();
+    layout(
+        &view.name,
+        &format!(
+            "<section class=card><h1>{}</h1><p>Board: {}</p><p>Pot: {}</p><ul>{}</ul></section>",
+            escape(&view.name),
+            escape(&board),
+            view.hand.as_ref().map(|hand| hand.pot).unwrap_or(0),
+            seats
+        ),
+        "",
+    )
+}

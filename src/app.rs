@@ -1,4 +1,6 @@
-use crate::{auth, render, routes, session::MaybeUser, users::UserStore};
+use crate::{
+    auth, bank::BankStore, render, routes, session::MaybeUser, store::TableStore, users::UserStore,
+};
 use anyhow::{Context, Result};
 use axum::{
     Router,
@@ -17,6 +19,8 @@ const LOCAL: &str =
 #[derive(Clone)]
 pub struct AppState {
     pub users: Arc<UserStore>,
+    pub bank: BankStore,
+    pub tables: TableStore,
     pub webauthn: Arc<Webauthn>,
     pub key: Key,
     pub passkey_disabled: bool,
@@ -30,6 +34,24 @@ pub fn router(s: AppState) -> Router {
     Router::new()
         .route("/", get(routes::index))
         .route("/healthcheck", get(routes::healthcheck))
+        .route("/tables/new", get(routes::new_table))
+        .route("/tables", axum::routing::post(routes::create_table))
+        .route("/tables/{id}", get(routes::table_page))
+        .route("/tables/{id}/state", get(routes::table_state))
+        .route("/tables/{id}/events", get(routes::table_events))
+        .route("/tables/{id}/join", axum::routing::post(routes::join_table))
+        .route(
+            "/tables/{id}/leave",
+            axum::routing::post(routes::leave_table),
+        )
+        .route("/tables/{id}/sit", axum::routing::post(routes::sit_table))
+        .route("/tables/{id}/action", axum::routing::post(routes::action))
+        .route(
+            "/tables/{id}/rebuy",
+            axum::routing::post(routes::rebuy_table),
+        )
+        .route("/tables/{id}/bot", axum::routing::post(routes::bot_table))
+        .route("/api/bank", get(routes::bank_state))
         .route(
             "/auth/register/begin",
             axum::routing::post(auth::register_begin),
@@ -88,8 +110,12 @@ pub async fn run() -> Result<()> {
     render::set_asset_version(asset_version());
     let data = env::var("DATA_PATH").unwrap_or_else(|_| "data".into());
     let users = Arc::new(UserStore::load(&data).await?);
+    let bank = BankStore::load(&data).await?;
+    let tables = TableStore::load(&data).await?;
     let app = router(AppState {
         users,
+        bank,
+        tables,
         webauthn: Arc::new(build_webauthn()?),
         key: load_key(),
         passkey_disabled: env_flag("PASSKEY_DISABLED"),
