@@ -51,6 +51,16 @@ fn rock(view: &HandView, legal: &LegalActions) -> Action {
 }
 
 fn grinder(view: &HandView, legal: &LegalActions) -> Action {
+    let preflop_strong = view.board.is_empty()
+        && view.your_hole_cards.as_ref().is_some_and(|cards| {
+            cards.len() == 2
+                && (cards[0].rank == cards[1].rank
+                    || cards.iter().any(|card| card.rank >= Rank::Ace)
+                    || cards.iter().all(|card| card.rank >= Rank::Jack))
+        });
+    if preflop_strong {
+        return wager_or_call(legal);
+    }
     let strong = made_category(view).is_some_and(|category| category >= Category::TwoPair);
     if strong {
         return wager_or_call(legal);
@@ -240,5 +250,40 @@ mod tests {
             ..view
         };
         assert_eq!(fish(&pair_view, &legal, 4), Action::Call);
+    }
+
+    #[test]
+    fn aggregate_vpip_orders_fish_grinder_rock() {
+        let mut totals = [0usize; 3];
+        for seed in 0..300 {
+            for (slot, kind) in [BotKind::Fish, BotKind::Grinder, BotKind::Rock]
+                .into_iter()
+                .enumerate()
+            {
+                let mut hand = Hand::new(
+                    Stakes::NoLimit {
+                        small_blind: 1,
+                        big_blind: 2,
+                    },
+                    &[100, 100, 100, 100],
+                    0,
+                    seed,
+                );
+                while hand.street == crate::holdem::Street::Preflop && !hand.complete {
+                    let legal = hand.legal_actions().expect("preflop action");
+                    let view = hand_view(&hand, Some(legal.seat));
+                    let action = kind.act(&view, &legal, seed + 10_000);
+                    if matches!(
+                        action,
+                        Action::Call | Action::Bet { .. } | Action::Raise { .. } | Action::AllIn
+                    ) {
+                        totals[slot] += 1;
+                    }
+                    hand.apply_action(action).unwrap();
+                }
+            }
+        }
+        assert!(totals[0] > totals[1], "{totals:?}");
+        assert!(totals[1] > totals[2], "{totals:?}");
     }
 }

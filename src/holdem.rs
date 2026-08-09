@@ -95,6 +95,7 @@ pub struct Hand {
     pub last_bet: Cents,
     pub last_raise: Cents,
     pub wagers: u8,
+    pub ante: Cents,
     pub complete: bool,
     pub summary: Option<HandSummary>,
 }
@@ -110,6 +111,16 @@ impl Hand {
         stacks: &[(usize, Cents)],
         button: usize,
         seed: u64,
+    ) -> Self {
+        Self::new_with_seats_and_ante(stakes, stacks, button, seed, 0)
+    }
+
+    pub fn new_with_seats_and_ante(
+        stakes: Stakes,
+        stacks: &[(usize, Cents)],
+        button: usize,
+        seed: u64,
+        ante: Cents,
     ) -> Self {
         assert!((2..=9).contains(&stacks.len()));
         let mut deck = Deck::seeded(seed);
@@ -149,9 +160,20 @@ impl Hand {
             last_bet: 0,
             last_raise: stakes.blinds().1,
             wagers: 1,
+            ante,
             complete: false,
             summary: None,
         };
+        if ante > 0 {
+            let seats = hand
+                .players
+                .iter()
+                .map(|player| player.seat)
+                .collect::<Vec<_>>();
+            for seat in seats {
+                hand.put_chips(seat, ante);
+            }
+        }
         let (small_blind, big_blind) = stakes.blinds();
         let sb = if hand.players.len() == 2 {
             button
@@ -248,7 +270,14 @@ impl Hand {
                 });
             }
         }
-        if max > 0 && (!player.must_call || max <= to_call) {
+        let all_in_allowed = match self.stakes {
+            Stakes::Limit { .. } => self
+                .wager_bounds(to_call, max)
+                .fixed
+                .is_some_and(|fixed| max <= to_call + fixed),
+            Stakes::NoLimit { .. } => true,
+        };
+        if max > 0 && all_in_allowed && (!player.must_call || max <= to_call) {
             actions.push(Action::AllIn);
         }
         Some(LegalActions {

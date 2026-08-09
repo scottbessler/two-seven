@@ -1,3 +1,4 @@
+use crate::money::format_cents;
 use std::sync::OnceLock;
 use uuid::Uuid;
 static VERSION: OnceLock<String> = OnceLock::new();
@@ -51,7 +52,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Browse tables</a> · <a href="/tables/new">Create a table</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Browse tables</a> · <a href="/tables/new">Create a table</a> · <a href="/tournaments/new">Create a tournament</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
                 escape(&name)
             ),
             "",
@@ -66,15 +67,26 @@ pub fn table_create() -> String {
         "",
     )
 }
+
+pub fn tournament_create() -> String {
+    layout(
+        "New tournament",
+        r#"<section class="card"><h1>New sit-and-go</h1><form id="create-tournament-form"><input name="name" required placeholder="Tournament name"><input name="buy_in" type="number" min="1" value="1000"><input name="seat_count" type="number" min="2" max="9" value="4"><input name="starting_chips" type="number" min="1" value="1000"><label><input type="checkbox" name="no_debt"> No-debt registration</label><button>Create tournament</button></form><p id="create-error" class="error"></p><script type="module" src="/public/lobby.js"></script></section>"#,
+        "",
+    )
+}
 pub fn table_page(view: &crate::view::TableView) -> String {
     let seats = view
         .seats
         .iter()
         .map(|seat| {
             format!(
-                "<li>Seat {}: {} — {}</li>",
+                "<li>Seat {}: {} 🪙 {} — {}</li>",
                 seat.index,
                 escape(&seat.occupant),
+                seat.bank_balance
+                    .map(format_cents)
+                    .unwrap_or_else(|| "—".into()),
                 seat.stack
             )
         })
@@ -91,16 +103,17 @@ pub fn table_page(view: &crate::view::TableView) -> String {
         })
         .unwrap_or_default();
     let app = format!("<div id=\"table-app\" data-table-id=\"{}\"></div>", view.id);
+    let fallback = format!(
+        "<noscript><section class=card><h1>{}</h1><p>Board: {}</p><p>Pot: {}</p><ul>{}</ul></section></noscript>{}",
+        escape(&view.name),
+        escape(&board),
+        view.hand.as_ref().map(|hand| hand.pot).unwrap_or(0),
+        seats,
+        app
+    );
     layout(
         &view.name,
-        &format!(
-            "<section class=card><h1>{}</h1><p>Board: {}</p><p>Pot: {}</p><ul>{}</ul></section>{}",
-            escape(&view.name),
-            escape(&board),
-            view.hand.as_ref().map(|hand| hand.pot).unwrap_or(0),
-            seats,
-            app
-        ),
+        &fallback,
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/table.js")
@@ -110,22 +123,23 @@ pub fn table_page(view: &crate::view::TableView) -> String {
 
 pub fn lobby(
     _user: &Uuid,
-    tables: &[(String, Uuid, crate::table::Stakes, usize, usize)],
+    tables: &[(String, Uuid, crate::table::Stakes, usize, usize, bool)],
 ) -> String {
     let rows = tables
         .iter()
-        .map(|(name, id, stakes, occupied, max)| {
+        .map(|(name, id, stakes, occupied, max, tournament)| {
             format!(
-                "<li><a href=\"/tables/{id}\">{}</a> · {:?} · {occupied}/{max} seats</li>",
+                "<li><a href=\"/tables/{id}\">{}</a> · {} · {:?} · {occupied}/{max} seats</li>",
                 escape(name),
+                if *tournament { "Tournament" } else { "Cash" },
                 stakes
             )
         })
         .collect::<String>();
     layout(
-        "Tables",
+        "Lobby",
         &format!(
-            "<section class=card><h1>Cash tables</h1><p><a href=\"/tables/new\">Create a table</a></p><ul>{rows}</ul></section>"
+            "<section class=card><h1>Lobby</h1><p><a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p><ul>{rows}</ul></section>"
         ),
         "",
     )

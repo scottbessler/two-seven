@@ -222,7 +222,7 @@ tests/                           # eval, holdem, bank, bot, routes, dockerfile
 3. Bank + tables: create/join/leave/rebuy, no-debt enforcement, settlement. **Done in the initial HTTP/store implementation; crash recovery and driver scheduling remain outstanding.**
 4. Bots + driver. **Done: deterministic policy bots, bankroll seating, and ticking driver.**
 5. Table UI: SSR page, SSE, island, bank widget. **Done: responsive island, lobby, bank widget, and asset contracts.**
-6. Sit-and-go tournaments.
+6. Sit-and-go tournaments. **Done: registration, scheduled antes/blinds, bot fill, elimination, payout, and tournament views.**
 7. Polish: e2e snapshots, mobile layout.
 
 Mark each milestone done here as it lands.
@@ -230,7 +230,6 @@ Mark each milestone done here as it lands.
 ## 13. Outstanding tasks
 
 - [ ] Action clock / auto-fold for idle humans (today a table waits forever).
-- [ ] Seat-owner bank balances in the table projection (the current widget shows the signed-in user's ledger).
 - [ ] Multi-table tournaments, late registration, rebuy periods.
 - [ ] More variants: Omaha, and 2-7 triple draw (the repo's namesake).
 - [ ] Push notifications for "it's your turn" (screwball has the VAPID plumbing).
@@ -238,6 +237,7 @@ Mark each milestone done here as it lands.
 - [ ] Playwright snapshot coverage for the table page.
 - [ ] Bank statement page (paginated ledger) beyond the hover panel.
 - [ ] Rake / house account, if tables ever need a sink.
+- [ ] Tournament crash-recovery reconciliation if a prize ledger write fails mid-payout.
 
 ## §V Verification invariants
 
@@ -269,3 +269,6 @@ Mark each milestone done here as it lands.
 - Cents lived in `table.rs` and bot occupants used strings; moved money into `money.rs` and introduced `BotKind`.
 - Concurrent no-debt buy-ins could both pass a stale balance check; fixed by checking and appending under one bank lock.
 - Bot account filenames used debug formatting; fixed with stable `BotKind` slugs and `FromStr`.
+- Tournament stacks were incorrectly eligible for cash-out on leave/replacement; fixed by forfeiting tournament stacks and reserving bank movement for buy-ins/prizes.
+- Tournament table listings were indistinguishable from cash tables; fixed with explicit lobby mode labels.
+- Table SSR rendered a duplicate island fallback in browsers; fixed by placing the plain fallback inside `noscript`.

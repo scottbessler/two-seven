@@ -36,6 +36,15 @@ pub fn router(s: AppState) -> Router {
         .route("/", get(routes::index))
         .route("/healthcheck", get(routes::healthcheck))
         .route("/tables/new", get(routes::new_table))
+        .route("/tournaments/new", get(routes::new_tournament))
+        .route(
+            "/tournaments",
+            axum::routing::post(routes::create_tournament),
+        )
+        .route(
+            "/tournaments/{id}/register",
+            axum::routing::post(routes::register_tournament),
+        )
         .route(
             "/tables",
             axum::routing::get(routes::tables).post(routes::create_table),

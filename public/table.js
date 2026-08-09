@@ -17,7 +17,7 @@ function Card({ card }) {
 
 function Seat({ seat, button }) {
   return html`<article class="seat ${seat.index === button ? "dealer" : ""}">
-    <strong>${seat.occupant}</strong><span>Seat ${seat.index}</span><b>$${(seat.stack / 100).toFixed(2)}</b>
+    <strong>${seat.occupant} <span class="coin">🪙</span></strong><span>Seat ${seat.index}</span><b>$${(seat.stack / 100).toFixed(2)}</b>${seat.bank_balance != null && html`<small class="seat-bank" title=${seat.bank_entries.map((entry) => entry.memo).join(", ")}>$${(seat.bank_balance / 100).toFixed(2)}</small>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
 }
@@ -54,6 +54,16 @@ function TableApp() {
   const hand = state.hand;
   return html`<div class="table-shell">
     <div class="table-top"><h1>${state.name}</h1><span class="pot">Pot ${hand ? `$${(hand.pot / 100).toFixed(2)}` : "—"}</span></div>
+    ${state.tournament && html`
+      <p class="tournament-level">
+        Tournament · Level ${state.tournament.level}
+        · Blinds $${(state.tournament.small_blind / 100).toFixed(2)}/$${(state.tournament.big_blind / 100).toFixed(2)}
+        · Ante $${(state.tournament.ante / 100).toFixed(2)}
+        · Hand ${state.tournament.hands_at_level}/${state.tournament.hands_per_level}
+        ${state.tournament.next_level && html` · Next ${state.tournament.next_level}: $${(state.tournament.next_small_blind / 100).toFixed(2)}/$${(state.tournament.next_big_blind / 100).toFixed(2)} ante $${(state.tournament.next_ante / 100).toFixed(2)}`}
+      </p>
+      ${state.tournament.finish_order.length > 0 && html`<p class="finish-order">Finish order: ${state.tournament.finish_order.map((seat) => `Seat ${seat}`).join(", ")}</p>`}
+    `}
     <section class="felt" aria-label="Poker table">
       <div class="board">${(hand?.board || []).map((card) => html`<${Card} card=${card} />`)}</div>
       <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} button=${state.button} />`)}</div>

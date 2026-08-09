@@ -83,7 +83,37 @@ mod bot_kind_tests {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum TableMode {
     Cash { no_debt: bool },
-    Tournament,
+    Tournament(TournamentState),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BlindLevel {
+    pub small_blind: Cents,
+    pub big_blind: Cents,
+    pub ante: Cents,
+    pub hands: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TournamentConfig {
+    pub buy_in: Cents,
+    pub seat_count: usize,
+    pub starting_chips: Cents,
+    pub levels: Vec<BlindLevel>,
+    pub payout_percentages: Vec<u8>,
+    pub no_debt: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TournamentState {
+    pub config: TournamentConfig,
+    pub current_level: usize,
+    pub hands_at_level: u32,
+    pub finish_order: Vec<usize>,
+    pub registered: usize,
+    pub prize_pool: Cents,
+    pub finished: bool,
+    pub paid_out: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -157,6 +187,11 @@ impl Table {
 }
 
 pub fn maybe_start_hand(table: &mut Table) {
+    if let TableMode::Tournament(state) = &table.mode
+        && state.registered < state.config.seat_count
+    {
+        return;
+    }
     if table.hand.is_some()
         || table
             .seats
@@ -181,11 +216,20 @@ pub fn maybe_start_hand(table: &mut Table) {
         })
         .collect();
     table.hand_no += 1;
-    table.hand = Some(Hand::new_with_seats(
+    let ante = match &table.mode {
+        TableMode::Tournament(state) => state
+            .config
+            .levels
+            .get(state.current_level)
+            .map_or(0, |level| level.ante),
+        TableMode::Cash { .. } => 0,
+    };
+    table.hand = Some(Hand::new_with_seats_and_ante(
         table.stakes,
         &stacks,
         table.button,
         table.hand_no,
+        ante,
     ));
     table.next_action_at = None;
 }
@@ -201,6 +245,52 @@ pub fn settle_finished_hand(table: &mut Table) {
     for player in &hand.players {
         if let Some(seat) = table.seats.get_mut(player.seat) {
             seat.stack = player.stack;
+        }
+    }
+    if let TableMode::Tournament(state) = &mut table.mode {
+        state.hands_at_level += 1;
+        for player in &hand.players {
+            if player.stack == 0
+                && !state.finish_order.contains(&player.seat)
+                && !table
+                    .seats
+                    .get(player.seat)
+                    .is_some_and(|seat| seat.sitting_out)
+            {
+                state.finish_order.push(player.seat);
+            }
+        }
+        if state
+            .config
+            .levels
+            .get(state.current_level)
+            .is_some_and(|level| state.hands_at_level >= level.hands)
+            && state.current_level + 1 < state.config.levels.len()
+        {
+            state.current_level += 1;
+            state.hands_at_level = 0;
+            if let Some(level) = state.config.levels.get(state.current_level) {
+                table.stakes = Stakes::NoLimit {
+                    small_blind: level.small_blind,
+                    big_blind: level.big_blind,
+                };
+            }
+        }
+        let alive = table
+            .seats
+            .iter()
+            .filter(|seat| !matches!(seat.occupant, SeatOccupant::Empty) && seat.stack > 0)
+            .count();
+        if alive <= 1 {
+            for (seat, value) in table.seats.iter().enumerate() {
+                if !matches!(value.occupant, SeatOccupant::Empty)
+                    && value.stack == 0
+                    && !state.finish_order.contains(&seat)
+                {
+                    state.finish_order.push(seat);
+                }
+            }
+            state.finished = true;
         }
     }
     table.button = (table.button + 1) % table.seats.len();
