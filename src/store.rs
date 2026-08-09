@@ -38,6 +38,9 @@ impl TableStore {
     pub async fn get(&self, id: Uuid) -> Option<Arc<Mutex<Table>>> {
         self.tables.lock().await.get(&id).cloned()
     }
+    pub async fn ids(&self) -> Vec<Uuid> {
+        self.tables.lock().await.keys().copied().collect()
+    }
     pub async fn insert(&self, table: Table) -> Result<Uuid, anyhow::Error> {
         let id = table.id;
         self.persist(&table).await?;

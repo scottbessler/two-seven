@@ -1,7 +1,9 @@
 pub mod app;
 pub mod auth;
 pub mod bank;
+pub mod bot;
 pub mod cards;
+pub mod driver;
 pub mod error;
 pub mod eval;
 pub mod holdem;

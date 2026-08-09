@@ -128,17 +128,39 @@ impl BankStore {
         amount: Cents,
         no_debt: bool,
     ) -> Result<Account, anyhow::Error> {
-        let account = self.account(owner.clone()).await?;
-        if no_debt && (account.balance <= 0 || amount > account.balance) {
+        let mut guard = self.inner.lock().await;
+        if !guard.accounts.contains_key(&owner) {
+            let now = Utc::now();
+            guard.accounts.insert(
+                owner.clone(),
+                Account {
+                    owner: owner.clone(),
+                    balance: 0,
+                    entries: Vec::new(),
+                    created_at: now,
+                    updated_at: now,
+                },
+            );
+        }
+        if no_debt
+            && (guard.accounts[&owner].balance <= 0 || amount > guard.accounts[&owner].balance)
+        {
             return Err(anyhow::anyhow!("insufficient funds for no-debt table"));
         }
-        self.append(
-            owner,
-            LedgerKind::BuyIn { table },
-            -amount,
-            "table buy-in".into(),
-        )
-        .await
+        let account = guard.accounts.get_mut(&owner).expect("account");
+        account.balance -= amount;
+        account.updated_at = Utc::now();
+        account.entries.push(LedgerEntry {
+            id: Uuid::new_v4(),
+            at: account.updated_at,
+            kind: LedgerKind::BuyIn { table },
+            delta: -amount,
+            balance_after: account.balance,
+            memo: "table buy-in".into(),
+        });
+        let result = account.clone();
+        self.persist(&result).await?;
+        Ok(result)
     }
     pub async fn cash_out(
         &self,
@@ -157,7 +179,7 @@ impl BankStore {
     async fn persist(&self, account: &Account) -> Result<(), anyhow::Error> {
         let name = match account.owner {
             AccountOwner::User(id) => format!("user-{id}.json"),
-            AccountOwner::Bot(kind) => format!("bot-{kind:?}.json"),
+            AccountOwner::Bot(kind) => format!("bot-{kind}.json"),
         };
         let path = self.dir.join(name);
         let tmp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));

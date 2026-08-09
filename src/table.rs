@@ -4,6 +4,7 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -40,6 +41,43 @@ pub enum BotKind {
     Rock,
     Grinder,
     Shark,
+}
+
+impl fmt::Display for BotKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Fish => "fish",
+            Self::Rock => "rock",
+            Self::Grinder => "grinder",
+            Self::Shark => "shark",
+        })
+    }
+}
+
+impl FromStr for BotKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_ascii_lowercase().as_str() {
+            "fish" => Ok(Self::Fish),
+            "rock" => Ok(Self::Rock),
+            "grinder" => Ok(Self::Grinder),
+            "shark" => Ok(Self::Shark),
+            _ => Err(format!("unknown bot kind: {value}")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod bot_kind_tests {
+    use super::BotKind;
+    use std::str::FromStr;
+
+    #[test]
+    fn bot_kind_uses_stable_slugs() {
+        assert_eq!(BotKind::Fish.to_string(), "fish");
+        assert_eq!(BotKind::from_str("SHARK").unwrap(), BotKind::Shark);
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -116,4 +154,56 @@ impl Table {
             next_action_at: None,
         }
     }
+}
+
+pub fn maybe_start_hand(table: &mut Table) {
+    if table.hand.is_some()
+        || table
+            .seats
+            .iter()
+            .filter(|seat| {
+                !seat.sitting_out && seat.stack > 0 && !matches!(seat.occupant, SeatOccupant::Empty)
+            })
+            .count()
+            < 2
+    {
+        return;
+    }
+    let stacks: Vec<(usize, Cents)> = table
+        .seats
+        .iter()
+        .enumerate()
+        .filter_map(|(seat, value)| {
+            (!value.sitting_out
+                && value.stack > 0
+                && !matches!(value.occupant, SeatOccupant::Empty))
+            .then_some((seat, value.stack))
+        })
+        .collect();
+    table.hand_no += 1;
+    table.hand = Some(Hand::new_with_seats(
+        table.stakes,
+        &stacks,
+        table.button,
+        table.hand_no,
+    ));
+    table.next_action_at = None;
+}
+
+pub fn settle_finished_hand(table: &mut Table) {
+    let Some(hand) = table.hand.take() else {
+        return;
+    };
+    if !hand.complete {
+        table.hand = Some(hand);
+        return;
+    }
+    for player in &hand.players {
+        if let Some(seat) = table.seats.get_mut(player.seat) {
+            seat.stack = player.stack;
+        }
+    }
+    table.button = (table.button + 1) % table.seats.len();
+    table.last_hand = hand.summary;
+    table.next_action_at = Some(Utc::now() + chrono::Duration::seconds(3));
 }

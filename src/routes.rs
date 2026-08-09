@@ -5,7 +5,9 @@ use crate::{
     holdem::Action,
     render,
     session::{AuthUser, MaybeUser},
-    table::{BotKind, SeatOccupant, Stakes, Table, TableMode},
+    table::{
+        BotKind, SeatOccupant, Stakes, Table, TableMode, maybe_start_hand, settle_finished_hand,
+    },
     view::table_view,
 };
 use axum::{
@@ -16,7 +18,6 @@ use axum::{
         sse::{Event, Sse},
     },
 };
-use chrono::Utc;
 use futures_util::stream;
 use serde::Deserialize;
 use std::{convert::Infallible, time::Duration};
@@ -44,6 +45,27 @@ pub struct CreateTable {
 }
 pub async fn new_table() -> Html<String> {
     Html(render::table_create())
+}
+pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+    let mut tables = Vec::new();
+    for id in s.tables.ids().await {
+        if let Some(table) = s.tables.get(id).await {
+            let table = table.lock().await;
+            let occupied = table
+                .seats
+                .iter()
+                .filter(|seat| !matches!(seat.occupant, SeatOccupant::Empty))
+                .count();
+            tables.push((
+                table.name.clone(),
+                id,
+                table.stakes,
+                occupied,
+                table.max_seats,
+            ));
+        }
+    }
+    Html(render::lobby(&user, &tables))
 }
 pub async fn create_table(
     AuthUser(_user): AuthUser,
@@ -155,57 +177,6 @@ pub async fn table_events(
     });
     Ok(Sse::new(events)
         .keep_alive(axum::response::sse::KeepAlive::new().interval(Duration::from_secs(15))))
-}
-
-fn maybe_start_hand(table: &mut Table) {
-    if table.hand.is_some()
-        || table
-            .seats
-            .iter()
-            .filter(|seat| {
-                !seat.sitting_out && seat.stack > 0 && !matches!(seat.occupant, SeatOccupant::Empty)
-            })
-            .count()
-            < 2
-    {
-        return;
-    }
-    let stacks: Vec<(usize, i64)> = table
-        .seats
-        .iter()
-        .enumerate()
-        .filter_map(|(seat, value)| {
-            (!value.sitting_out
-                && value.stack > 0
-                && !matches!(value.occupant, SeatOccupant::Empty))
-            .then_some((seat, value.stack))
-        })
-        .collect();
-    table.hand_no += 1;
-    table.hand = Some(crate::holdem::Hand::new_with_seats(
-        table.stakes,
-        &stacks,
-        table.button,
-        table.hand_no,
-    ));
-    table.next_action_at = None;
-}
-fn settle_finished_hand(table: &mut Table) {
-    let Some(hand) = table.hand.take() else {
-        return;
-    };
-    if !hand.complete {
-        table.hand = Some(hand);
-        return;
-    }
-    for player in &hand.players {
-        if let Some(seat) = table.seats.get_mut(player.seat) {
-            seat.stack = player.stack;
-        }
-    }
-    table.button = (table.button + 1) % table.seats.len();
-    table.last_hand = hand.summary;
-    table.next_action_at = Some(Utc::now() + chrono::Duration::seconds(3));
 }
 
 #[derive(Deserialize)]
@@ -425,7 +396,8 @@ pub async fn rebuy_table(
 #[derive(Deserialize)]
 pub struct BotRequest {
     pub seat: usize,
-    pub kind: Option<BotKind>,
+    pub kind: Option<String>,
+    pub buy_in: Option<i64>,
 }
 pub async fn bot_table(
     AuthUser(_user): AuthUser,
@@ -433,23 +405,67 @@ pub async fn bot_table(
     Path(id): Path<Uuid>,
     Json(input): Json<BotRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    s.tables
+    let table = s
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| AppError::not_found("table not found"))?;
+    let (old, min, max) = {
+        let table = table.lock().await;
+        let seat = table
+            .seats
+            .get(input.seat)
+            .ok_or_else(|| AppError::bad_request("invalid seat"))?;
+        (seat.occupant.clone(), table.min_buy_in, table.max_buy_in)
+    };
+    if let SeatOccupant::Bot { kind } = old {
+        let stack = s.tables.get(id).await.unwrap().lock().await.seats[input.seat].stack;
+        s.bank
+            .cash_out(AccountOwner::Bot(kind), id, stack)
+            .await
+            .map_err(AppError::internal)?;
+    }
+    let mut bought = None;
+    if let Some(kind_name) = input.kind {
+        let kind = kind_name
+            .parse::<BotKind>()
+            .map_err(AppError::bad_request)?;
+        let amount = input.buy_in.unwrap_or(min);
+        if amount < min || amount > max {
+            return Err(AppError::bad_request("bot buy-in is outside table limits"));
+        }
+        s.bank
+            .buy_in(AccountOwner::Bot(kind), id, amount, false)
+            .await
+            .map_err(AppError::internal)?;
+        bought = Some((kind, amount));
+    }
+    let result = s
+        .tables
         .update(id, |table| {
             let seat = table
                 .seats
                 .get_mut(input.seat)
                 .ok_or_else(|| anyhow::anyhow!("invalid seat"))?;
-            seat.occupant = input
-                .kind
-                .map_or(SeatOccupant::Empty, |kind| SeatOccupant::Bot { kind });
-            if matches!(seat.occupant, SeatOccupant::Empty) {
+            if let Some((kind, amount)) = bought {
+                seat.occupant = SeatOccupant::Bot { kind };
+                seat.stack = amount;
+                seat.sitting_out = false;
+            } else {
+                seat.occupant = SeatOccupant::Empty;
                 seat.stack = 0;
+                seat.sitting_out = false;
             }
             maybe_start_hand(table);
             Ok(())
         })
-        .await
-        .map_err(AppError::internal)?;
+        .await;
+    if let Err(error) = result {
+        if let Some((kind, amount)) = bought {
+            let _ = s.bank.cash_out(AccountOwner::Bot(kind), id, amount).await;
+        }
+        return Err(AppError::internal(error));
+    }
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
