@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+should_run=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do case "$remote_ref" in refs/heads/main) should_run=1;; esac; done
+[ "$should_run" -eq 1 ] || { echo "[pre-push] not pushing main; skipping full local gate"; exit 0; }
+cargo fmt --check
+cargo check --locked
+cargo check --release --locked
+cargo clippy --locked --all-targets --all-features
+cargo test --locked
+if command -v bun >/dev/null 2>&1; then bun run lint; elif command -v npx >/dev/null 2>&1; then npx oxlint --deny-warnings; else echo "[pre-push] bun/npx unavailable; skipping JS lint"; fi
+echo "[pre-push] ok"

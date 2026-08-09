@@ -1,0 +1,105 @@
+use crate::error::AppError;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::sync::Mutex;
+use uuid::Uuid;
+use webauthn_rs::prelude::Passkey;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct User {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub credentials: Vec<Passkey>,
+    #[serde(default)]
+    pub settings: UserSettings,
+    pub created_at: DateTime<Utc>,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct UserSettings {}
+pub fn normalize_username(x: &str) -> String {
+    x.trim().to_lowercase()
+}
+struct Index {
+    by_id: HashMap<Uuid, User>,
+    by_username: HashMap<String, Uuid>,
+}
+pub struct UserStore {
+    index: Mutex<Index>,
+    dir: PathBuf,
+}
+impl UserStore {
+    pub async fn load(root: impl Into<PathBuf>) -> Result<Self, AppError> {
+        let dir = root.into().join("users");
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(AppError::internal)?;
+        let (mut by_id, mut by_username) = (HashMap::new(), HashMap::new());
+        let mut it = tokio::fs::read_dir(&dir)
+            .await
+            .map_err(AppError::internal)?;
+        while let Some(e) = it.next_entry().await.map_err(AppError::internal)? {
+            let p = e.path();
+            if p.extension().and_then(|x| x.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(t) = tokio::fs::read_to_string(&p).await
+                && let Ok(u) = serde_json::from_str::<User>(&t)
+            {
+                by_username.insert(normalize_username(&u.username), u.id);
+                by_id.insert(u.id, u);
+            }
+        }
+        Ok(Self {
+            index: Mutex::new(Index { by_id, by_username }),
+            dir,
+        })
+    }
+    pub async fn get(&self, id: Uuid) -> Option<User> {
+        self.index.lock().await.by_id.get(&id).cloned()
+    }
+    pub async fn get_by_username(&self, n: &str) -> Option<User> {
+        let g = self.index.lock().await;
+        g.by_username
+            .get(&normalize_username(n))
+            .and_then(|id| g.by_id.get(id))
+            .cloned()
+    }
+    pub async fn username_taken(&self, n: &str) -> bool {
+        self.index
+            .lock()
+            .await
+            .by_username
+            .contains_key(&normalize_username(n))
+    }
+    pub async fn insert(&self, u: User) -> Result<(), AppError> {
+        let mut g = self.index.lock().await;
+        let k = normalize_username(&u.username);
+        if g.by_username.contains_key(&k) {
+            return Err(AppError::conflict("that username is already taken"));
+        }
+        self.persist(&u).await?;
+        g.by_username.insert(k, u.id);
+        g.by_id.insert(u.id, u);
+        Ok(())
+    }
+    async fn persist(&self, u: &User) -> Result<(), AppError> {
+        let p = self.dir.join(format!("{}.json", u.id));
+        let n = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let tmp = p.with_extension(format!("json.tmp-{n}"));
+        tokio::fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(u).map_err(AppError::internal)?,
+        )
+        .await
+        .map_err(AppError::internal)?;
+        tokio::fs::rename(tmp, p).await.map_err(AppError::internal)
+    }
+}

@@ -1,0 +1,140 @@
+use crate::{auth, render, routes, session::MaybeUser, users::UserStore};
+use anyhow::{Context, Result};
+use axum::{
+    Router,
+    extract::{FromRef, Request, State},
+    http::{HeaderValue, header::CACHE_CONTROL},
+    middleware::{Next, from_fn, from_fn_with_state},
+    response::Response,
+    routing::get,
+};
+use axum_extra::extract::cookie::Key;
+use std::{env, sync::Arc, time::Instant};
+use tower_http::{services::ServeDir, trace::TraceLayer};
+use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
+const LOCAL: &str =
+    "two-seven-local-development-session-secret-v1-keep-browser-sessions-across-restarts";
+#[derive(Clone)]
+pub struct AppState {
+    pub users: Arc<UserStore>,
+    pub webauthn: Arc<Webauthn>,
+    pub key: Key,
+    pub passkey_disabled: bool,
+}
+impl FromRef<AppState> for Key {
+    fn from_ref(s: &AppState) -> Self {
+        s.key.clone()
+    }
+}
+pub fn router(s: AppState) -> Router {
+    Router::new()
+        .route("/", get(routes::index))
+        .route("/healthcheck", get(routes::healthcheck))
+        .route(
+            "/auth/register/begin",
+            axum::routing::post(auth::register_begin),
+        )
+        .route(
+            "/auth/register/finish",
+            axum::routing::post(auth::register_finish),
+        )
+        .route("/auth/login/begin", axum::routing::post(auth::login_begin))
+        .route(
+            "/auth/login/finish",
+            axum::routing::post(auth::login_finish),
+        )
+        .route("/auth/logout", axum::routing::post(auth::logout))
+        .nest_service("/public", ServeDir::new("public"))
+        .layer(from_fn(cache_control))
+        .layer(from_fn_with_state(s.clone(), log_request))
+        .layer(TraceLayer::new_for_http())
+        .with_state(s)
+}
+async fn cache_control(req: Request, next: Next) -> Response {
+    let asset = req.uri().path().starts_with("/public/");
+    let mut r = next.run(req).await;
+    r.headers_mut().insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static(if asset && !cfg!(debug_assertions) {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
+        }),
+    );
+    r
+}
+async fn log_request(State(s): State<AppState>, req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+    let start = Instant::now();
+    let r = next.run(req).await;
+    let user: String = if path.starts_with("/public/") {
+        "-".to_string()
+    } else {
+        let _ = &s;
+        let _ = MaybeUser(None);
+        "-".to_string()
+    };
+    tracing::info!(%method,path,status=r.status().as_u16(),user,elapsed_ms=start.elapsed().as_millis(),"request");
+    r
+}
+pub async fn run() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
+    render::set_asset_version(asset_version());
+    let data = env::var("DATA_PATH").unwrap_or_else(|_| "data".into());
+    let users = Arc::new(UserStore::load(&data).await?);
+    let app = router(AppState {
+        users,
+        webauthn: Arc::new(build_webauthn()?),
+        key: load_key(),
+        passkey_disabled: env_flag("PASSKEY_DISABLED"),
+    });
+    let port = env::var("PORT").unwrap_or_else(|_| "8080".into());
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+pub fn build_webauthn() -> Result<Webauthn> {
+    let id = env::var("RP_ID").unwrap_or_else(|_| "localhost".into());
+    let origin =
+        Url::parse(&env::var("RP_ORIGIN").unwrap_or_else(|_| "http://localhost:8080".into()))
+            .context("RP_ORIGIN must be a valid URL")?;
+    WebauthnBuilder::new(&id, &origin)?
+        .rp_name("two-seven")
+        .build()
+        .context("failed to build WebAuthn")
+}
+fn env_flag(n: &str) -> bool {
+    matches!(
+        env::var(n).as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE") | Ok("True")
+    )
+}
+fn load_key() -> Key {
+    match env::var("SESSION_SECRET") {
+        Ok(s) if s.len() >= 64 => Key::from(s.as_bytes()),
+        Ok(_) => Key::generate(),
+        Err(_) => {
+            if cfg!(debug_assertions) {
+                Key::from(LOCAL.as_bytes())
+            } else {
+                Key::generate()
+            }
+        }
+    }
+}
+fn asset_version() -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for f in ["public/app.css", "public/auth.js"] {
+        if let Ok(b) = std::fs::read(f) {
+            b.hash(&mut h)
+        }
+    }
+    format!("{:x}", h.finish())
+}

@@ -1,0 +1,34 @@
+[package]
+name = "two-seven"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+axum = { version = "0.8.7", features = ["ws"] }
+axum-extra = { version = "0.12.6", features = ["cookie-signed"] }
+base64 = "0.22"
+chrono = { version = "0.4.42", features = ["serde"] }
+futures-util = "0.3"
+rand = "0.8.5"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "fs", "sync"] }
+tower-http = { version = "0.6.8", features = ["fs", "trace"] }
+tracing = "0.1.43"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+uuid = { version = "1.11.0", features = ["v4", "serde"] }
+webauthn-rs = { version = "0.5.5", features = ["danger-allow-state-serialisation"] }
+
+[dev-dependencies]
+chrono = "0.4.42"
+cookie = { version = "0.18.1", features = ["signed"] }
+tower = { version = "0.5.3", features = ["util"] }
+
+[lints.rust]
+rust_2018_idioms = { level = "deny", priority = -1 }
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = "deny"

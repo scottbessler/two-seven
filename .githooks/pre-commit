@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+echo "[pre-commit] cargo fmt --check"
+cargo fmt --check
+echo "[pre-commit] cargo clippy"
+cargo clippy --all-targets
+echo "[pre-commit] oxlint"
+if command -v bun >/dev/null 2>&1; then bun run lint; elif command -v npx >/dev/null 2>&1; then npx oxlint --deny-warnings; else echo "[pre-commit] bun/npx unavailable; skipping JS lint"; fi
+echo "[pre-commit] ok"

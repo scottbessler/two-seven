@@ -1,0 +1,28 @@
+[tools]
+bun = "1.3.13"
+node = "22.12.0"
+
+[tasks.install]
+alias = "i"
+run = "bun install"
+
+[tasks.setup]
+description = "Install deps and enable the repo git hooks"
+run = ["bun install", "git config core.hooksPath .githooks"]
+
+[tasks."lint:rust"]
+description = "Rust format check + clippy"
+run = ["cargo fmt --check", "cargo clippy --all-targets"]
+
+[tasks."lint:js"]
+description = "Lint frontend with oxlint"
+run = "bun run lint"
+
+[tasks.lint]
+depends = ["lint:rust", "lint:js"]
+
+[tasks.check]
+run = ["cargo fmt --check", "cargo check --locked", "cargo check --release --locked", "cargo clippy --locked --all-targets --all-features", "cargo test --locked", "bun run lint"]
+
+[tasks.fix]
+run = ["cargo fmt", "bun run lint:fix"]
