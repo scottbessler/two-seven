@@ -37,14 +37,14 @@ function Seat({ seat, button, openSeat }) {
   </article>`;
 }
 
-function Actions({ hand, tableId, refresh }) {
+function Actions({ hand, tableId: actionTableId, refresh }) {
   const wager = hand?.legal_actions?.wager;
   const actions = new Set((hand?.legal_actions?.actions || []).map(actionName));
   const minimum = wager?.min || wager?.fixed || 0;
   const [amount, setAmount] = useState(minimum);
   useEffect(() => setAmount(minimum), [minimum]);
   const submit = async (kind) => {
-    await fetch(`/tables/${tableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount: Number(amount) || undefined }) });
+    await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount: Number(amount) || undefined }) });
     refresh();
   };
   const noLimit = wager?.max != null && wager?.min != null;

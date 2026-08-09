@@ -8,7 +8,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with: { toolchain: 1.90.0 }
+        with:
+          toolchain: 1.90.0
+          components: rustfmt, clippy
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets --all-features
       - run: cargo test --locked
