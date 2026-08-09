@@ -21,7 +21,7 @@ fn table_island_has_live_state_and_action_contracts() {
         "½ pot",
         "Showdown",
         "· bot",
-        "Tournament registration",
+        "Buy in for seat",
         "table-pot",
         "shared bot account",
         "award-list",

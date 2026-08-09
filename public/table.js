@@ -17,6 +17,10 @@ function cents(value) {
   return `$${(value / 100).toFixed(2)}`;
 }
 
+function streetName(street) {
+  return { Preflop: "Preflop", Flop: "Flop", Turn: "Turn", River: "River" }[street] || street;
+}
+
 function Card({ card, empty = false }) {
   const suit = card?.slice(-1);
   return html`<span class="playing-card ${suit === "h" || suit === "d" ? "red" : "black"} ${empty ? "empty-card" : ""}">${card || "·"}</span>`;
@@ -30,7 +34,7 @@ function Seat({ seat, button, openSeat, total }) {
     transform: "translate(-50%, -50%)",
   };
   if (seat.occupant === "empty") {
-    return html`<button class="seat empty-seat" style=${position} onClick=${() => openSeat(seat.index)}><strong>🪙 Sit here</strong><span>Seat ${seat.index}</span></button>`;
+    return html`<button class="seat empty-seat" style=${position} onClick=${() => openSeat(seat.index)}><strong>🪙 Sit here</strong><span>Seat ${seat.index}</span>${seat.index === button && html`<i class="button-marker">D</i>`}</button>`;
   }
   const label = seat.display_name || seat.occupant;
   const shared = seat.occupant !== "human" && seat.occupant !== "empty";
@@ -107,12 +111,12 @@ function TableApp() {
     <div class="table-top"><h1>${state.name}</h1></div>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="felt" aria-label="Poker table">
-      <div class="table-center">${hand ? html`<p class="table-pot">Pot ${cents(hand.pot)}</p><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${hand.street} · ${currentName}'s turn · To call ${cents(hand.to_call || 0)}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
+      <div class="table-center">${hand ? html`<p class="table-pot">Pot ${cents(hand.pot)}</p><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${streetName(hand.street)} · ${currentName} to act · ${cents(hand.to_call || 0)} to call</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
       <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
     </section>
     ${hand && html`<section class="hand-info"><div class="hole-cards">${(hand.your_hole_cards || []).map((card) => html`<${Card} card=${card} />`)}</div><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     <${LastHand} summary=${state.last_hand} />
-    ${state.tournament?.finished ? null : html`<section class="card join-card"><h2>${state.tournament ? "Tournament registration" : "Join this table"}</h2>${state.tournament ? html`<p>Register through the lobby before the event starts.</p>` : html`<form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); refresh(); }}><input name="buy_in" type="number" min="0.01" step="0.01" placeholder="Buy-in ($)" required /><input type="hidden" name="seat" value=${joinSeat ?? ""} /><button>Join seat ${joinSeat ?? "…"}</button></form>`}</section>`}
+    ${joinSeat != null && state.viewer_seat == null && !state.tournament && html`<section class="card join-card"><h2>Buy in for seat ${joinSeat}</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); refresh(); }}><input name="buy_in" type="number" min="0.01" step="0.01" placeholder="Buy-in ($)" required /><input type="hidden" name="seat" value=${joinSeat} /><button>Join seat ${joinSeat}</button></form></section>`}
     <nav class="table-controls"><button onClick=${() => fetch(`/tables/${tableId}/sit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sitting_out: true }) }).then(refresh)}>Sit out</button><button onClick=${() => fetch(`/tables/${tableId}/leave`, { method: "POST" }).then(refresh)}>Leave</button></nav>
   </div>`;
 }

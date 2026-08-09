@@ -36,6 +36,7 @@ pub struct TableView {
     pub stakes: crate::table::Stakes,
     pub seats: Vec<SeatView>,
     pub button: usize,
+    pub viewer_seat: Option<usize>,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub tournament: Option<TournamentView>,
@@ -150,6 +151,7 @@ pub fn table_view_with_banks(
             .map(|(index, seat)| seat_view(index, seat, banks.get(&index), names.get(&index)))
             .collect(),
         button: table.button,
+        viewer_seat: viewer,
         hand: table.hand.as_ref().map(|hand| hand_view(hand, viewer)),
         last_hand: table.last_hand.clone(),
         tournament: match &table.mode {
