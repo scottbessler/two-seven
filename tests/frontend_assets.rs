@@ -22,6 +22,8 @@ fn table_island_has_live_state_and_action_contracts() {
         "Showdown",
         "bot bank",
         "Tournament registration",
+        "table-pot",
+        "bot bank",
     ] {
         assert!(
             TABLE_JS.contains(literal),
@@ -40,6 +42,7 @@ fn table_css_is_mobile_poker_layout() {
         ".actions",
         ".table-center",
         ".empty-seat",
+        ".table-pot",
         ".bank-widget[aria-expanded=true]",
         "position:absolute",
     ] {

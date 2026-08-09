@@ -168,7 +168,7 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
             )
         } else {
             format!(
-                "Cash · {:?} · {} · {}/{} seats",
+                "Cash · {} · {} · {}/{} seats",
                 table.stakes,
                 if table.no_debt { "no-debt" } else { "standard" },
                 table.occupied,

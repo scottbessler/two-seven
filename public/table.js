@@ -22,13 +22,19 @@ function Card({ card, empty = false }) {
   return html`<span class="playing-card ${suit === "h" || suit === "d" ? "red" : "black"} ${empty ? "empty-card" : ""}">${card || "·"}</span>`;
 }
 
-function Seat({ seat, button, openSeat }) {
+function Seat({ seat, button, openSeat, total }) {
+  const angle = -Math.PI / 2 + (seat.index * 2 * Math.PI) / total;
+  const position = {
+    left: `${50 + 43 * Math.cos(angle)}%`,
+    top: `${50 + 40 * Math.sin(angle)}%`,
+    transform: "translate(-50%, -50%)",
+  };
   if (seat.occupant === "empty") {
-    return html`<button class="seat empty-seat" onClick=${() => openSeat(seat.index)}><strong>🪙 Sit here</strong><span>Seat ${seat.index}</span><b>$0.00</b></button>`;
+    return html`<button class="seat empty-seat" style=${position} onClick=${() => openSeat(seat.index)}><strong>🪙 Sit here</strong><span>Seat ${seat.index}</span></button>`;
   }
   const label = seat.display_name || seat.occupant;
   const shared = seat.occupant !== "human" && seat.occupant !== "empty";
-  return html`<article class="seat ${seat.index === button ? "dealer" : ""}">
+  return html`<article class="seat ${seat.index === button ? "dealer" : ""}" style=${position}>
     <strong>${label} <span class="coin">🪙</span></strong>
     <span>Seat ${seat.index}${shared ? " · bot bank" : ""}</span>
     <b>${cents(seat.stack)}</b>
@@ -92,11 +98,11 @@ function TableApp() {
   const current = hand?.current_player == null ? null : state.seats.find((seat) => seat.index === hand.current_player);
   const currentName = current?.display_name || current?.occupant || "—";
   return html`<div class="table-shell">
-    <div class="table-top"><h1>${state.name}</h1><span class="pot">Pot ${hand ? cents(hand.pot) : "—"}</span></div>
+    <div class="table-top"><h1>${state.name}</h1></div>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="felt" aria-label="Poker table">
-      <div class="table-center"><div class="board">${(hand?.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand?.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${hand ? `${hand.street} · ${currentName}'s turn · To call ${cents(hand.to_call || 0)}` : "Waiting for players"}</p></div>
-      <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
+      <div class="table-center"><p class="table-pot">${hand ? `Pot ${cents(hand.pot)}` : "Waiting for players"}</p><div class="board">${(hand?.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand?.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${hand ? `${hand.street} · ${currentName}'s turn · To call ${cents(hand.to_call || 0)}` : "Waiting for players"}</p></div>
+      <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
     </section>
     ${hand && html`<section class="hand-info"><div class="hole-cards">${(hand.your_hole_cards || []).map((card) => html`<${Card} card=${card} />`)}</div><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     <${LastHand} summary=${state.last_hand} />

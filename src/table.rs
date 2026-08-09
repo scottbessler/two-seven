@@ -23,6 +23,20 @@ pub enum Stakes {
         big_blind: Cents,
     },
 }
+
+impl fmt::Display for Stakes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Limit { small_bet, big_bet } => {
+                write!(f, "${}/${} limit", small_bet / 100, big_bet / 100)
+            }
+            Self::NoLimit {
+                small_blind,
+                big_blind,
+            } => write!(f, "${}/${} no-limit", small_blind / 100, big_blind / 100),
+        }
+    }
+}
 impl Stakes {
     pub fn blinds(self) -> (Cents, Cents) {
         match self {

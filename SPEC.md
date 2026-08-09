@@ -223,7 +223,7 @@ tests/                           # eval, holdem, bank, bot, routes, dockerfile
 4. Bots + driver. **Done: deterministic policy bots, bankroll seating, and ticking driver.**
 5. Table UI: SSR page, SSE, island, bank widget. **Done: responsive island, lobby, bank widget, and asset contracts.**
 6. Sit-and-go tournaments. **Done: registration, scheduled antes/blinds, bot fill, elimination, payout, and tournament views.**
-7. Polish: e2e snapshots, mobile layout. **In progress: lobby, money-entry, table layout, showdown, tournament and bank-widget UX are implemented; browser/e2e polish remains.**
+7. Polish: e2e snapshots, mobile layout. **In progress: lobby, money-entry, table layout, showdown, tournament and bank-widget UX are implemented; browser/e2e polish and multi-seat visual checks remain.**
 
 Mark each milestone done here as it lands.
 
@@ -276,3 +276,4 @@ Mark each milestone done here as it lands.
 - Raw cents inputs and hard-coded frontend stakes hid the actual game configuration; fixed with dollar inputs and boundary conversion plus configurable schedule fields.
 - Mobile table controls could run below the viewport and seats overlapped the felt grid; fixed with positioned seats and a fixed mobile action bar.
 - Bank widget navigation exposed raw JSON and interpolated ledger text as HTML; fixed with a toggle button and DOM text nodes.
+- Felt seat placement could collide with the board/status center and cash bots could remain busted forever; fixed with a reserved center/ring layout and automatic cash-table bot rebuys while preserving tournament eliminations.

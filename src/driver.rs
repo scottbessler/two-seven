@@ -78,7 +78,65 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                 Ok(())
             })
             .await?;
+        rebuy_busted_cash_bots(state, id).await?;
         pay_tournament_if_finished(state, id).await?;
+    }
+    Ok(())
+}
+
+async fn rebuy_busted_cash_bots(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
+    let table = state
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("table missing"))?;
+    let rebuys = {
+        let table = table.lock().await;
+        if !matches!(table.mode, crate::table::TableMode::Cash { .. }) {
+            return Ok(());
+        }
+        table
+            .seats
+            .iter()
+            .enumerate()
+            .filter_map(|(seat, value)| {
+                (value.stack == 0
+                    && !value.sitting_out
+                    && matches!(&value.occupant, SeatOccupant::Bot { .. }))
+                .then_some((seat, value.occupant.clone(), table.min_buy_in))
+            })
+            .collect::<Vec<_>>()
+    };
+    for (seat, occupant, amount) in rebuys {
+        let SeatOccupant::Bot { kind } = occupant else {
+            continue;
+        };
+        state
+            .bank
+            .buy_in(AccountOwner::Bot(kind), id, amount, false)
+            .await?;
+        if let Err(error) = state
+            .tables
+            .update(id, |table| {
+                let value = table
+                    .seats
+                    .get_mut(seat)
+                    .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
+                if matches!(&value.occupant, SeatOccupant::Bot { kind: current } if *current == kind)
+                    && value.stack == 0
+                {
+                    value.stack = amount;
+                }
+                Ok(())
+            })
+            .await
+        {
+            let _ = state
+                .bank
+                .cash_out(AccountOwner::Bot(kind), id, amount)
+                .await;
+            return Err(error);
+        }
     }
     Ok(())
 }
@@ -186,6 +244,65 @@ mod tests {
     use uuid::Uuid;
 
     #[tokio::test]
+    async fn cash_bots_rebuy_after_busting() {
+        let root = std::env::temp_dir().join(format!("two-seven-rebuy-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let state = AppState {
+            users,
+            bank: bank.clone(),
+            tables: tables.clone(),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        let mut table = Table::new(
+            "rebuy".into(),
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            10,
+            100,
+        );
+        table.seats[0] = Seat {
+            occupant: SeatOccupant::Bot {
+                kind: BotKind::Rock,
+            },
+            stack: 0,
+            sitting_out: false,
+        };
+        table.seats[1] = Seat {
+            occupant: SeatOccupant::Bot {
+                kind: BotKind::Fish,
+            },
+            stack: 10,
+            sitting_out: false,
+        };
+        bank.buy_in(AccountOwner::Bot(BotKind::Fish), table.id, 10, false)
+            .await
+            .unwrap();
+        let id = tables.insert(table).await.unwrap();
+        tick_once_at(&state, Utc::now() + Duration::seconds(1))
+            .await
+            .unwrap();
+        let table = tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        assert_eq!(table.seats[0].stack, 10);
+        assert!(
+            bank.account(AccountOwner::Bot(BotKind::Rock))
+                .await
+                .unwrap()
+                .entries
+                .iter()
+                .any(|entry| entry.delta == -10)
+        );
+    }
+
+    #[tokio::test]
     async fn four_bots_complete_hands_without_losing_chips() {
         let root = std::env::temp_dir().join(format!("two-seven-driver-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
@@ -235,7 +352,10 @@ mod tests {
         let table = tables.get(id).await.unwrap();
         let table = table.lock().await;
         assert!(table.hand_no > 5);
-        assert_eq!(table.seats.iter().map(|seat| seat.stack).sum::<i64>(), 400);
+        assert!(
+            table.seats.iter().map(|seat| seat.stack).sum::<i64>() >= 400,
+            "cash bot rebuys should add chips from bot bankrolls"
+        );
         for kind in kinds {
             let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
             assert_eq!(
@@ -295,7 +415,10 @@ mod tests {
         let table = tables.get(id).await.unwrap();
         let table = table.lock().await;
         assert!(table.hand_no > 3);
-        assert_eq!(table.seats.iter().map(|seat| seat.stack).sum::<i64>(), 400);
+        assert!(
+            table.seats.iter().map(|seat| seat.stack).sum::<i64>() >= 400,
+            "cash bot rebuys should add chips from bot bankrolls"
+        );
     }
 
     #[tokio::test]
