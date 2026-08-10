@@ -12,11 +12,14 @@ use axum::{
     routing::get,
 };
 use axum_extra::extract::cookie::Key;
-use std::{env, sync::Arc, time::Instant};
+use std::{env, io, sync::Arc, time::Instant};
+use tokio::net::TcpListener;
 use tower_http::{services::ServeDir, trace::TraceLayer};
 use webauthn_rs::prelude::{Url, Webauthn, WebauthnBuilder};
 const LOCAL: &str =
     "two-seven-local-development-session-secret-v1-keep-browser-sessions-across-restarts";
+const DEFAULT_PORT: u16 = 8080;
+const PORT_SCAN_LIMIT: u16 = 100;
 #[derive(Clone)]
 pub struct AppState {
     pub users: Arc<UserStore>,
@@ -135,10 +138,38 @@ pub async fn run() -> Result<()> {
     };
     driver::spawn(state.clone());
     let app = router(state);
-    let port = env::var("PORT").unwrap_or_else(|_| "8080".into());
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
+    let listener = bind_listener().await?;
+    let addr = listener.local_addr().context("failed to read bound address")?;
+    tracing::info!(
+        bind_addr = %addr,
+        port = addr.port(),
+        "listening on http://localhost:{}",
+        addr.port()
+    );
     axum::serve(listener, app).await?;
     Ok(())
+}
+async fn bind_listener() -> Result<TcpListener> {
+    if let Ok(port) = env::var("PORT") {
+        let addr = format!("0.0.0.0:{port}");
+        return TcpListener::bind(&addr)
+            .await
+            .with_context(|| format!("failed to bind {addr}"));
+    }
+    bind_open_port(DEFAULT_PORT, DEFAULT_PORT + PORT_SCAN_LIMIT).await
+}
+async fn bind_open_port(start: u16, end: u16) -> Result<TcpListener> {
+    for port in start..=end {
+        let addr = format!("0.0.0.0:{port}");
+        match TcpListener::bind(&addr).await {
+            Ok(listener) => return Ok(listener),
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => {}
+            Err(e) => return Err(e).with_context(|| format!("failed to bind {addr}")),
+        }
+    }
+    TcpListener::bind("0.0.0.0:0")
+        .await
+        .context("failed to bind an ephemeral port")
 }
 pub fn build_webauthn() -> Result<Webauthn> {
     let id = env::var("RP_ID").unwrap_or_else(|_| "localhost".into());
@@ -185,4 +216,19 @@ fn asset_version() -> String {
         }
     }
     format!("{:x}", h.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn bind_open_port_skips_ports_in_use() {
+        let occupied = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+        let occupied_port = occupied.local_addr().unwrap().port();
+
+        let listener = bind_open_port(occupied_port, occupied_port).await.unwrap();
+
+        assert_ne!(listener.local_addr().unwrap().port(), occupied_port);
+    }
 }
