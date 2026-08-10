@@ -25,6 +25,10 @@ test.describe("card test page", () => {
     expect(cardFaceStyles.aceAfter).toBe("none");
     expect(cardFaceStyles.courtBefore).toBe("none");
     expect(cardFaceStyles.courtAfter).toBe("none");
+    const overflowingSuitRows = await page.locator(".card-test-grid").evaluateAll((rows) =>
+      rows.filter((row) => row.scrollWidth > row.clientWidth).length,
+    );
+    expect(overflowingSuitRows, "V8: card test suit rows must not scroll horizontally").toBe(0);
     await expect(page).toHaveScreenshot("card-test.png", { fullPage: true });
   });
 });
