@@ -31,19 +31,19 @@ impl BlitzDifficulty {
                 id: "easy",
                 label: "Easy",
                 time_limit_ms: 20_000,
-                buy_in: 100,
+                buy_in: 1_000,
             },
             Self::Normal => BlitzDifficultyConfig {
                 id: "normal",
                 label: "Normal",
                 time_limit_ms: 12_000,
-                buy_in: 500,
+                buy_in: 5_000,
             },
             Self::Hard => BlitzDifficultyConfig {
                 id: "hard",
                 label: "Hard",
                 time_limit_ms: 6_000,
-                buy_in: 2_000,
+                buy_in: 20_000,
             },
         }
     }

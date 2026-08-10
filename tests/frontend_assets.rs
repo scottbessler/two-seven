@@ -1,6 +1,7 @@
 const TABLE_JS: &str = include_str!("../public/table.js");
 const APP_CSS: &str = include_str!("../public/app.css");
 const BANK_JS: &str = include_str!("../public/bank.js");
+const BLACKJACK_JS: &str = include_str!("../public/blackjack.js");
 const BLITZ_JS: &str = include_str!("../public/blitz.js");
 
 #[test]
@@ -34,6 +35,10 @@ fn table_island_has_live_state_and_action_contracts() {
         "option value=\"fish\"",
         "table-error",
         "responseError",
+        "rawRank === \"T\" ? \"10\"",
+        "pip-grid-${value}",
+        "card-pip-${position}",
+        "card-art-${court}",
     ] {
         assert!(
             TABLE_JS.contains(literal),
@@ -48,7 +53,8 @@ fn table_css_is_mobile_poker_layout() {
         ".felt",
         ".playing-card",
         ".card-corner",
-        ".card-suit",
+        ".pip-grid",
+        ".card-art",
         ".seats",
         "@media(max-width:640px)",
         ".actions",
@@ -86,6 +92,10 @@ fn hand_blitz_island_has_mode_contracts() {
         "deadline_ms",
         "20s",
         "12s",
+        "rawRank === \"T\" ? \"10\"",
+        "pip-grid-${numeric}",
+        "card-pip-${position}",
+        "card-art-${court}",
         "Correct:",
         "Play again",
     ] {
@@ -103,6 +113,26 @@ fn hand_blitz_island_has_mode_contracts() {
         assert!(
             APP_CSS.contains(literal),
             "missing app.css blitz contract: {literal}"
+        );
+    }
+}
+
+#[test]
+fn blackjack_island_has_game_contracts() {
+    for literal in [
+        "/blackjack/start",
+        "/blackjack/${kind}",
+        "act(\"hit\")",
+        "act(\"stand\")",
+        "dealer_score",
+        "can_hit",
+        "can_stand",
+        "Dealer",
+        "card-pip-${position}",
+    ] {
+        assert!(
+            BLACKJACK_JS.contains(literal),
+            "missing blackjack.js contract: {literal}"
         );
     }
 }

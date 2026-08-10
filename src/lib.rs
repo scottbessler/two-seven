@@ -1,6 +1,7 @@
 pub mod app;
 pub mod auth;
 pub mod bank;
+pub mod blackjack;
 pub mod blitz;
 pub mod bot;
 pub mod cards;

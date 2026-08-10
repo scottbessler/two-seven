@@ -26,6 +26,18 @@ function cardFace(card) {
   return { suit, rank, pip, value };
 }
 
+const PIP_POSITIONS = {
+  2: ["top-center", "bottom-center"],
+  3: ["top-center", "middle-center", "bottom-center"],
+  4: ["top-left", "top-right", "bottom-left", "bottom-right"],
+  5: ["top-left", "top-right", "middle-center", "bottom-left", "bottom-right"],
+  6: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right"],
+  7: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right", "upper-center"],
+  8: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right", "upper-center", "lower-center"],
+  9: ["top-left", "top-right", "upper-left", "upper-right", "middle-center", "lower-left", "lower-right", "bottom-left", "bottom-right"],
+  10: ["top-left", "top-right", "upper-left", "upper-right", "middle-left", "middle-right", "lower-left", "lower-right", "bottom-left", "bottom-right"],
+};
+
 function streetName(street) {
   return { Preflop: "Preflop", Flop: "Flop", Turn: "Turn", River: "River" }[street] || street;
 }
@@ -44,7 +56,7 @@ function Card({ card, empty = false }) {
     <span class="card-corner"><b>${rank}</b><i>${pip}</i></span>
     ${court
       ? html`<span class="card-art card-art-${court}"><i>${pip}</i><b>${court}</b></span>`
-      : html`<span class="pip-grid pip-grid-${value}">${Array.from({ length: value }, () => html`<i>${pip}</i>`)}</span>`}
+      : html`<span class="pip-grid pip-grid-${value}">${PIP_POSITIONS[value].map((position) => html`<i class=${`card-pip-${position}`}>${pip}</i>`)}</span>`}
     <span class="card-corner card-corner-bottom"><b>${rank}</b><i>${pip}</i></span>
   </span>`;
 }

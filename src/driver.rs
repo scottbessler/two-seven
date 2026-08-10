@@ -354,6 +354,7 @@ mod tests {
         let state = AppState {
             users,
             bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
@@ -417,6 +418,7 @@ mod tests {
         let state = AppState {
             users,
             bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
@@ -483,6 +485,7 @@ mod tests {
         let state = AppState {
             users,
             bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
@@ -542,6 +545,7 @@ mod tests {
         let state = AppState {
             users,
             bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
@@ -669,6 +673,7 @@ mod tests {
         let state = AppState {
             users,
             bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),

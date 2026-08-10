@@ -1,6 +1,6 @@
 use crate::{
-    auth, bank::BankStore, blitz::BlitzStore, driver, render, routes, session::MaybeUser,
-    store::TableStore, users::UserStore,
+    auth, bank::BankStore, blackjack::BlackjackStore, blitz::BlitzStore, driver, render, routes,
+    session::MaybeUser, store::TableStore, users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -24,6 +24,7 @@ const PORT_SCAN_LIMIT: u16 = 100;
 pub struct AppState {
     pub users: Arc<UserStore>,
     pub bank: BankStore,
+    pub blackjack: BlackjackStore,
     pub blitz: BlitzStore,
     pub tables: TableStore,
     pub webauthn: Arc<Webauthn>,
@@ -39,6 +40,17 @@ pub fn router(s: AppState) -> Router {
     Router::new()
         .route("/", get(routes::index))
         .route("/healthcheck", get(routes::healthcheck))
+        .route("/card-test", get(routes::card_test))
+        .route("/blackjack", get(routes::blackjack))
+        .route(
+            "/blackjack/start",
+            axum::routing::post(routes::blackjack_start),
+        )
+        .route("/blackjack/hit", axum::routing::post(routes::blackjack_hit))
+        .route(
+            "/blackjack/stand",
+            axum::routing::post(routes::blackjack_stand),
+        )
         .route("/hand-blitz", get(routes::hand_blitz))
         .route(
             "/hand-blitz/start",
@@ -137,11 +149,13 @@ pub async fn run() -> Result<()> {
     let data = env::var("DATA_PATH").unwrap_or_else(|_| "data".into());
     let users = Arc::new(UserStore::load(&data).await?);
     let bank = BankStore::load(&data).await?;
+    let blackjack = BlackjackStore::new();
     let blitz = BlitzStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
     let state = AppState {
         users,
         bank,
+        blackjack,
         blitz,
         tables,
         webauthn: Arc::new(build_webauthn()?),
@@ -222,6 +236,7 @@ fn asset_version() -> String {
         "public/app.css",
         "public/auth.js",
         "public/bank.js",
+        "public/blackjack.js",
         "public/blitz.js",
         "public/lobby.js",
         "public/table.js",

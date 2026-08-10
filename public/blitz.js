@@ -21,6 +21,18 @@ function cardFace(value) {
   return { suitCode, rank, suit, numeric };
 }
 
+const PIP_POSITIONS = {
+  2: ["top-center", "bottom-center"],
+  3: ["top-center", "middle-center", "bottom-center"],
+  4: ["top-left", "top-right", "bottom-left", "bottom-right"],
+  5: ["top-left", "top-right", "middle-center", "bottom-left", "bottom-right"],
+  6: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right"],
+  7: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right", "upper-center"],
+  8: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right", "upper-center", "lower-center"],
+  9: ["top-left", "top-right", "upper-left", "upper-right", "middle-center", "lower-left", "lower-right", "bottom-left", "bottom-right"],
+  10: ["top-left", "top-right", "upper-left", "upper-right", "middle-left", "middle-right", "lower-left", "lower-right", "bottom-left", "bottom-right"],
+};
+
 function Card({ value }) {
   const { suitCode, rank, suit, numeric } = cardFace(value);
   const red = suitCode === "h" || suitCode === "d";
@@ -29,7 +41,7 @@ function Card({ value }) {
     <span class="card-corner"><b>${rank}</b><i>${suit}</i></span>
     ${court
       ? html`<span class="card-art card-art-${court}"><i>${suit}</i><b>${court}</b></span>`
-      : html`<span class="pip-grid pip-grid-${numeric}">${Array.from({ length: numeric }, () => html`<i>${suit}</i>`)}</span>`}
+      : html`<span class="pip-grid pip-grid-${numeric}">${PIP_POSITIONS[numeric].map((position) => html`<i class=${`card-pip-${position}`}>${suit}</i>`)}</span>`}
     <span class="card-corner card-corner-bottom"><b>${rank}</b><i>${suit}</i></span>
   </span>`;
 }
@@ -112,9 +124,9 @@ function App() {
       </div>
       <div class="difficulty-grid">
         ${[
-          ["easy", "Easy", "$1.00", "20s"],
-          ["normal", "Normal", "$5.00", "12s"],
-          ["hard", "Hard", "$20.00", "6s"],
+          ["easy", "Easy", "$10.00", "20s"],
+          ["normal", "Normal", "$50.00", "12s"],
+          ["hard", "Hard", "$200.00", "6s"],
         ].map(([id, label, buyIn, limit]) => html`<button type="button" disabled=${busy} onClick=${() => start(id)}><b>${label}</b><span>${buyIn} buy-in · ${limit}</span></button>`)}
       </div>
       ${error && html`<p class="error">${error}</p>`}

@@ -52,7 +52,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/tables/new">Create a table</a> · <a href="/tournaments/new">Create a tournament</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Create a table</a> · <a href="/tournaments/new">Create a tournament</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
                 escape(&name)
             ),
             "",
@@ -64,7 +64,7 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String 
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
             escape(name),
             lobby_table_list(tables, true)
         ),
@@ -122,6 +122,42 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
     )
 }
 
+pub fn blackjack() -> String {
+    layout(
+        "Blackjack",
+        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-menu"><form id="blackjack-form"><label>Bet ($)<input name="bet" type="number" min="0.01" step="0.01" value="25.00"></label><button>Deal</button></form></section></div></section>"#,
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/blackjack.js")
+        ),
+    )
+}
+
+pub fn card_test() -> String {
+    let cards = ["s", "h", "d", "c"]
+        .into_iter()
+        .map(|suit| {
+            let cards = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"]
+                .into_iter()
+                .map(|rank| card_face(rank, suit))
+                .collect::<String>();
+            format!(
+                r#"<section class="card-test-suit"><h2>{}</h2><div class="card-test-grid">{}</div></section>"#,
+                suit_name(suit),
+                cards
+            )
+        })
+        .collect::<String>();
+    layout(
+        "Card Test",
+        &format!(
+            r#"<section class="blitz-shell card-test"><div class="blitz-top"><div><h1>Card Test</h1><p>Every card rendered with the in-game card face styles.</p></div><a href="/hand-blitz">Hand Blitz</a></div>{}</section>"#,
+            cards
+        ),
+        "",
+    )
+}
+
 pub fn table_page(view: &crate::view::TableView) -> String {
     let seats = view
         .seats
@@ -168,6 +204,124 @@ pub fn table_page(view: &crate::view::TableView) -> String {
     )
 }
 
+fn card_face(rank: &str, suit: &str) -> String {
+    let pip = match suit {
+        "h" => "♥",
+        "d" => "♦",
+        "c" => "♣",
+        "s" => "♠",
+        _ => "",
+    };
+    let display = if rank == "T" { "10" } else { rank };
+    let value = match rank {
+        "A" => 1,
+        "K" => 13,
+        "Q" => 12,
+        "J" => 11,
+        "T" => 10,
+        _ => rank.parse::<usize>().unwrap_or(0),
+    };
+    let color = if suit == "h" || suit == "d" {
+        "red"
+    } else {
+        "black"
+    };
+    let center = match value {
+        1 | 11 | 12 | 13 => format!(
+            r#"<span class="card-art card-art-{}"><i>{}</i><b>{}</b></span>"#,
+            display, pip, display
+        ),
+        _ => format!(
+            r#"<span class="pip-grid pip-grid-{}">{}</span>"#,
+            value,
+            pip_positions(value)
+                .iter()
+                .map(|position| format!(r#"<i class="card-pip-{}">{}</i>"#, position, pip))
+                .collect::<String>()
+        ),
+    };
+    format!(
+        r#"<span class="playing-card {}" aria-label="{}{}"><span class="card-corner"><b>{}</b><i>{}</i></span>{}<span class="card-corner card-corner-bottom"><b>{}</b><i>{}</i></span></span>"#,
+        color, rank, suit, display, pip, center, display, pip
+    )
+}
+
+fn pip_positions(value: usize) -> &'static [&'static str] {
+    match value {
+        2 => &["top-center", "bottom-center"],
+        3 => &["top-center", "middle-center", "bottom-center"],
+        4 => &["top-left", "top-right", "bottom-left", "bottom-right"],
+        5 => &[
+            "top-left",
+            "top-right",
+            "middle-center",
+            "bottom-left",
+            "bottom-right",
+        ],
+        6 => &[
+            "top-left",
+            "top-right",
+            "middle-left",
+            "middle-right",
+            "bottom-left",
+            "bottom-right",
+        ],
+        7 => &[
+            "top-left",
+            "top-right",
+            "middle-left",
+            "middle-right",
+            "bottom-left",
+            "bottom-right",
+            "upper-center",
+        ],
+        8 => &[
+            "top-left",
+            "top-right",
+            "middle-left",
+            "middle-right",
+            "bottom-left",
+            "bottom-right",
+            "upper-center",
+            "lower-center",
+        ],
+        9 => &[
+            "top-left",
+            "top-right",
+            "upper-left",
+            "upper-right",
+            "middle-center",
+            "lower-left",
+            "lower-right",
+            "bottom-left",
+            "bottom-right",
+        ],
+        10 => &[
+            "top-left",
+            "top-right",
+            "upper-left",
+            "upper-right",
+            "middle-left",
+            "middle-right",
+            "lower-left",
+            "lower-right",
+            "bottom-left",
+            "bottom-right",
+        ],
+        _ => &[],
+    }
+}
+
+fn suit_name(suit: &str) -> &'static str {
+    match suit {
+        "s" => "Spades",
+        "h" => "Hearts",
+        "d" => "Diamonds",
+        "c" => "Clubs",
+        _ => "",
+    }
+}
+
 fn format_duration_ms(ms: u64) -> String {
     if ms == 0 {
         "—".into()
@@ -180,7 +334,7 @@ pub fn lobby(tables: &[crate::view::LobbyTableView]) -> String {
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p></section>",
+            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p></section>",
             lobby_table_list(tables, false)
         ),
         "",

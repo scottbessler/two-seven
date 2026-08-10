@@ -40,6 +40,7 @@ async fn appx() -> T {
     let state = app::AppState {
         users: users.clone(),
         bank: bank.clone(),
+        blackjack: two_seven::blackjack::BlackjackStore::new(),
         blitz,
         tables,
         webauthn: Arc::new(app::build_webauthn().unwrap()),
@@ -85,6 +86,30 @@ async fn health() {
         .unwrap();
     assert_eq!(r.status(), StatusCode::OK);
 }
+
+#[tokio::test]
+async fn card_test_renders_full_deck_with_game_card_faces() {
+    let t = appx().await;
+    let r = t
+        .router
+        .oneshot(
+            Request::builder()
+                .uri("/card-test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let b = to_bytes(r.into_body(), usize::MAX).await.unwrap();
+    let body = String::from_utf8_lossy(&b);
+    assert_eq!(body.matches("playing-card").count(), 52);
+    assert!(body.contains("card-art-A"));
+    assert!(body.contains("pip-grid-10"));
+    assert!(body.contains("card-art-K"));
+    assert!(body.contains(">10<"));
+}
+
 #[tokio::test]
 async fn signed_home() {
     let t = appx().await;
@@ -191,11 +216,77 @@ async fn hand_blitz_start_charges_buy_in_and_correct_answer_pays() {
     assert!(answer["correct"].as_bool().unwrap());
     let account = t.bank.account(AccountOwner::User(id)).await.unwrap();
     assert!(account.entries.iter().any(|entry| {
-        matches!(entry.kind, LedgerKind::HandBlitzBuyIn { .. }) && entry.delta == -100
+        matches!(entry.kind, LedgerKind::HandBlitzBuyIn { .. }) && entry.delta == -1000
     }));
     assert!(account.entries.iter().any(|entry| {
-        matches!(entry.kind, LedgerKind::HandBlitzWin { .. }) && entry.delta == 33
+        matches!(entry.kind, LedgerKind::HandBlitzWin { .. }) && entry.delta == 333
     }));
+}
+
+#[tokio::test]
+async fn blackjack_start_charges_bet_and_stand_finishes_game() {
+    let t = appx().await;
+    let id = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id,
+            username: "blackjack".into(),
+            display_name: "Blackjack".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, id);
+    let start = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/blackjack/start")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"bet":2500}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(start.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(start.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let game_id = body["id"].as_str().unwrap();
+    if body["can_stand"].as_bool().unwrap() {
+        let stand = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/blackjack/stand")
+                    .header(header::COOKIE, &cookie_value)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!(r#"{{"id":"{game_id}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(stand.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(stand.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        assert!(!body["can_hit"].as_bool().unwrap());
+        assert!(body["dealer_score"].as_u64().is_some());
+    }
+    let account = t.bank.account(AccountOwner::User(id)).await.unwrap();
+    assert!(account.entries.iter().any(|entry| {
+        matches!(entry.kind, LedgerKind::BlackjackBet { .. }) && entry.delta == -2500
+    }));
+    assert_eq!(
+        account.entries.iter().map(|entry| entry.delta).sum::<i64>(),
+        account.balance
+    );
 }
 
 #[tokio::test]
