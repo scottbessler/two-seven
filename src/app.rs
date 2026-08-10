@@ -139,7 +139,9 @@ pub async fn run() -> Result<()> {
     driver::spawn(state.clone());
     let app = router(state);
     let listener = bind_listener().await?;
-    let addr = listener.local_addr().context("failed to read bound address")?;
+    let addr = listener
+        .local_addr()
+        .context("failed to read bound address")?;
     tracing::info!(
         bind_addr = %addr,
         port = addr.port(),
