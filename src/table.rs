@@ -1,6 +1,6 @@
 use crate::{
     holdem::{Hand, HandSummary},
-    money::Cents,
+    money::{Cents, format_cents},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -28,12 +28,22 @@ impl fmt::Display for Stakes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Limit { small_bet, big_bet } => {
-                write!(f, "${}/${} limit", small_bet / 100, big_bet / 100)
+                write!(
+                    f,
+                    "{}/{} limit",
+                    format_cents(*small_bet),
+                    format_cents(*big_bet)
+                )
             }
             Self::NoLimit {
                 small_blind,
                 big_blind,
-            } => write!(f, "${}/${} no-limit", small_blind / 100, big_blind / 100),
+            } => write!(
+                f,
+                "{}/{} no-limit",
+                format_cents(*small_blind),
+                format_cents(*big_blind)
+            ),
         }
     }
 }
@@ -84,13 +94,25 @@ impl FromStr for BotKind {
 
 #[cfg(test)]
 mod bot_kind_tests {
-    use super::BotKind;
+    use super::{BotKind, Stakes};
     use std::str::FromStr;
 
     #[test]
     fn bot_kind_uses_stable_slugs() {
         assert_eq!(BotKind::Fish.to_string(), "fish");
         assert_eq!(BotKind::from_str("SHARK").unwrap(), BotKind::Shark);
+    }
+
+    #[test]
+    fn stakes_display_preserves_sub_dollar_cents() {
+        assert_eq!(
+            Stakes::NoLimit {
+                small_blind: 25,
+                big_blind: 50,
+            }
+            .to_string(),
+            "$0.25/$0.50 no-limit"
+        );
     }
 }
 
@@ -125,6 +147,8 @@ pub struct TournamentState {
     pub hands_at_level: u32,
     pub finish_order: Vec<usize>,
     pub registered: usize,
+    #[serde(default)]
+    pub started: bool,
     pub prize_pool: Cents,
     pub finished: bool,
     pub paid_out: bool,
@@ -142,6 +166,8 @@ pub struct Seat {
     pub occupant: SeatOccupant,
     pub stack: Cents,
     pub sitting_out: bool,
+    #[serde(default)]
+    pub pending_departure: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -187,6 +213,7 @@ impl Table {
                     occupant: SeatOccupant::Empty,
                     stack: 0,
                     sitting_out: false,
+                    pending_departure: false,
                 })
                 .collect(),
             button: 0,
@@ -202,9 +229,13 @@ impl Table {
 
 pub fn maybe_start_hand(table: &mut Table) {
     if let TableMode::Tournament(state) = &table.mode
+        && !state.started
         && state.registered < state.config.seat_count
     {
         return;
+    }
+    if let TableMode::Tournament(state) = &mut table.mode {
+        state.started = true;
     }
     if table.hand.is_some()
         || table

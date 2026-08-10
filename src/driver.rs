@@ -24,11 +24,13 @@ pub async fn tick_once(state: &AppState) -> Result<(), anyhow::Error> {
 }
 
 pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), anyhow::Error> {
-    for id in state.tables.ids().await {
+    let mut ids = state.tables.ids().await;
+    ids.sort();
+    for id in ids {
         if state.tables.get(id).await.is_none() {
             continue;
         }
-        state
+        if let Err(error) = state
             .tables
             .update(id, |table| {
                 if table.hand.as_ref().is_some_and(|hand| hand.complete) {
@@ -77,9 +79,73 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                 }
                 Ok(())
             })
+            .await
+        {
+            tracing::warn!(%id, %error, "table driver update failed");
+            continue;
+        }
+        if let Err(error) = settle_pending_departures(state, id).await {
+            tracing::warn!(%id, %error, "pending departure settlement failed");
+            continue;
+        }
+        if let Err(error) = rebuy_busted_cash_bots(state, id).await {
+            tracing::warn!(%id, %error, "cash bot rebuy failed");
+            continue;
+        }
+        if let Err(error) = pay_tournament_if_finished(state, id).await {
+            tracing::warn!(%id, %error, "tournament payout failed");
+        }
+    }
+    Ok(())
+}
+
+async fn settle_pending_departures(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
+    let table = state
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("table missing"))?;
+    let departures = {
+        let table = table.lock().await;
+        if table.hand.is_some() {
+            return Ok(());
+        }
+        table
+            .seats
+            .iter()
+            .enumerate()
+            .filter(|(_, seat)| seat.pending_departure)
+            .map(|(index, seat)| (index, seat.occupant.clone(), seat.stack))
+            .collect::<Vec<_>>()
+    };
+    for (seat, occupant, stack) in departures {
+        if let SeatOccupant::Human { user_id } = occupant {
+            state
+                .bank
+                .cash_out(AccountOwner::User(user_id), id, stack)
+                .await?;
+        } else if let SeatOccupant::Bot { kind } = occupant
+            && stack > 0
+        {
+            state
+                .bank
+                .cash_out(AccountOwner::Bot(kind), id, stack)
+                .await?;
+        }
+        state
+            .tables
+            .update(id, |table| {
+                let seat = table
+                    .seats
+                    .get_mut(seat)
+                    .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
+                seat.occupant = SeatOccupant::Empty;
+                seat.stack = 0;
+                seat.sitting_out = false;
+                seat.pending_departure = false;
+                Ok(())
+            })
             .await?;
-        rebuy_busted_cash_bots(state, id).await?;
-        pay_tournament_if_finished(state, id).await?;
     }
     Ok(())
 }
@@ -155,15 +221,17 @@ async fn pay_tournament_if_finished(state: &AppState, id: uuid::Uuid) -> Result<
         if !tournament.finished || tournament.paid_out {
             return Ok(());
         }
-        let mut order = tournament.finish_order.clone();
+        let mut winners = Vec::new();
         for seat in (0..table.seats.len()).rev() {
             if table.seats[seat].stack > 0
                 && !matches!(table.seats[seat].occupant, SeatOccupant::Empty)
-                && !order.contains(&seat)
+                && !tournament.finish_order.contains(&seat)
             {
-                order.insert(0, seat);
+                winners.push(seat);
             }
         }
+        let mut order = winners;
+        order.extend(tournament.finish_order.iter().rev().copied());
         (
             order,
             tournament.config.payout_percentages.clone(),
@@ -192,14 +260,13 @@ async fn pay_tournament_if_finished(state: &AppState, id: uuid::Uuid) -> Result<
             .collect::<Vec<_>>()
     };
     let mut paid = 0;
+    let total = owners.len();
     for (position, owner) in owners {
-        let Some(percent) = payouts.get(position) else {
-            break;
-        };
-        let amount = if position + 1 == payouts.len() {
+        let percent = payouts.get(position).copied().unwrap_or(0);
+        let amount = if position + 1 == total {
             prize_pool - paid
         } else {
-            prize_pool * i64::from(*percent) / 100
+            prize_pool * i64::from(percent) / 100
         };
         if amount == 0 {
             continue;
@@ -274,6 +341,7 @@ mod tests {
             },
             stack: 0,
             sitting_out: false,
+            pending_departure: false,
         };
         table.seats[1] = Seat {
             occupant: SeatOccupant::Bot {
@@ -281,6 +349,7 @@ mod tests {
             },
             stack: 10,
             sitting_out: false,
+            pending_departure: false,
         };
         bank.buy_in(AccountOwner::Bot(BotKind::Fish), table.id, 10, false)
             .await
@@ -341,6 +410,7 @@ mod tests {
                 occupant: crate::table::SeatOccupant::Bot { kind },
                 stack: 100,
                 sitting_out: false,
+                pending_departure: false,
             };
         }
         let id = tables.insert(table).await.unwrap();
@@ -404,6 +474,7 @@ mod tests {
                 occupant: SeatOccupant::Bot { kind },
                 stack: 100,
                 sitting_out: false,
+                pending_departure: false,
             };
         }
         let id = tables.insert(table).await.unwrap();
@@ -459,7 +530,7 @@ mod tests {
                     hands: 2,
                 },
             ],
-            payout_percentages: vec![100],
+            payout_percentages: vec![65, 35],
             no_debt: false,
         };
         let mut table = Table::new(
@@ -474,6 +545,7 @@ mod tests {
                 hands_at_level: 0,
                 finish_order: Vec::new(),
                 registered: 4,
+                started: true,
                 prize_pool: 400,
                 finished: false,
                 paid_out: false,
@@ -490,6 +562,7 @@ mod tests {
                 occupant: SeatOccupant::Bot { kind },
                 stack: 100,
                 sitting_out: false,
+                pending_departure: false,
             };
         }
         let id = tables.insert(table).await.unwrap();
@@ -514,18 +587,32 @@ mod tests {
         assert!(tournament.paid_out);
         assert_eq!(tournament.finish_order.len(), 3);
         assert!(tournament.current_level > 0);
+        let winner = table
+            .seats
+            .iter()
+            .enumerate()
+            .find_map(|(seat, value)| (value.stack > 0).then_some(seat))
+            .expect("one tournament winner");
         drop(table);
         let mut prizes = 0;
-        for kind in kinds {
+        for (seat, kind) in kinds.into_iter().enumerate() {
             let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
-            prizes += account
+            let entries = account
                 .entries
                 .iter()
                 .filter_map(|entry| match entry.kind {
                     LedgerKind::TournamentPrize { .. } => Some(entry.delta),
                     _ => None,
                 })
-                .sum::<i64>();
+                .collect::<Vec<_>>();
+            prizes += entries.iter().sum::<i64>();
+            if seat == winner {
+                assert!(account.entries.iter().any(|entry| {
+                    matches!(entry.kind, LedgerKind::TournamentPrize { .. })
+                        && entry.memo.contains("place 1")
+                        && entry.delta == 260
+                }));
+            }
         }
         assert_eq!(prizes, 400);
     }

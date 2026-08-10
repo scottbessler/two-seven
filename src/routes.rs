@@ -108,6 +108,7 @@ pub async fn create_tournament(
             hands_at_level: 0,
             finish_order: Vec::new(),
             registered: 0,
+            started: false,
             prize_pool: 0,
             finished: false,
             paid_out: false,
@@ -133,7 +134,7 @@ pub async fn register_tournament(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("tournament not found"))?;
-    let (config, occupied) = {
+    let (config, occupied, started) = {
         let table = table.lock().await;
         let TableMode::Tournament(state) = &table.mode else {
             return Err(AppError::bad_request("not a tournament"));
@@ -145,9 +146,10 @@ pub async fn register_tournament(
                 .iter()
                 .filter(|seat| !matches!(seat.occupant, SeatOccupant::Empty))
                 .count(),
+            state.started || state.finished,
         )
     };
-    if input.buy_in != config.buy_in || occupied >= config.seat_count || {
+    if input.buy_in != config.buy_in || started || occupied >= config.seat_count || {
         let table = table.lock().await;
         table
             .seats
@@ -175,6 +177,7 @@ pub async fn register_tournament(
                 occupant: SeatOccupant::Human { user_id: user },
                 stack: state.config.starting_chips,
                 sitting_out: false,
+                pending_departure: false,
             };
             state.registered += 1;
             state.prize_pool += state.config.buy_in;
@@ -410,11 +413,21 @@ pub async fn join_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (no_debt, min, max) = {
+    let (no_debt, min, max, tournament) = {
         let t = table_arc.lock().await;
         let no_debt = matches!(t.mode, TableMode::Cash { no_debt: true });
-        (no_debt, t.min_buy_in, t.max_buy_in)
+        (
+            no_debt,
+            t.min_buy_in,
+            t.max_buy_in,
+            matches!(t.mode, TableMode::Tournament(_)),
+        )
     };
+    if tournament {
+        return Err(AppError::bad_request(
+            "tournament registration uses /tournaments/{id}/register",
+        ));
+    }
     if input.buy_in < min || input.buy_in > max {
         return Err(AppError::bad_request("buy-in is outside the table limits"));
     }
@@ -435,6 +448,7 @@ pub async fn join_table(
                 occupant: SeatOccupant::Human { user_id: user },
                 stack: input.buy_in,
                 sitting_out: false,
+                pending_departure: false,
             };
             maybe_start_hand(t);
             Ok(())
@@ -460,8 +474,11 @@ pub async fn leave_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (seat, stack, tournament) = {
-        let t = table.lock().await;
+    let (seat, stack, tournament, live_hand) = {
+        let mut t = table.lock().await;
+        if t.hand.as_ref().is_some_and(|hand| hand.complete) {
+            settle_finished_hand(&mut t);
+        }
         let (seat, stack) = t
             .seats
             .iter()
@@ -471,8 +488,36 @@ pub async fn leave_table(
                     .then_some((i, seat.stack))
             })
             .ok_or_else(|| AppError::bad_request("you are not seated"))?;
-        (seat, stack, matches!(t.mode, TableMode::Tournament(_)))
+        (
+            seat,
+            stack,
+            matches!(t.mode, TableMode::Tournament(_)),
+            t.hand.is_some(),
+        )
     };
+    if live_hand {
+        s.tables
+            .update(id, |t| {
+                if let Some(hand) = t.hand.as_mut() {
+                    if hand.current_player == Some(seat) {
+                        hand.apply_action(Action::Fold)
+                            .map_err(|e| anyhow::anyhow!(e))?;
+                    } else if let Some(player) = hand.players.iter_mut().find(|p| p.seat == seat) {
+                        player.folded = true;
+                    }
+                }
+                let seat = t
+                    .seats
+                    .get_mut(seat)
+                    .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
+                seat.sitting_out = true;
+                seat.pending_departure = true;
+                Ok(())
+            })
+            .await
+            .map_err(AppError::internal)?;
+        return Ok(Json(serde_json::json!({"ok":true,"pending":true})));
+    }
     if !tournament {
         s.bank
             .cash_out(AccountOwner::User(user), id, stack)
@@ -483,9 +528,7 @@ pub async fn leave_table(
         .update(id, |t| {
             t.seats[seat].occupant = SeatOccupant::Empty;
             t.seats[seat].stack = 0;
-            if let TableMode::Tournament(state) = &mut t.mode {
-                state.registered = state.registered.saturating_sub(1);
-            }
+            t.seats[seat].pending_departure = false;
             Ok(())
         })
         .await
@@ -601,6 +644,14 @@ pub async fn rebuy_table(
     if tournament {
         return Err(AppError::bad_request("tournament chips cannot be rebought"));
     }
+    {
+        let table = table.lock().await;
+        if table.hand.is_some() {
+            return Err(AppError::bad_request(
+                "rebuy is unavailable while a hand is in progress",
+            ));
+        }
+    }
     if input.amount <= 0 || input.amount > max {
         return Err(AppError::bad_request("invalid rebuy amount"));
     }
@@ -636,18 +687,28 @@ pub async fn bot_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (old, min, max) = {
+    let (old, min, max, started) = {
         let table = table.lock().await;
         let seat = table
             .seats
             .get(input.seat)
             .ok_or_else(|| AppError::bad_request("invalid seat"))?;
-        (seat.occupant.clone(), table.min_buy_in, table.max_buy_in)
+        (
+            seat.occupant.clone(),
+            table.min_buy_in,
+            table.max_buy_in,
+            matches!(&table.mode, TableMode::Tournament(state) if state.started || state.finished),
+        )
     };
     let tournament = {
         let table = table.lock().await;
         matches!(table.mode, TableMode::Tournament(_))
     };
+    if tournament && started {
+        return Err(AppError::bad_request(
+            "tournament seats cannot be changed after registration closes",
+        ));
+    }
     if tournament && input.kind.is_some() && !matches!(old, SeatOccupant::Empty) {
         return Err(AppError::bad_request("tournament seats cannot be replaced"));
     }
@@ -679,7 +740,7 @@ pub async fn bot_table(
         } else {
             input.buy_in.unwrap_or(min)
         };
-        if amount < min || amount > max {
+        if !tournament && (amount < min || amount > max) {
             return Err(AppError::bad_request("bot buy-in is outside table limits"));
         }
         s.bank
@@ -711,8 +772,16 @@ pub async fn bot_table(
                 .ok_or_else(|| anyhow::anyhow!("invalid seat"))?;
             if let Some((kind, amount)) = bought {
                 seat.occupant = SeatOccupant::Bot { kind };
-                seat.stack = amount;
+                seat.stack = if tournament {
+                    match &table.mode {
+                        TableMode::Tournament(state) => state.config.starting_chips,
+                        TableMode::Cash { .. } => amount,
+                    }
+                } else {
+                    amount
+                };
                 seat.sitting_out = false;
+                seat.pending_departure = false;
                 if let TableMode::Tournament(state) = &mut table.mode {
                     state.registered += 1;
                     state.prize_pool += state.config.buy_in;
@@ -721,9 +790,6 @@ pub async fn bot_table(
                 seat.occupant = SeatOccupant::Empty;
                 seat.stack = 0;
                 seat.sitting_out = false;
-                if let TableMode::Tournament(state) = &mut table.mode {
-                    state.registered = state.registered.saturating_sub(1);
-                }
             }
             maybe_start_hand(table);
             Ok(())

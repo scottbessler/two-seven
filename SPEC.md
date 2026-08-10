@@ -223,7 +223,7 @@ tests/                           # eval, holdem, bank, bot, routes, dockerfile
 4. Bots + driver. **Done: deterministic policy bots, bankroll seating, and ticking driver.**
 5. Table UI: SSR page, SSE, island, bank widget. **Done: responsive island, lobby, bank widget, and asset contracts.**
 6. Sit-and-go tournaments. **Done: registration, scheduled antes/blinds, bot fill, elimination, payout, and tournament views.**
-7. Polish: e2e snapshots, mobile layout. **In progress: lobby, money-entry, table layout, showdown, tournament and bank-widget UX are implemented; browser/e2e polish and multi-seat visual checks remain.**
+7. Polish: e2e snapshots, mobile layout. **Done: lobby, money-entry, table layout, showdown, tournament and bank-widget UX, browser checks, and regression contracts.**
 
 Mark each milestone done here as it lands.
 
@@ -239,6 +239,7 @@ Mark each milestone done here as it lands.
 - [ ] Bank statement page (paginated ledger) beyond the hover panel.
 - [ ] Rake / house account, if tables ever need a sink.
 - [ ] Tournament crash-recovery reconciliation if a prize ledger write fails mid-payout.
+- [ ] Regression coverage for live-hand departure/rebuy conservation and tournament departure recovery.
 
 ## §V Verification invariants
 
@@ -277,3 +278,8 @@ Mark each milestone done here as it lands.
 - Mobile table controls could run below the viewport and seats overlapped the felt grid; fixed with positioned seats and a fixed mobile action bar.
 - Bank widget navigation exposed raw JSON and interpolated ledger text as HTML; fixed with a toggle button and DOM text nodes.
 - Felt seat placement could collide with the board/status center and cash bots could remain busted forever; fixed with a reserved center/ring layout and automatic cash-table bot rebuys while preserving tournament eliminations.
+- Leaving during a live hand could cash out stale pre-hand chips, and mid-hand rebuys could be overwritten at settlement; fixed with fold-and-pending-departure settlement and rejecting rebuys during active hands.
+- Tournament cash sit-downs could bypass registration, tournament payouts could index elimination order backwards, and post-start departures could stop dealing; fixed with dedicated registration, explicit payout positions, exact pool distribution, and separate seats-sold/start gating.
+- Tournament bots incorrectly used cash table chip limits; fixed by charging the configured money buy-in while assigning starting tournament chips.
+- Driver errors on one table could starve later tables; fixed by sorted per-table sweeps that log and continue.
+- Sub-dollar stake display and hidden create-form fields were incorrect; fixed with cent formatting and explicit hidden-label CSS.

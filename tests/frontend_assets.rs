@@ -26,6 +26,10 @@ fn table_island_has_live_state_and_action_contracts() {
         "shared bot account",
         "award-list",
         "waiting-status",
+        "/tables/${tableId}/bot",
+        "/tournaments/${tableId}/register",
+        "Seat a bot",
+        "Register for tournament",
     ] {
         assert!(
             TABLE_JS.contains(literal),
@@ -47,6 +51,7 @@ fn table_css_is_mobile_poker_layout() {
         ".table-pot",
         ".bank-widget[aria-expanded=true]",
         "position:absolute",
+        "label[hidden]{display:none}",
     ] {
         assert!(
             APP_CSS.contains(literal),
