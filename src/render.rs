@@ -241,7 +241,7 @@ fn card_face(rank: &str, suit: &str) -> String {
         ),
     };
     format!(
-        r#"<span class="playing-card {}" aria-label="{}{}"><span class="card-corner"><b>{}</b><i>{}</i></span>{}<span class="card-corner card-corner-bottom"><b>{}</b><i>{}</i></span></span>"#,
+        r#"<span class="playing-card {}" aria-label="{}{}"><span class="card-corner"><b>{}</b><i>{}</i></span><span class="card-frame">{}</span><span class="card-corner card-corner-bottom"><b>{}</b><i>{}</i></span></span>"#,
         color, rank, suit, display, pip, center, display, pip
     )
 }

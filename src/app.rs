@@ -51,6 +51,18 @@ pub fn router(s: AppState) -> Router {
             "/blackjack/stand",
             axum::routing::post(routes::blackjack_stand),
         )
+        .route(
+            "/blackjack/double",
+            axum::routing::post(routes::blackjack_double),
+        )
+        .route(
+            "/blackjack/split",
+            axum::routing::post(routes::blackjack_split),
+        )
+        .route(
+            "/blackjack/insurance",
+            axum::routing::post(routes::blackjack_insurance),
+        )
         .route("/hand-blitz", get(routes::hand_blitz))
         .route(
             "/hand-blitz/start",
@@ -238,6 +250,7 @@ fn asset_version() -> String {
         "public/bank.js",
         "public/blackjack.js",
         "public/blitz.js",
+        "public/card.js",
         "public/lobby.js",
         "public/table.js",
         "public/vendor/htm-preact.js",

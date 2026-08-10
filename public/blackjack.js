@@ -1,4 +1,6 @@
 import { html, render, useState } from "/public/vendor/htm-preact.js";
+import { Card } from "/public/card.js";
+// Shared renderer contract: card-pip-${position}.
 
 const root = document.getElementById("blackjack-app");
 
@@ -12,38 +14,13 @@ function money(value) {
   return `${sign}$${Math.floor(abs / 100).toLocaleString()}.${String(abs % 100).padStart(2, "0")}`;
 }
 
-function cardFace(value) {
-  const suitCode = value.slice(-1);
-  const rawRank = value.slice(0, -1);
-  const rank = rawRank === "T" ? "10" : rawRank;
-  const suit = { h: "♥", d: "♦", c: "♣", s: "♠" }[suitCode] || suitCode;
-  const numeric = { A: 1, K: 13, Q: 12, J: 11, T: 10 }[rawRank] || Number(rawRank);
-  return { suitCode, rank, suit, numeric };
-}
-
-const PIP_POSITIONS = {
-  2: ["top-center", "bottom-center"],
-  3: ["top-center", "middle-center", "bottom-center"],
-  4: ["top-left", "top-right", "bottom-left", "bottom-right"],
-  5: ["top-left", "top-right", "middle-center", "bottom-left", "bottom-right"],
-  6: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right"],
-  7: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right", "upper-center"],
-  8: ["top-left", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-right", "upper-center", "lower-center"],
-  9: ["top-left", "top-right", "upper-left", "upper-right", "middle-center", "lower-left", "lower-right", "bottom-left", "bottom-right"],
-  10: ["top-left", "top-right", "upper-left", "upper-right", "middle-left", "middle-right", "lower-left", "lower-right", "bottom-left", "bottom-right"],
-};
-
-function Card({ value, hidden = false }) {
-  if (hidden) return html`<span class="playing-card empty-card" aria-label="Hidden card">?</span>`;
-  const { suitCode, rank, suit, numeric } = cardFace(value);
-  const court = { 1: "A", 11: "J", 12: "Q", 13: "K" }[numeric];
-  return html`<span class=${suitCode === "h" || suitCode === "d" ? "playing-card red" : "playing-card black"} aria-label=${value}>
-    <span class="card-corner"><b>${rank}</b><i>${suit}</i></span>
-    ${court
-      ? html`<span class="card-art card-art-${court}"><i>${suit}</i><b>${court}</b></span>`
-      : html`<span class="pip-grid pip-grid-${numeric}">${PIP_POSITIONS[numeric].map((position) => html`<i class=${`card-pip-${position}`}>${suit}</i>`)}</span>`}
-    <span class="card-corner card-corner-bottom"><b>${rank}</b><i>${suit}</i></span>
-  </span>`;
+async function responseError(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text).error || text;
+  } catch {
+    return text || `Request failed (${response.status})`;
+  }
 }
 
 function Hand({ title, cards, score, hidden }) {
@@ -73,7 +50,7 @@ function App() {
     });
     setBusy(false);
     if (!response.ok) {
-      setError("Unable to deal blackjack");
+      setError(await responseError(response));
       return;
     }
     setGame(await response.json());
@@ -89,7 +66,7 @@ function App() {
     });
     setBusy(false);
     if (!response.ok) {
-      setError("That blackjack game is no longer available");
+      setError(await responseError(response));
       return;
     }
     setGame(await response.json());
@@ -106,11 +83,14 @@ function App() {
       <span><b>${game.status}</b> status</span>
     </div>
     <${Hand} title="Dealer" cards=${game.dealer} score=${game.dealer_score} hidden=${game.dealer_score == null} />
-    <${Hand} title="Player" cards=${game.player} score=${game.player_score} />
+    ${game.hands.map((hand, index) => html`<${Hand} title=${`Hand ${index + 1}${index === game.active_hand ? " · Active" : ""}`} cards=${hand.cards} score=${hand.score} />`)}
     <p class="blitz-feedback">${game.message}</p>
     <div class="actions blackjack-actions">
       <button type="button" disabled=${busy || !game.can_hit} onClick=${() => act("hit")}>Hit</button>
       <button type="button" disabled=${busy || !game.can_stand} onClick=${() => act("stand")}>Stand</button>
+      <button type="button" disabled=${busy || !game.can_double} onClick=${() => act("double")}>Double</button>
+      <button type="button" disabled=${busy || !game.can_split} onClick=${() => act("split")}>Split</button>
+      <button type="button" disabled=${busy || !game.can_insure} onClick=${() => act("insurance")}>Insurance</button>
     </div>`}
     ${error && html`<p class="error">${error}</p>`}
   </section>`;
