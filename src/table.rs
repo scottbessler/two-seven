@@ -94,7 +94,7 @@ impl FromStr for BotKind {
 
 #[cfg(test)]
 mod bot_kind_tests {
-    use super::{BotKind, Stakes};
+    use super::{BotKind, Stakes, Table, TableMode};
     use std::str::FromStr;
 
     #[test]
@@ -113,6 +113,29 @@ mod bot_kind_tests {
             .to_string(),
             "$1.00/$2.00 no-limit"
         );
+    }
+
+    #[test]
+    fn legacy_buy_in_range_loads_as_the_fixed_maximum() {
+        let table = Table::new(
+            "legacy".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            6,
+            20_000,
+        );
+        let mut value = serde_json::to_value(table).unwrap();
+        let object = value.as_object_mut().unwrap();
+        object.remove("buy_in");
+        object.insert("min_buy_in".into(), 5_000.into());
+        object.insert("max_buy_in".into(), 20_000.into());
+
+        let migrated: Table = serde_json::from_value(value).unwrap();
+
+        assert_eq!(migrated.buy_in, 20_000);
     }
 }
 
@@ -178,8 +201,8 @@ pub struct Table {
     pub stakes: Stakes,
     pub mode: TableMode,
     pub max_seats: usize,
-    pub min_buy_in: Cents,
-    pub max_buy_in: Cents,
+    #[serde(alias = "max_buy_in")]
+    pub buy_in: Cents,
     pub seats: Vec<Seat>,
     pub button: usize,
     pub hand_no: u64,
@@ -195,8 +218,7 @@ impl Table {
         stakes: Stakes,
         mode: TableMode,
         max_seats: usize,
-        min_buy_in: Cents,
-        max_buy_in: Cents,
+        buy_in: Cents,
     ) -> Self {
         let now = Utc::now();
         Self {
@@ -206,8 +228,7 @@ impl Table {
             stakes,
             mode,
             max_seats,
-            min_buy_in,
-            max_buy_in,
+            buy_in,
             seats: (0..max_seats)
                 .map(|_| Seat {
                     occupant: SeatOccupant::Empty,

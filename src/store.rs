@@ -91,7 +91,6 @@ mod tests {
             },
             TableMode::Cash { no_debt: false },
             2,
-            10,
             100,
         );
         let id = table.id;

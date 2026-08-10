@@ -202,7 +202,7 @@ async fn rebuy_busted_cash_bots(state: &AppState, id: uuid::Uuid) -> Result<(), 
                 (value.stack == 0
                     && !value.sitting_out
                     && matches!(&value.occupant, SeatOccupant::Bot { .. }))
-                .then_some((seat, value.occupant.clone(), table.min_buy_in))
+                .then_some((seat, value.occupant.clone(), table.buy_in))
             })
             .collect::<Vec<_>>()
     };
@@ -370,7 +370,6 @@ mod tests {
             TableMode::Cash { no_debt: false },
             2,
             100,
-            1_000,
         );
         table.seats[0] = Seat {
             occupant: SeatOccupant::Bot {
@@ -439,7 +438,6 @@ mod tests {
             },
             TableMode::Cash { no_debt: false },
             4,
-            10,
             100,
         );
         for (seat, kind) in kinds.into_iter().enumerate() {
@@ -455,13 +453,32 @@ mod tests {
         }
         let id = tables.insert(table).await.unwrap();
         let mut now = Utc::now();
+        let mut aggressive_actions = std::collections::HashSet::new();
         for _ in 0..2_000 {
             now += Duration::seconds(1);
             tick_once_at(&state, now).await.unwrap();
+            let table = tables.get(id).await.unwrap();
+            let table = table.lock().await;
+            if let Some(hand) = &table.hand {
+                for (event_index, event) in hand.events.iter().enumerate() {
+                    if matches!(
+                        event.kind,
+                        crate::holdem::HandEventKind::Bet
+                            | crate::holdem::HandEventKind::Raise
+                            | crate::holdem::HandEventKind::AllIn
+                    ) {
+                        aggressive_actions.insert((hand.seed, event_index));
+                    }
+                }
+            }
         }
         let table = tables.get(id).await.unwrap();
         let table = table.lock().await;
         assert!(table.hand_no > 5);
+        assert!(
+            aggressive_actions.len() >= 4,
+            "mixed bots should visibly wager across completed hands: {aggressive_actions:?}"
+        );
         assert!(
             table.seats.iter().map(|seat| seat.stack).sum::<i64>() >= 400,
             "cash bot rebuys should add chips from bot bankrolls"
@@ -506,7 +523,6 @@ mod tests {
             },
             TableMode::Cash { no_debt: false },
             4,
-            10,
             100,
         );
         for (seat, kind) in kinds.into_iter().enumerate() {
@@ -570,8 +586,8 @@ mod tests {
                     hands: 2,
                 },
                 BlindLevel {
-                    small_blind: 2,
-                    big_blind: 4,
+                    small_blind: 10,
+                    big_blind: 20,
                     ante: 2,
                     hands: 2,
                 },
@@ -597,7 +613,6 @@ mod tests {
                 paid_out: false,
             }),
             4,
-            100,
             100,
         );
         for (seat, kind) in kinds.into_iter().enumerate() {
@@ -712,7 +727,6 @@ mod tests {
             }),
             2,
             100,
-            100,
         );
         bank.buy_in(AccountOwner::Bot(kind), tournament.id, 100, false)
             .await
@@ -745,7 +759,6 @@ mod tests {
             },
             TableMode::Cash { no_debt: false },
             2,
-            100,
             100,
         );
         bank.buy_in(AccountOwner::Bot(kind), cash.id, 100, false)

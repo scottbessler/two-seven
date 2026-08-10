@@ -47,6 +47,9 @@ fn rock(view: &HandView, legal: &LegalActions) -> Action {
     if !premium && !made && legal.to_call > 0 {
         return first(legal, Action::Fold);
     }
+    if premium || made {
+        return wager_or_call(legal);
+    }
     first_calling(legal)
 }
 
@@ -254,6 +257,52 @@ mod tests {
             ..view
         };
         assert_eq!(fish(&pair_view, &legal, 4), Action::Call);
+    }
+
+    #[test]
+    fn every_policy_shows_aggression_on_deterministic_wager_spots() {
+        let ace_clubs = Card::from_str("Ac").unwrap();
+        let ace_diamonds = Card::from_str("Ad").unwrap();
+        let view = HandView {
+            street: "Preflop".into(),
+            board: Vec::new(),
+            your_hole_cards: Some(vec![ace_clubs, ace_diamonds]),
+            seats: Vec::new(),
+            pot: 300,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: Vec::new(),
+            events: Vec::new(),
+            last_bet: 200,
+            to_call: 200,
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![
+                Action::Fold,
+                Action::Call,
+                Action::Raise { amount: 600 },
+                Action::AllIn,
+            ],
+            to_call: 200,
+            wager: None,
+        };
+
+        for kind in [
+            BotKind::Fish,
+            BotKind::Rock,
+            BotKind::Grinder,
+            BotKind::Shark,
+        ] {
+            let aggressive = (0..64).any(|seed| {
+                matches!(
+                    kind.act(&view, &legal, seed),
+                    Action::Bet { .. } | Action::Raise { .. } | Action::AllIn
+                )
+            });
+            assert!(aggressive, "{kind:?} never wagered across the corpus");
+        }
     }
 
     #[test]

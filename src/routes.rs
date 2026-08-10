@@ -5,7 +5,7 @@ use crate::{
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
-    money::{MAX_GAME_ENTRY, MIN_GAME_AMOUNT, valid_game_amount, valid_optional_game_amount},
+    money::{MIN_GAME_AMOUNT, valid_game_amount, valid_optional_game_amount},
     render,
     session::{AuthUser, MaybeUser},
     table::{
@@ -54,8 +54,8 @@ pub struct CreateTable {
     pub stakes: Stakes,
     pub no_debt: Option<bool>,
     pub max_seats: Option<usize>,
-    pub min_buy_in: Option<i64>,
-    pub max_buy_in: Option<i64>,
+    #[serde(alias = "max_buy_in")]
+    pub buy_in: Option<i64>,
 }
 pub async fn new_table() -> Html<String> {
     Html(render::table_create())
@@ -149,8 +149,7 @@ pub async fn create_tournament(
             paid_out: false,
         }),
         config.seat_count,
-        config.starting_chips,
-        config.starting_chips,
+        config.buy_in,
     );
     let id = s.tables.insert(table).await.map_err(AppError::internal)?;
     Ok(Json(
@@ -514,6 +513,7 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
                 id,
                 name: table.name.clone(),
                 stakes: table.stakes,
+                buy_in: table.buy_in,
                 occupied: table
                     .seats
                     .iter()
@@ -535,15 +535,10 @@ pub async fn create_table(
     State(s): State<AppState>,
     Json(input): Json<CreateTable>,
 ) -> Result<impl IntoResponse, AppError> {
-    let min_buy_in = input.min_buy_in.unwrap_or(MIN_GAME_AMOUNT);
-    let max_buy_in = input.max_buy_in.unwrap_or(10_000);
-    if !valid_stakes(input.stakes)
-        || !valid_game_amount(min_buy_in)
-        || !valid_game_amount(max_buy_in)
-        || min_buy_in > max_buy_in
-    {
+    let buy_in = input.buy_in.unwrap_or(10_000);
+    if !valid_stakes(input.stakes) || !valid_game_amount(buy_in) {
         return Err(AppError::bad_request(
-            "stakes and buy-ins must be between $1 and $10,000",
+            "stakes and buy-in must be between $1 and $10,000",
         ));
     }
     let mode = TableMode::Cash {
@@ -554,8 +549,7 @@ pub async fn create_table(
         input.stakes,
         mode,
         input.max_seats.unwrap_or(9).clamp(2, 9),
-        min_buy_in,
-        max_buy_in,
+        buy_in,
     );
     let id = s.tables.insert(table).await.map_err(AppError::internal)?;
     Ok(Json(
@@ -704,24 +698,28 @@ pub struct JoinRequest {
     pub seat: usize,
     pub buy_in: i64,
 }
+
+#[derive(Deserialize)]
+pub struct CashJoinRequest {
+    pub seat: usize,
+}
 pub async fn join_table(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(input): Json<JoinRequest>,
+    Json(input): Json<CashJoinRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let table_arc = s
         .tables
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (no_debt, min, max, tournament) = {
+    let (no_debt, buy_in, tournament) = {
         let t = table_arc.lock().await;
         let no_debt = matches!(t.mode, TableMode::Cash { no_debt: true });
         (
             no_debt,
-            t.min_buy_in,
-            t.max_buy_in,
+            t.buy_in,
             matches!(t.mode, TableMode::Tournament(_)),
         )
     };
@@ -730,11 +728,8 @@ pub async fn join_table(
             "tournament registration uses /tournaments/{id}/register",
         ));
     }
-    if input.buy_in < min || input.buy_in > max {
-        return Err(AppError::bad_request("buy-in is outside the table limits"));
-    }
     s.bank
-        .buy_in(AccountOwner::User(user), id, input.buy_in, no_debt)
+        .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let result = s
@@ -748,7 +743,7 @@ pub async fn join_table(
             }
             t.seats[input.seat] = crate::table::Seat {
                 occupant: SeatOccupant::Human { user_id: user },
-                stack: input.buy_in,
+                stack: buy_in,
                 sitting_out: false,
                 pending_departure: false,
             };
@@ -757,10 +752,7 @@ pub async fn join_table(
         })
         .await;
     if let Err(error) = result {
-        let _ = s
-            .bank
-            .cash_out(AccountOwner::User(user), id, input.buy_in)
-            .await;
+        let _ = s.bank.cash_out(AccountOwner::User(user), id, buy_in).await;
         return Err(AppError::internal(error));
     }
     Ok(Json(serde_json::json!({"ok":true})))
@@ -928,27 +920,24 @@ pub async fn action(
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
-pub struct RebuyRequest {
-    pub amount: i64,
-}
+pub struct RebuyRequest {}
 pub async fn rebuy_table(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(input): Json<RebuyRequest>,
+    Json(_input): Json<RebuyRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let table = s
         .tables
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (no_debt, max, tournament) = {
+    let (no_debt, buy_in, tournament) = {
         let table = table.lock().await;
         (
             matches!(table.mode, TableMode::Cash { no_debt: true }),
-            table.max_buy_in,
+            table.buy_in,
             matches!(table.mode, TableMode::Tournament(_)),
         )
     };
@@ -963,11 +952,8 @@ pub async fn rebuy_table(
             ));
         }
     }
-    if input.amount < MIN_GAME_AMOUNT || input.amount > max || input.amount > MAX_GAME_ENTRY {
-        return Err(AppError::bad_request("invalid rebuy amount"));
-    }
     s.bank
-        .buy_in(AccountOwner::User(user), id, input.amount, no_debt)
+        .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let result = s
@@ -985,15 +971,12 @@ pub async fn rebuy_table(
                     matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
                 })
                 .ok_or_else(|| anyhow::anyhow!("you are not seated"))?;
-            seat.stack += input.amount;
+            seat.stack += buy_in;
             Ok(())
         })
         .await;
     if let Err(error) = result {
-        let _ = s
-            .bank
-            .cash_out(AccountOwner::User(user), id, input.amount)
-            .await;
+        let _ = s.bank.cash_out(AccountOwner::User(user), id, buy_in).await;
         return Err(AppError::internal(error));
     }
     Ok(Json(serde_json::json!({"ok":true})))
@@ -1003,7 +986,6 @@ pub async fn rebuy_table(
 pub struct BotRequest {
     pub seat: usize,
     pub kind: Option<String>,
-    pub buy_in: Option<i64>,
 }
 pub async fn bot_table(
     AuthUser(_user): AuthUser,
@@ -1016,7 +998,7 @@ pub async fn bot_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (old, min, max, no_debt, started, live_hand) = {
+    let (old, buy_in, no_debt, started, live_hand) = {
         let table = table.lock().await;
         let seat = table
             .seats
@@ -1024,8 +1006,7 @@ pub async fn bot_table(
             .ok_or_else(|| AppError::bad_request("invalid seat"))?;
         (
             seat.occupant.clone(),
-            table.min_buy_in,
-            table.max_buy_in,
+            table.buy_in,
             matches!(table.mode, TableMode::Cash { no_debt: true }),
             matches!(&table.mode, TableMode::Tournament(state) if state.started || state.finished),
             table.hand.is_some(),
@@ -1074,14 +1055,11 @@ pub async fn bot_table(
             let table = table.lock().await;
             match &table.mode {
                 TableMode::Tournament(state) => state.config.buy_in,
-                TableMode::Cash { .. } => input.buy_in.unwrap_or(min),
+                TableMode::Cash { .. } => buy_in,
             }
         } else {
-            input.buy_in.unwrap_or(min)
+            buy_in
         };
-        if !tournament && (amount < min || amount > max) {
-            return Err(AppError::bad_request("bot buy-in is outside table limits"));
-        }
         s.bank
             .buy_in(
                 AccountOwner::Bot(kind),

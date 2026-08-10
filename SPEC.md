@@ -266,6 +266,10 @@ Mark each milestone done here as it lands.
   cumulative account debt remains unbounded.
 - **V11** `TableView` exposes redacted action events + per-seat hand state; UI shows
   current actor, dealer, blinds, street wager, folded/all-in state, and recent log.
+- **V12** Every cash table has one fixed buy-in; human joins, bot seats, and rebuys
+  charge and assign exactly that amount, independent of client payloads.
+- **V13** Every bot personality produces at least one bet or raise across the
+  deterministic aggression corpus while retaining distinct style signals.
 
 ## §T Build tasks
 
@@ -274,6 +278,8 @@ T1|x|enforce $1 floor + $10k per-entry ceiling|V1,V2,V5,V9,V10
 T2|x|replace setup forms with 3 cash + 3 tournament presets|V9
 T3|x|add structured hand events + per-seat hand state|V3,V4,V6,V11
 T4|x|render game log + table cues|V7,V11
+T5|x|replace cash buy-in ranges with one fixed amount|V1,V2,V9,V10,V12
+T6|x|restore and regression-test bot aggression|V6,V13
 
 ## §B Bug log
 
@@ -307,3 +313,7 @@ T4|x|render game log + table cues|V7,V11
 - Bot seating submitted an empty kind from browser option elements, hid 400 responses, allowed human-seat replacement, and ignored cash no-debt rules; fixed with explicit option values, visible table errors, occupant guards, and propagated no-debt enforcement.
 - Card-face refinements stacked new ace and court treatments over older pseudo-element artwork, while a later rule reset corner ranks to medium weight; fixed by consolidating the shared styles and enforcing V7 in browser snapshots.
 - The card-test grid fixed every suit to 13 columns and used horizontal overflow on narrow screens; fixed by wrapping centered cards at their in-game size and enforcing V8 at both snapshot widths.
+- Rock sent premium hands through a check/call-only helper, making that personality incapable of aggression; fix with wager-first premium play and a deterministic all-policy aggression corpus.
+- The tournament payout fixture's tiny terminal blinds could outlive its tick cap once bots played more hands; fixed by using a decisive terminal test level while preserving payout/conservation assertions.
+- The frontend asset contract still required the removed variable buy-in form label; replaced it with fixed-price display and seat-only payload assertions under V12.
+- The fixed-buy-in route regression double-counted live blinds by adding the pot to pre-hand table stacks; corrected it to assert each authoritative seated stack directly.

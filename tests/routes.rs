@@ -187,7 +187,7 @@ async fn game_entries_enforce_one_dollar_floor_and_ten_thousand_dollar_ceiling()
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
-                    r#"{"name":"Tiny","stakes":{"NoLimit":{"small_blind":99,"big_blind":200}},"min_buy_in":100,"max_buy_in":10000}"#,
+                    r#"{"name":"Tiny","stakes":{"NoLimit":{"small_blind":99,"big_blind":200}},"buy_in":10000}"#,
                 ))
                 .unwrap(),
         )
@@ -401,7 +401,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     }
     let cookie_a = cookie(&t.key, alice);
     let cookie_b = cookie(&t.key, bob);
-    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_a).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Test","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"max_seats":2,"min_buy_in":1000,"max_buy_in":10000}"#)).unwrap()).await.unwrap();
+    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_a).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Test","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"max_seats":2,"buy_in":10000}"#)).unwrap()).await.unwrap();
     assert_eq!(create.status(), StatusCode::OK);
     let body = to_bytes(create.into_body(), usize::MAX).await.unwrap();
     let id: Uuid = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["id"]
@@ -447,10 +447,20 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
             .to_vec(),
     )
     .unwrap();
+    let state_json: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert!(text.contains("current_player"));
+    assert!(text.contains(r#""buy_in":10000"#));
     assert!(text.contains("street_contribution"));
     assert!(text.contains("SmallBlind"));
     assert!(text.contains(r#""hole_cards":null"#));
+    assert!(
+        state_json["seats"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|seat| seat["stack"] == 10_000),
+        "the client-supplied $20 buy-ins must not override the fixed $100 table buy-in"
+    );
     let wrong_turn = t
         .router
         .clone()
@@ -555,7 +565,7 @@ async fn no_debt_cash_bot_rebuy_is_rejected() {
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
-                    r#"{"name":"No debt bots","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"no_debt":true,"min_buy_in":1000,"max_buy_in":10000}"#,
+                    r#"{"name":"No debt bots","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"no_debt":true,"buy_in":10000}"#,
                 ))
                 .unwrap(),
         )
@@ -603,7 +613,7 @@ async fn no_debt_join_is_rejected() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
-    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"No debt","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"no_debt":true,"min_buy_in":1000,"max_buy_in":10000}"#)).unwrap()).await.unwrap();
+    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"No debt","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"no_debt":true,"buy_in":10000}"#)).unwrap()).await.unwrap();
     let id: Uuid = serde_json::from_slice::<serde_json::Value>(
         &to_bytes(create.into_body(), usize::MAX).await.unwrap(),
     )

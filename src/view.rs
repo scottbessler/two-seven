@@ -48,6 +48,7 @@ pub struct TableView {
     pub id: uuid::Uuid,
     pub name: String,
     pub stakes: crate::table::Stakes,
+    pub buy_in: Cents,
     pub seats: Vec<SeatView>,
     pub button: usize,
     pub viewer_seat: Option<usize>,
@@ -61,6 +62,7 @@ pub struct LobbyTableView {
     pub id: uuid::Uuid,
     pub name: String,
     pub stakes: crate::table::Stakes,
+    pub buy_in: Cents,
     pub occupied: usize,
     pub max_seats: usize,
     pub no_debt: bool,
@@ -181,6 +183,7 @@ pub fn table_view_with_banks(
         id: table.id,
         name: table.name.clone(),
         stakes: table.stakes,
+        buy_in: table.buy_in,
         seats: table
             .seats
             .iter()

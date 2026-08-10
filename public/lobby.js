@@ -4,8 +4,7 @@ const PRESETS = {
     body: {
       stakes: { NoLimit: { small_blind: 100, big_blind: 200 } },
       max_seats: 6,
-      min_buy_in: 5_000,
-      max_buy_in: 20_000,
+      buy_in: 20_000,
     },
   },
   "cash-standard": {
@@ -13,8 +12,7 @@ const PRESETS = {
     body: {
       stakes: { NoLimit: { small_blind: 500, big_blind: 1_000 } },
       max_seats: 6,
-      min_buy_in: 25_000,
-      max_buy_in: 100_000,
+      buy_in: 100_000,
     },
   },
   "cash-limit": {
@@ -22,8 +20,7 @@ const PRESETS = {
     body: {
       stakes: { Limit: { small_bet: 2_000, big_bet: 4_000 } },
       max_seats: 6,
-      min_buy_in: 50_000,
-      max_buy_in: 200_000,
+      buy_in: 200_000,
     },
   },
   "tournament-quick": {

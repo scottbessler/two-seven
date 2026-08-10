@@ -25,7 +25,7 @@ fn table_island_has_live_state_and_action_contracts() {
         "½ pot",
         "Showdown",
         "· bot",
-        "Buy in for seat",
+        "Buy in</button>",
         "shared bot account",
         "award-list",
         "waiting-status",
@@ -174,8 +174,10 @@ fn setup_uses_six_bounded_presets() {
     ] {
         assert!(LOBBY_JS.contains(preset), "missing setup preset: {preset}");
     }
-    assert!(LOBBY_JS.contains("max_buy_in: 200_000"));
+    assert!(LOBBY_JS.contains("buy_in: 200_000"));
     assert!(LOBBY_JS.contains("buy_in: 20_000"));
     assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
     assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
+    assert!(TABLE_JS.contains("cents(state.buy_in)"));
+    assert!(TABLE_JS.contains("JSON.stringify({ seat: joinSeat })"));
 }
