@@ -1,6 +1,7 @@
 /* Shared card-face geometry scales with both card dimensions. */
 .card-frame{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}
 .card-frame .pip-grid{inset:14% 12% 15%}
+:root .card-corner b{font-size:calc(var(--corner-size)*1.2)}
 @media(max-width:640px){.card-frame .pip-grid{inset:14% 12% 15%}}
 :root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57}
 *{box-sizing:border-box}
