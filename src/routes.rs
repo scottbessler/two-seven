@@ -700,7 +700,7 @@ pub async fn bot_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (old, min, max, started) = {
+    let (old, min, max, no_debt, started, live_hand) = {
         let table = table.lock().await;
         let seat = table
             .seats
@@ -710,7 +710,9 @@ pub async fn bot_table(
             seat.occupant.clone(),
             table.min_buy_in,
             table.max_buy_in,
+            matches!(table.mode, TableMode::Cash { no_debt: true }),
             matches!(&table.mode, TableMode::Tournament(state) if state.started || state.finished),
+            table.hand.is_some(),
         )
     };
     let tournament = {
@@ -724,6 +726,14 @@ pub async fn bot_table(
     }
     if tournament && input.kind.is_some() && !matches!(old, SeatOccupant::Empty) {
         return Err(AppError::bad_request("tournament seats cannot be replaced"));
+    }
+    if !matches!(old, SeatOccupant::Empty) && matches!(old, SeatOccupant::Human { .. }) {
+        return Err(AppError::bad_request("cannot replace a human seat"));
+    }
+    if live_hand && !matches!(old, SeatOccupant::Empty) {
+        return Err(AppError::bad_request(
+            "bot seating is unavailable while a hand is in progress",
+        ));
     }
     if let SeatOccupant::Bot { kind } = old {
         let stack = s.tables.get(id).await.unwrap().lock().await.seats[input.seat].stack;
@@ -769,7 +779,7 @@ pub async fn bot_table(
                         TableMode::Cash { .. } => false,
                     }
                 } else {
-                    false
+                    no_debt
                 },
             )
             .await

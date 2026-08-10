@@ -176,6 +176,21 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     .unwrap();
     assert!(text.contains("current_player"));
     assert!(text.contains(r#""hole_cards":null"#));
+    let replace_human = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/bot"))
+                .header(header::COOKIE, &cookie_a)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"seat":0,"kind":"fish"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replace_human.status(), StatusCode::BAD_REQUEST);
     let fold = t
         .router
         .clone()
@@ -222,6 +237,64 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         serde_json::from_slice(&to_bytes(account.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(account["balance"], -1);
     assert_eq!(account["entries"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn no_debt_cash_bot_rebuy_is_rejected() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "bot-owner".into(),
+            display_name: "Bot Owner".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let create = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tables")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"name":"No debt bots","stakes":{"NoLimit":{"small_blind":1,"big_blind":2}},"no_debt":true,"min_buy_in":10,"max_buy_in":100}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let id: Uuid = serde_json::from_slice::<serde_json::Value>(
+        &to_bytes(create.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let response = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/bot"))
+                .header(header::COOKIE, cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"seat":0,"kind":"fish"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("insufficient funds"));
 }
 
 #[tokio::test]

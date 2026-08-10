@@ -30,6 +30,9 @@ fn table_island_has_live_state_and_action_contracts() {
         "/tournaments/${tableId}/register",
         "Seat a bot",
         "Register for tournament",
+        "option value=\"fish\"",
+        "table-error",
+        "responseError",
     ] {
         assert!(
             TABLE_JS.contains(literal),
