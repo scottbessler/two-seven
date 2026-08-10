@@ -3,9 +3,10 @@
 .card-frame .pip-grid{inset:7% 8% 7% !important;width:auto;height:auto}
 .card-frame .card-art{width:82%;height:82%}
 .card-frame .card-art::before{font-size:calc(var(--art-size)*.9);top:0}
-.card-frame .card-art i{font-size:calc(var(--art-size)*.72)}
+.card-frame .card-art i{font-size:calc(var(--art-size)*.42)}
+.card-frame .card-art-K::before,.card-frame .card-art-Q::before,.card-frame .card-art-J::before{font-size:calc(var(--art-size)*1.3)}
 .card-frame .card-art-A i{font-size:calc(var(--art-size)*1.15)}
-@media(max-width:640px){.card-frame{inset:16% 13% 16%}.card-frame .pip-grid{inset:6% 5% !important}.card-frame .card-art::before{font-size:calc(var(--art-size)*.9)}.card-frame .card-art i{font-size:calc(var(--art-size)*.68)}}
+@media(max-width:640px){.card-frame{inset:16% 13% 16%}.card-frame .pip-grid{inset:6% 5% !important}.card-frame .card-art::before{font-size:calc(var(--art-size)*.9)}.card-frame .card-art-K::before,.card-frame .card-art-Q::before,.card-frame .card-art-J::before{font-size:calc(var(--art-size)*1.3)}.card-frame .card-art i{font-size:calc(var(--art-size)*.38)}}
 :root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(circle at top,#1d5948,var(--felt));color:var(--ink);font:16px system-ui,sans-serif;min-height:100vh}

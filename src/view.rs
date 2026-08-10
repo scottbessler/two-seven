@@ -76,6 +76,7 @@ pub struct TournamentView {
     pub next_big_blind: Option<Cents>,
     pub next_ante: Option<Cents>,
     pub finish_order: Vec<usize>,
+    pub started: bool,
     pub finished: bool,
 }
 
@@ -187,6 +188,7 @@ pub fn table_view_with_banks(
                         .get(state.current_level + 1)
                         .map(|level| level.ante),
                     finish_order: state.finish_order.clone(),
+                    started: state.started,
                     finished: state.finished,
                 }),
             crate::table::TableMode::Cash { .. } => None,

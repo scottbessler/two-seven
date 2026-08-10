@@ -57,19 +57,21 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
   const [amount, setAmount] = useState(minimum);
   useEffect(() => setAmount(minimum), [minimum]);
   const submit = async (kind) => {
-    await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount: Number(amount) || undefined }) });
-    refresh();
+    const response = await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount: Number(amount) || undefined }) });
+    if (response.ok) refresh();
+    else document.getElementById("table-error").textContent = await responseError(response);
   };
+  const clampWager = (value) => Math.max(wager?.min || 0, Math.min(wager?.max || value, Math.round(value)));
   const noLimit = wager?.max != null && wager?.min != null;
   return html`<div class="actions" aria-label="Actions">
     ${actions.has("Fold") && html`<button class="danger" onClick=${() => submit("fold")}>Fold</button>`}
     ${actions.has("Check") && html`<button onClick=${() => submit("check")}>Check</button>`}
-    ${actions.has("Call") && html`<button onClick=${() => submit("call")}>Call ${hand.to_call ? cents(hand.to_call) : ""}</button>`}
+    ${actions.has("Call") && html`<button onClick=${() => submit("call")}>Call ${hand.legal_actions.to_call ? cents(hand.legal_actions.to_call) : ""}</button>`}
     ${(actions.has("Bet") || actions.has("Raise")) && html`
       <div class="wager-control">
         ${noLimit && html`<input type="range" min=${wager.min} max=${wager.max} value=${amount} onInput=${(event) => setAmount(event.target.value)} aria-label="Wager slider" />`}
         ${noLimit && html`<input type="number" min=${wager.min} max=${wager.max} value=${amount} onInput=${(event) => setAmount(event.target.value)} aria-label="Wager amount" />`}
-        ${noLimit && html`<div class="pot-shortcuts"><button type="button" onClick=${() => setAmount(Math.min(wager.max, hand.pot / 2))}>½ pot</button><button type="button" onClick=${() => setAmount(Math.min(wager.max, hand.pot))}>Pot</button></div>`}
+        ${noLimit && html`<div class="pot-shortcuts"><button type="button" onClick=${() => setAmount(clampWager(hand.pot / 2))}>½ pot</button><button type="button" onClick=${() => setAmount(clampWager(hand.pot))}>Pot</button></div>`}
         ${!noLimit && html`<span class="fixed-wager">Fixed ${cents(minimum)}</span>`}
       </div>
     `}
@@ -114,7 +116,7 @@ function TableApp() {
     <div class="table-top"><h1>${state.name}</h1></div>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="felt" aria-label="Poker table">
-      <div class="table-center">${hand ? html`<p class="table-pot">Pot ${cents(hand.pot)}</p><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${streetName(hand.street)} · ${currentName} to act · ${cents(hand.to_call || 0)} to call</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
+      <div class="table-center">${hand ? html`<p class="table-pot">Pot ${cents(hand.pot)}</p><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${streetName(hand.street)} · ${currentName} to act · ${cents(hand.legal_actions?.to_call || 0)} to call</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
       <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
     </section>
     ${hand && html`<section class="hand-info"><div class="hole-cards">${(hand.your_hole_cards || []).map((card) => html`<${Card} card=${card} />`)}</div><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
@@ -122,7 +124,7 @@ function TableApp() {
     ${joinSeat != null && state.viewer_seat == null && !state.tournament && html`<section class="card join-card"><h2>Buy in for seat ${joinSeat}</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><input name="buy_in" type="number" min="0.01" step="0.01" placeholder="Buy-in ($)" required /><input type="hidden" name="seat" value=${joinSeat} /><button>Join seat ${joinSeat}</button></form></section>`}
     <p id="table-error" class="error" role="alert"></p>
     ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="0.01" step="0.01" required /></label><button>Register</button></form></section>`}
-    ${!state.tournament && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}
+    ${(!state.tournament || !state.tournament.started) && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}
     <nav class="table-controls"><button onClick=${() => fetch(`/tables/${tableId}/sit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sitting_out: true }) }).then(refresh)}>Sit out</button><button onClick=${() => fetch(`/tables/${tableId}/leave`, { method: "POST" }).then(refresh)}>Leave</button></nav>
   </div>`;
 }

@@ -5,6 +5,7 @@ use crate::{
     table::Stakes,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Street {
@@ -70,6 +71,7 @@ pub struct HandSummary {
     pub board: Vec<Card>,
     pub results: Vec<SeatResult>,
     pub awards: Vec<Award>,
+    pub contributions: BTreeMap<usize, Cents>,
     pub revealed_hole_cards: Vec<(usize, Vec<Card>)>,
 }
 
@@ -551,6 +553,11 @@ impl Hand {
                 seat: winner,
                 amount,
             }],
+            contributions: self
+                .players
+                .iter()
+                .map(|player| (player.seat, player.contribution))
+                .collect(),
             revealed_hole_cards: Vec::new(),
         });
         self.complete = true;
@@ -651,6 +658,11 @@ impl Hand {
             board: self.board.clone(),
             results,
             awards,
+            contributions: self
+                .players
+                .iter()
+                .map(|player| (player.seat, player.contribution))
+                .collect(),
             revealed_hole_cards: self
                 .players
                 .iter()

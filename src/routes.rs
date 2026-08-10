@@ -864,7 +864,8 @@ pub async fn action(
             if hand.current_player != Some(seat) {
                 return Err(anyhow::anyhow!("not your turn"));
             }
-            hand.apply_action(action).map_err(|e| anyhow::anyhow!(e))?;
+            hand.apply_action(action)
+                .map_err(|error| anyhow::anyhow!("user action rejected: {error}"))?;
             let complete = hand.complete;
             if complete {
                 settle_finished_hand(t);
@@ -872,7 +873,20 @@ pub async fn action(
             Ok(())
         })
         .await
-        .map_err(AppError::internal)?;
+        .map_err(|error| {
+            let message = error.to_string();
+            if message.contains("user action rejected")
+                || message == "not your turn"
+                || message == "no hand in progress"
+                || message == "you are not seated"
+                || message == "amount required"
+                || message == "unknown action"
+            {
+                AppError::bad_request(message)
+            } else {
+                AppError::internal(message)
+            }
+        })?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 

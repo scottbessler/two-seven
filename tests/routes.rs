@@ -357,6 +357,21 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     .unwrap();
     assert!(text.contains("current_player"));
     assert!(text.contains(r#""hole_cards":null"#));
+    let wrong_turn = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/action"))
+                .header(header::COOKIE, &cookie_b)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"kind":"check"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(wrong_turn.status(), StatusCode::BAD_REQUEST);
     let replace_human = t
         .router
         .clone()

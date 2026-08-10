@@ -3,6 +3,7 @@ const APP_CSS: &str = include_str!("../public/app.css");
 const BANK_JS: &str = include_str!("../public/bank.js");
 const BLACKJACK_JS: &str = include_str!("../public/blackjack.js");
 const BLITZ_JS: &str = include_str!("../public/blitz.js");
+const CARD_JS: &str = include_str!("../public/card.js");
 
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
@@ -39,6 +40,10 @@ fn table_island_has_live_state_and_action_contracts() {
         "pip-grid-${value}",
         "card-pip-${position}",
         "card-art-${court}",
+        "response.ok",
+        "hand.legal_actions.to_call",
+        "clampWager",
+        "state.tournament.started",
     ] {
         assert!(
             TABLE_JS.contains(literal),
@@ -115,6 +120,12 @@ fn hand_blitz_island_has_mode_contracts() {
             "missing app.css blitz contract: {literal}"
         );
     }
+}
+
+#[test]
+fn shared_card_renderer_has_inner_frame_contract() {
+    assert!(CARD_JS.contains("card-frame"));
+    assert!(CARD_JS.contains("pip-grid-${face.numeric}"));
 }
 
 #[test]
