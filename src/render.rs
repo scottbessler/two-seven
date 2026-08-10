@@ -227,10 +227,21 @@ fn card_face(rank: &str, suit: &str) -> String {
         "black"
     };
     let center = match value {
-        1 | 11 | 12 | 13 => format!(
-            r#"<span class="card-art card-art-{}"><b>{}</b><i>{}</i><b class="court-bottom">{}</b></span>"#,
-            display, display, pip, display
+        1 => format!(
+            r#"<span class="card-art card-art-A"><span class="ace-badge"><i>{}</i></span></span>"#,
+            pip
         ),
+        11..=13 => {
+            let piece = match value {
+                11 => "♘",
+                12 => "♕",
+                _ => "♔",
+            };
+            format!(
+                r#"<span class="card-art card-art-{}"><b>{}</b><span class="court-piece">{}</span><i>{}</i><b class="court-bottom">{}</b></span>"#,
+                display, display, piece, pip, display
+            )
+        }
         _ => format!(
             r#"<span class="pip-grid pip-grid-{}">{}</span>"#,
             value,

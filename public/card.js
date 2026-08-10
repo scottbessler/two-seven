@@ -26,11 +26,14 @@ export function Card({ value, card, empty = false, hidden = false }) {
   const face = cardFace(value || card);
   const court = { 1: "A", 11: "J", 12: "Q", 13: "K" }[face.numeric];
   const red = face.suitCode === "h" || face.suitCode === "d";
+  const courtPiece = { J: "♘", Q: "♕", K: "♔" }[court];
   return html`<span class=${`playing-card ${red ? "red" : "black"}`} aria-label=${value || card}>
     <span class="card-corner"><b>${face.rank}</b><i>${face.suit}</i></span>
     <span class="card-frame">
       ${court
-        ? html`<span class=${`card-art card-art-${court}`}><b>${court}</b><i>${face.suit}</i><b class="court-bottom">${court}</b></span>`
+        ? court === "A"
+          ? html`<span class="card-art card-art-A"><span class="ace-badge"><i>${face.suit}</i></span></span>`
+          : html`<span class=${`card-art card-art-${court}`}><b>${court}</b><span class="court-piece">${courtPiece}</span><i>${face.suit}</i><b class="court-bottom">${court}</b></span>`
         : html`<span class=${`pip-grid pip-grid-${face.numeric}`}>${PIP_POSITIONS[face.numeric].map((position) => html`<i class=${`card-pip-${position}`}>${face.suit}</i>`)}</span>`}
     </span>
     <span class="card-corner card-corner-bottom"><b>${face.rank}</b><i>${face.suit}</i></span>

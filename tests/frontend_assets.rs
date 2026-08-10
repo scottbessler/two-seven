@@ -126,6 +126,8 @@ fn hand_blitz_island_has_mode_contracts() {
 fn shared_card_renderer_has_inner_frame_contract() {
     assert!(CARD_JS.contains("card-frame"));
     assert!(CARD_JS.contains("pip-grid-${face.numeric}"));
+    assert!(CARD_JS.contains("ace-badge"));
+    assert!(CARD_JS.contains("court-piece"));
 }
 
 #[test]

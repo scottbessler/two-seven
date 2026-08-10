@@ -1,7 +1,14 @@
 /* Shared card-face geometry scales with both card dimensions. */
 .card-frame{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}
 .card-frame .pip-grid{inset:14% 12% 15%}
-@media(max-width:640px){.card-frame .pip-grid{inset:14% 12% 15%}.card-frame .card-art i{font-size:calc(var(--art-size)*.25)}}
+@media(max-width:640px){.card-frame .pip-grid{inset:14% 12% 15%}}
+.card-corner b{font-weight:800}
+.card-art i{position:absolute!important;left:50%;top:50%;z-index:2;font-size:calc(var(--art-size)*.3);line-height:1;transform:translate(-50%,-50%)}
+.card-art .court-piece{position:absolute;left:50%;top:50%;z-index:2;font-family:Georgia,serif;font-size:calc(var(--art-size)*.95);line-height:1;transform:translate(-50%,-50%)}
+.card-art-A{display:block;background:transparent}
+.card-art-A::before,.card-art-A::after{display:none}
+.ace-badge{position:absolute;left:50%;top:50%;width:calc(var(--art-size)*1.1);height:calc(var(--art-size)*1.1);display:grid;place-items:center;border:.12rem solid currentColor;border-radius:50%;background:#efe9db;transform:translate(-50%,-50%)}
+.ace-badge i{position:static!important;left:auto;top:auto;font-size:calc(var(--art-size)*.95);transform:none}
 :root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(circle at top,#1d5948,var(--felt));color:var(--ink);font:16px system-ui,sans-serif;min-height:100vh}
