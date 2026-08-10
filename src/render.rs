@@ -134,10 +134,10 @@ pub fn blackjack() -> String {
 }
 
 pub fn card_test() -> String {
-    let cards = ["s", "h", "d", "c"]
+    let cards = ["s", "h", "c", "d"]
         .into_iter()
         .map(|suit| {
-            let cards = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"]
+            let cards = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"]
                 .into_iter()
                 .map(|rank| card_face(rank, suit))
                 .collect::<String>();
@@ -228,8 +228,8 @@ fn card_face(rank: &str, suit: &str) -> String {
     };
     let center = match value {
         1 | 11 | 12 | 13 => format!(
-            r#"<span class="card-art card-art-{}"><i>{}</i><b>{}</b></span>"#,
-            display, pip, display
+            r#"<span class="card-art card-art-{}"><b>{}</b><i>{}</i><b class="court-bottom">{}</b></span>"#,
+            display, display, pip, display
         ),
         _ => format!(
             r#"<span class="pip-grid pip-grid-{}">{}</span>"#,
