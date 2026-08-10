@@ -346,16 +346,7 @@ impl Hand {
         }
         match action {
             Action::Fold => {
-                let i = self.player_index(seat);
-                self.players[i].folded = true;
-                if self.live_count() == 1 {
-                    self.finish_fold();
-                } else {
-                    self.current_player = self.next_actor(seat);
-                    if self.current_player.is_none() {
-                        self.advance_street();
-                    }
-                }
+                self.fold_seat_internal(seat)?;
             }
             Action::Check => self.finish_action(seat, 0, false)?,
             Action::Call => self.finish_action(seat, legal.to_call, false)?,
@@ -370,6 +361,36 @@ impl Hand {
                 self.finish_action(seat, amount, true)?;
             }
             Action::AllIn => unreachable!("all-in is normalized before rules processing"),
+        }
+        Ok(())
+    }
+
+    pub fn fold_seat(&mut self, seat: usize) -> Result<(), String> {
+        if self.complete {
+            return Err("hand is complete".into());
+        }
+        if !self.players.iter().any(|player| player.seat == seat) {
+            return Err("seat is not in hand".into());
+        }
+        self.fold_seat_internal(seat)
+    }
+
+    fn fold_seat_internal(&mut self, seat: usize) -> Result<(), String> {
+        let i = self.player_index(seat);
+        if self.players[i].folded {
+            return Err("player has already folded".into());
+        }
+        let was_current = self.current_player == Some(seat);
+        self.players[i].folded = true;
+        if self.live_count() == 1 {
+            self.finish_fold();
+        } else if was_current {
+            self.current_player = self.next_actor(seat);
+            if self.current_player.is_none() {
+                self.advance_street();
+            }
+        } else if self.street_complete() {
+            self.advance_street();
         }
         Ok(())
     }
@@ -694,6 +715,50 @@ mod tests {
                 .any(|a| matches!(a, Action::Raise { amount: 2 }))
         );
         assert!(h.apply_action(Action::Raise { amount: 5 }).is_err());
+    }
+
+    #[test]
+    fn out_of_turn_fold_keeps_hand_reachable() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            &[100, 100, 100],
+            0,
+            12,
+        );
+        let departing = hand
+            .players
+            .iter()
+            .map(|player| player.seat)
+            .find(|seat| Some(*seat) != hand.current_player)
+            .unwrap();
+        hand.fold_seat(departing).unwrap();
+        assert!(hand.complete || hand.legal_actions().is_some());
+    }
+
+    #[test]
+    fn out_of_turn_fold_awards_uncontested_pot() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            &[100, 100],
+            0,
+            13,
+        );
+        let departing = hand
+            .players
+            .iter()
+            .find(|player| Some(player.seat) != hand.current_player)
+            .unwrap()
+            .seat;
+        hand.fold_seat(departing).unwrap();
+        assert!(hand.complete);
+        assert_eq!(hand.summary.as_ref().unwrap().awards.len(), 1);
+        assert_eq!(hand.pot, 0);
     }
     #[test]
     fn incomplete_raise_requires_call_without_reopen() {

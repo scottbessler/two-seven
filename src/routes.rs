@@ -499,12 +499,7 @@ pub async fn leave_table(
         s.tables
             .update(id, |t| {
                 if let Some(hand) = t.hand.as_mut() {
-                    if hand.current_player == Some(seat) {
-                        hand.apply_action(Action::Fold)
-                            .map_err(|e| anyhow::anyhow!(e))?;
-                    } else if let Some(player) = hand.players.iter_mut().find(|p| p.seat == seat) {
-                        player.folded = true;
-                    }
+                    hand.fold_seat(seat).map_err(|e| anyhow::anyhow!(e))?;
                 }
                 let seat = t
                     .seats

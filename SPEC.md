@@ -283,3 +283,4 @@ Mark each milestone done here as it lands.
 - Tournament bots incorrectly used cash table chip limits; fixed by charging the configured money buy-in while assigning starting tournament chips.
 - Driver errors on one table could starve later tables; fixed by sorted per-table sweeps that log and continue.
 - Sub-dollar stake display and hidden create-form fields were incorrect; fixed with cent formatting and explicit hidden-label CSS.
+- Deferred departures could cash out tournament chips, and out-of-turn departure folds could bypass engine turn bookkeeping; fixed with mode-aware forfeiture and an engine-level arbitrary-seat fold transition.

@@ -115,21 +115,42 @@ async fn settle_pending_departures(state: &AppState, id: uuid::Uuid) -> Result<(
             .iter()
             .enumerate()
             .filter(|(_, seat)| seat.pending_departure)
-            .map(|(index, seat)| (index, seat.occupant.clone(), seat.stack))
+            .map(|(index, seat)| {
+                (
+                    index,
+                    seat.occupant.clone(),
+                    seat.stack,
+                    matches!(table.mode, crate::table::TableMode::Tournament(_)),
+                )
+            })
             .collect::<Vec<_>>()
     };
-    for (seat, occupant, stack) in departures {
-        if let SeatOccupant::Human { user_id } = occupant {
+    for (seat, occupant, stack, tournament) in departures {
+        if !tournament {
+            if let SeatOccupant::Human { user_id } = occupant {
+                state
+                    .bank
+                    .cash_out(AccountOwner::User(user_id), id, stack)
+                    .await?;
+            } else if let SeatOccupant::Bot { kind } = occupant
+                && stack > 0
+            {
+                state
+                    .bank
+                    .cash_out(AccountOwner::Bot(kind), id, stack)
+                    .await?;
+            }
+        } else {
             state
-                .bank
-                .cash_out(AccountOwner::User(user_id), id, stack)
-                .await?;
-        } else if let SeatOccupant::Bot { kind } = occupant
-            && stack > 0
-        {
-            state
-                .bank
-                .cash_out(AccountOwner::Bot(kind), id, stack)
+                .tables
+                .update(id, |table| {
+                    if let crate::table::TableMode::Tournament(state) = &mut table.mode
+                        && !state.finish_order.contains(&seat)
+                    {
+                        state.finish_order.push(seat);
+                    }
+                    Ok(())
+                })
                 .await?;
         }
         state
@@ -143,6 +164,18 @@ async fn settle_pending_departures(state: &AppState, id: uuid::Uuid) -> Result<(
                 seat.stack = 0;
                 seat.sitting_out = false;
                 seat.pending_departure = false;
+                if let crate::table::TableMode::Tournament(state) = &mut table.mode {
+                    let alive = table
+                        .seats
+                        .iter()
+                        .filter(|seat| {
+                            !matches!(seat.occupant, SeatOccupant::Empty) && seat.stack > 0
+                        })
+                        .count();
+                    if alive <= 1 {
+                        state.finished = true;
+                    }
+                }
                 Ok(())
             })
             .await?;
@@ -615,5 +648,110 @@ mod tests {
             }
         }
         assert_eq!(prizes, 400);
+    }
+
+    #[tokio::test]
+    async fn pending_departure_forfeits_tournament_chips_but_cash_departure_cashouts() {
+        let root = std::env::temp_dir().join(format!("two-seven-departure-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let state = AppState {
+            users,
+            bank: bank.clone(),
+            tables: tables.clone(),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        let kind = BotKind::Fish;
+        let mut tournament = Table::new(
+            "departure tournament".into(),
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            TableMode::Tournament(TournamentState {
+                config: TournamentConfig {
+                    buy_in: 100,
+                    seat_count: 2,
+                    starting_chips: 100,
+                    levels: vec![BlindLevel {
+                        small_blind: 1,
+                        big_blind: 2,
+                        ante: 0,
+                        hands: 10,
+                    }],
+                    payout_percentages: vec![100],
+                    no_debt: false,
+                },
+                current_level: 0,
+                hands_at_level: 0,
+                finish_order: Vec::new(),
+                registered: 2,
+                started: true,
+                prize_pool: 200,
+                finished: false,
+                paid_out: false,
+            }),
+            2,
+            100,
+            100,
+        );
+        bank.buy_in(AccountOwner::Bot(kind), tournament.id, 100, false)
+            .await
+            .unwrap();
+        tournament.seats[0] = Seat {
+            occupant: SeatOccupant::Bot { kind },
+            stack: 50,
+            sitting_out: true,
+            pending_departure: true,
+        };
+        let tournament_id = tables.insert(tournament).await.unwrap();
+        settle_pending_departures(&state, tournament_id)
+            .await
+            .unwrap();
+        let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
+        assert_eq!(
+            account
+                .entries
+                .iter()
+                .filter(|entry| matches!(entry.kind, LedgerKind::CashOut { .. }))
+                .count(),
+            0
+        );
+
+        let mut cash = Table::new(
+            "departure cash".into(),
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            100,
+            100,
+        );
+        bank.buy_in(AccountOwner::Bot(kind), cash.id, 100, false)
+            .await
+            .unwrap();
+        cash.seats[0] = Seat {
+            occupant: SeatOccupant::Bot { kind },
+            stack: 50,
+            sitting_out: true,
+            pending_departure: true,
+        };
+        let cash_id = tables.insert(cash).await.unwrap();
+        settle_pending_departures(&state, cash_id).await.unwrap();
+        let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
+        assert_eq!(
+            account
+                .entries
+                .iter()
+                .filter(|entry| matches!(entry.kind, LedgerKind::CashOut { .. }))
+                .map(|entry| entry.delta)
+                .sum::<i64>(),
+            50
+        );
     }
 }
