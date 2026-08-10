@@ -17,6 +17,15 @@ function cents(value) {
   return `$${(value / 100).toFixed(2)}`;
 }
 
+function cardFace(card) {
+  const suit = card.slice(-1);
+  const rawRank = card.slice(0, -1);
+  const rank = rawRank === "T" ? "10" : rawRank;
+  const pip = { h: "♥", d: "♦", c: "♣", s: "♠" }[suit] || "";
+  const value = { A: 1, K: 13, Q: 12, J: 11, T: 10 }[rawRank] || Number(rawRank);
+  return { suit, rank, pip, value };
+}
+
 function streetName(street) {
   return { Preflop: "Preflop", Flop: "Flop", Turn: "Turn", River: "River" }[street] || street;
 }
@@ -28,8 +37,16 @@ async function responseError(response) {
 }
 
 function Card({ card, empty = false }) {
-  const suit = card?.slice(-1);
-  return html`<span class="playing-card ${suit === "h" || suit === "d" ? "red" : "black"} ${empty ? "empty-card" : ""}">${card || "·"}</span>`;
+  if (empty) return html`<span class="playing-card empty-card" aria-hidden="true">·</span>`;
+  const { suit, rank, pip, value } = cardFace(card);
+  const court = { 1: "A", 11: "J", 12: "Q", 13: "K" }[value];
+  return html`<span class="playing-card ${suit === "h" || suit === "d" ? "red" : "black"}" aria-label=${card}>
+    <span class="card-corner"><b>${rank}</b><i>${pip}</i></span>
+    ${court
+      ? html`<span class="card-art card-art-${court}"><i>${pip}</i><b>${court}</b></span>`
+      : html`<span class="pip-grid pip-grid-${value}">${Array.from({ length: value }, () => html`<i>${pip}</i>`)}</span>`}
+    <span class="card-corner card-corner-bottom"><b>${rank}</b><i>${pip}</i></span>
+  </span>`;
 }
 
 function Seat({ seat, button, openSeat, total }) {

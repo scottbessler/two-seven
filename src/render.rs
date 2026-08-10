@@ -52,7 +52,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/tables/new">Create a table</a> · <a href="/tournaments/new">Create a tournament</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/tables/new">Create a table</a> · <a href="/tournaments/new">Create a tournament</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
                 escape(&name)
             ),
             "",
@@ -64,7 +64,7 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String 
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
             escape(name),
             lobby_table_list(tables, true)
         ),
@@ -87,6 +87,41 @@ pub fn tournament_create() -> String {
         "",
     )
 }
+pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
+    let difficulties = crate::blitz::BlitzDifficulty::ALL
+        .iter()
+        .map(|difficulty| {
+            let config = difficulty.config();
+            format!(
+                r#"<button type="button" data-difficulty="{}"><b>{}</b><span>{} buy-in · {}s</span></button>"#,
+                config.id,
+                config.label,
+                format_cents(config.buy_in),
+                config.time_limit_ms / 1_000
+            )
+        })
+        .collect::<String>();
+    layout(
+        "Hand Blitz",
+        &format!(
+            r#"<section class="blitz-shell"><div class="blitz-top"><div><h1>Hand Blitz</h1><p>Pick the winning Hold'em hand before the clock runs out.</p></div><a href="/tables">Lobby</a></div><div id="blitz-app" data-stats-runs="{}" data-stats-attempts="{}" data-stats-correct="{}" data-stats-avg-ms="{}" data-stats-best="{}"><section class="blitz-menu"><div class="blitz-stat-grid"><span><b>{}</b> avg</span><span><b>{}%</b> accuracy</span><span><b>{}</b> best</span></div><div class="difficulty-grid">{}</div></section></div></section>"#,
+            stats.runs,
+            stats.attempts,
+            stats.correct,
+            stats.avg_answer_ms(),
+            stats.best_streak,
+            format_duration_ms(stats.avg_answer_ms()),
+            stats.accuracy_percent(),
+            stats.best_streak,
+            difficulties
+        ),
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/blitz.js")
+        ),
+    )
+}
+
 pub fn table_page(view: &crate::view::TableView) -> String {
     let seats = view
         .seats
@@ -133,11 +168,19 @@ pub fn table_page(view: &crate::view::TableView) -> String {
     )
 }
 
+fn format_duration_ms(ms: u64) -> String {
+    if ms == 0 {
+        "—".into()
+    } else {
+        format!("{:.1}s", ms as f64 / 1_000.0)
+    }
+}
+
 pub fn lobby(tables: &[crate::view::LobbyTableView]) -> String {
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p></section>",
+            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p></section>",
             lobby_table_list(tables, false)
         ),
         "",

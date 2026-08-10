@@ -1,6 +1,7 @@
 use crate::{
     app::AppState,
     bank::AccountOwner,
+    blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
     render,
@@ -198,6 +199,73 @@ pub async fn register_tournament(
 }
 pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
     Html(render::lobby(&lobby_views(&s, user).await))
+}
+
+pub async fn hand_blitz(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Html<String>, AppError> {
+    Ok(Html(render::hand_blitz(&s.blitz.stats(user).await)))
+}
+
+#[derive(Deserialize)]
+pub struct BlitzStartRequest {
+    pub difficulty: String,
+}
+
+pub async fn hand_blitz_start(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(input): Json<BlitzStartRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let difficulty = input
+        .difficulty
+        .parse::<BlitzDifficulty>()
+        .map_err(AppError::bad_request)?;
+    let run_id = Uuid::new_v4();
+    let config = difficulty.config();
+    s.bank
+        .hand_blitz_buy_in(AccountOwner::User(user), run_id, config.buy_in)
+        .await
+        .map_err(AppError::internal)?;
+    let run = s.blitz.start(user, difficulty, run_id).await;
+    s.blitz.persist_stats().await.map_err(AppError::internal)?;
+    Ok(Json(serde_json::json!({
+        "run": run,
+        "stats": s.blitz.stats(user).await
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct BlitzAnswerRequest {
+    pub run_id: Uuid,
+    pub round_id: Uuid,
+    pub choice: usize,
+}
+
+pub async fn hand_blitz_answer(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(input): Json<BlitzAnswerRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let run = s
+        .blitz
+        .answer(user, input.run_id, input.round_id, input.choice)
+        .await
+        .map_err(|error| match error {
+            BlitzAnswerError::NotFound => AppError::not_found("hand blitz run not found"),
+            BlitzAnswerError::Unavailable => {
+                AppError::bad_request("hand blitz round is unavailable")
+            }
+        })?;
+    if run.correct {
+        s.bank
+            .hand_blitz_win(AccountOwner::User(user), input.run_id, run.payout_awarded)
+            .await
+            .map_err(AppError::internal)?;
+    }
+    s.blitz.persist_stats().await.map_err(AppError::internal)?;
+    Ok(Json(serde_json::json!(run)))
 }
 
 async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {

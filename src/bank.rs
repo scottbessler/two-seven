@@ -20,6 +20,8 @@ pub enum LedgerKind {
     CashOut { table: Uuid },
     TournamentBuyIn { tournament: Uuid },
     TournamentPrize { tournament: Uuid },
+    HandBlitzBuyIn { run: Uuid },
+    HandBlitzWin { run: Uuid },
     Adjustment,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -173,6 +175,34 @@ impl BankStore {
             LedgerKind::CashOut { table },
             amount,
             "table cash-out".into(),
+        )
+        .await
+    }
+    pub async fn hand_blitz_buy_in(
+        &self,
+        owner: AccountOwner,
+        run: Uuid,
+        amount: Cents,
+    ) -> Result<Account, anyhow::Error> {
+        self.append(
+            owner,
+            LedgerKind::HandBlitzBuyIn { run },
+            -amount,
+            "hand blitz buy-in".into(),
+        )
+        .await
+    }
+    pub async fn hand_blitz_win(
+        &self,
+        owner: AccountOwner,
+        run: Uuid,
+        amount: Cents,
+    ) -> Result<Account, anyhow::Error> {
+        self.append(
+            owner,
+            LedgerKind::HandBlitzWin { run },
+            amount,
+            "hand blitz win".into(),
         )
         .await
     }

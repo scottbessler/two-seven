@@ -333,6 +333,7 @@ mod tests {
     use crate::{
         app::{AppState, build_webauthn},
         bank::{AccountOwner, BankStore},
+        blitz::BlitzStore,
         store::TableStore,
         table::{
             BlindLevel, BotKind, Seat, Stakes, Table, TableMode, TournamentConfig, TournamentState,
@@ -347,11 +348,13 @@ mod tests {
     async fn cash_bots_rebuy_after_busting() {
         let root = std::env::temp_dir().join(format!("two-seven-rebuy-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let state = AppState {
             users,
             bank: bank.clone(),
+            blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
@@ -408,11 +411,13 @@ mod tests {
     async fn four_bots_complete_hands_without_losing_chips() {
         let root = std::env::temp_dir().join(format!("two-seven-driver-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let state = AppState {
             users,
             bank: bank.clone(),
+            blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
@@ -472,11 +477,13 @@ mod tests {
     async fn four_bots_complete_limit_hands_without_losing_chips() {
         let root = std::env::temp_dir().join(format!("two-seven-limit-driver-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let state = AppState {
             users,
             bank: bank.clone(),
+            blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
@@ -529,11 +536,13 @@ mod tests {
     async fn bot_tournament_pays_prize_pool_without_cashing_out_stacks() {
         let root = std::env::temp_dir().join(format!("two-seven-tournament-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let state = AppState {
             users,
             bank: bank.clone(),
+            blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
@@ -654,11 +663,13 @@ mod tests {
     async fn pending_departure_forfeits_tournament_chips_but_cash_departure_cashouts() {
         let root = std::env::temp_dir().join(format!("two-seven-departure-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let state = AppState {
             users,
             bank: bank.clone(),
+            blitz,
             tables: tables.clone(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),

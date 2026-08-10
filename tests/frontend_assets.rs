@@ -1,6 +1,7 @@
 const TABLE_JS: &str = include_str!("../public/table.js");
 const APP_CSS: &str = include_str!("../public/app.css");
 const BANK_JS: &str = include_str!("../public/bank.js");
+const BLITZ_JS: &str = include_str!("../public/blitz.js");
 
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
@@ -46,6 +47,8 @@ fn table_css_is_mobile_poker_layout() {
     for literal in [
         ".felt",
         ".playing-card",
+        ".card-corner",
+        ".card-suit",
         ".seats",
         "@media(max-width:640px)",
         ".actions",
@@ -70,4 +73,36 @@ fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("textContent"));
     assert!(BANK_JS.contains("bank-delta"));
     assert!(BANK_JS.contains("aria-expanded"));
+}
+
+#[test]
+fn hand_blitz_island_has_mode_contracts() {
+    for literal in [
+        "/hand-blitz/start",
+        "/hand-blitz/answer",
+        "run_id",
+        "round_id",
+        "choice",
+        "deadline_ms",
+        "20s",
+        "12s",
+        "Correct:",
+        "Play again",
+    ] {
+        assert!(
+            BLITZ_JS.contains(literal),
+            "missing blitz.js contract: {literal}"
+        );
+    }
+    for literal in [
+        ".blitz-shell",
+        ".difficulty-grid",
+        ".blitz-clock",
+        ".blitz-hands",
+    ] {
+        assert!(
+            APP_CSS.contains(literal),
+            "missing app.css blitz contract: {literal}"
+        );
+    }
 }

@@ -1,6 +1,6 @@
 use crate::{
-    auth, bank::BankStore, driver, render, routes, session::MaybeUser, store::TableStore,
-    users::UserStore,
+    auth, bank::BankStore, blitz::BlitzStore, driver, render, routes, session::MaybeUser,
+    store::TableStore, users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -24,6 +24,7 @@ const PORT_SCAN_LIMIT: u16 = 100;
 pub struct AppState {
     pub users: Arc<UserStore>,
     pub bank: BankStore,
+    pub blitz: BlitzStore,
     pub tables: TableStore,
     pub webauthn: Arc<Webauthn>,
     pub key: Key,
@@ -38,6 +39,15 @@ pub fn router(s: AppState) -> Router {
     Router::new()
         .route("/", get(routes::index))
         .route("/healthcheck", get(routes::healthcheck))
+        .route("/hand-blitz", get(routes::hand_blitz))
+        .route(
+            "/hand-blitz/start",
+            axum::routing::post(routes::hand_blitz_start),
+        )
+        .route(
+            "/hand-blitz/answer",
+            axum::routing::post(routes::hand_blitz_answer),
+        )
         .route("/tables/new", get(routes::new_table))
         .route("/tournaments/new", get(routes::new_tournament))
         .route(
@@ -127,10 +137,12 @@ pub async fn run() -> Result<()> {
     let data = env::var("DATA_PATH").unwrap_or_else(|_| "data".into());
     let users = Arc::new(UserStore::load(&data).await?);
     let bank = BankStore::load(&data).await?;
+    let blitz = BlitzStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
     let state = AppState {
         users,
         bank,
+        blitz,
         tables,
         webauthn: Arc::new(build_webauthn()?),
         key: load_key(),
@@ -148,6 +160,7 @@ pub async fn run() -> Result<()> {
         "listening on http://localhost:{}",
         addr.port()
     );
+    println!("listening on http://localhost:{}", addr.port());
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -209,6 +222,7 @@ fn asset_version() -> String {
         "public/app.css",
         "public/auth.js",
         "public/bank.js",
+        "public/blitz.js",
         "public/lobby.js",
         "public/table.js",
         "public/vendor/htm-preact.js",

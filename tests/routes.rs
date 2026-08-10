@@ -12,6 +12,9 @@ use std::{
 use tower::ServiceExt;
 use two_seven::{
     app,
+    bank::{AccountOwner, BankStore, LedgerKind},
+    cards::Card,
+    eval::evaluate,
     users::{User, UserSettings, UserStore},
 };
 use uuid::Uuid;
@@ -19,6 +22,7 @@ struct T {
     router: Router,
     key: Key,
     users: Arc<UserStore>,
+    bank: BankStore,
 }
 async fn appx() -> T {
     let dir = std::env::temp_dir().join(format!(
@@ -30,11 +34,13 @@ async fn appx() -> T {
     ));
     let users = Arc::new(UserStore::load(&dir).await.unwrap());
     let bank = two_seven::bank::BankStore::load(&dir).await.unwrap();
+    let blitz = two_seven::blitz::BlitzStore::load(&dir).await.unwrap();
     let tables = two_seven::store::TableStore::load(&dir).await.unwrap();
     let key = Key::generate();
     let state = app::AppState {
         users: users.clone(),
-        bank,
+        bank: bank.clone(),
+        blitz,
         tables,
         webauthn: Arc::new(app::build_webauthn().unwrap()),
         key: key.clone(),
@@ -44,6 +50,7 @@ async fn appx() -> T {
         router: app::router(state),
         key,
         users,
+        bank,
     }
 }
 fn cookie(key: &Key, id: Uuid) -> String {
@@ -106,6 +113,89 @@ async fn signed_home() {
         .unwrap();
     let b = to_bytes(r.into_body(), usize::MAX).await.unwrap();
     assert!(String::from_utf8_lossy(&b).contains("Welcome, Alice"));
+}
+
+#[tokio::test]
+async fn hand_blitz_start_charges_buy_in_and_correct_answer_pays() {
+    let t = appx().await;
+    let id = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id,
+            username: "blitz".into(),
+            display_name: "Blitz".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, id);
+    let start = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/hand-blitz/start")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"difficulty":"easy"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(start.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(start.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let run_id = body["run"]["id"].as_str().unwrap();
+    let round_id = body["run"]["round"]["id"].as_str().unwrap();
+
+    let board = body["run"]["round"]["board"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap().parse::<Card>().unwrap())
+        .collect::<Vec<_>>();
+    let hands = body["run"]["round"]["hands"].as_array().unwrap();
+    let ranks = [0usize, 1].map(|index| {
+        let mut cards = hands[index]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|value| value.as_str().unwrap().parse::<Card>().unwrap())
+            .collect::<Vec<_>>();
+        cards.extend(board.clone());
+        evaluate(&cards).rank
+    });
+    let winner = usize::from(ranks[1] > ranks[0]);
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/hand-blitz/answer")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"run_id":"{run_id}","round_id":"{round_id}","choice":{winner}}}"#
+                )))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let answer: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(answer["correct"].as_bool().unwrap());
+    let account = t.bank.account(AccountOwner::User(id)).await.unwrap();
+    assert!(account.entries.iter().any(|entry| {
+        matches!(entry.kind, LedgerKind::HandBlitzBuyIn { .. }) && entry.delta == -100
+    }));
+    assert!(account.entries.iter().any(|entry| {
+        matches!(entry.kind, LedgerKind::HandBlitzWin { .. }) && entry.delta == 33
+    }));
 }
 
 #[tokio::test]
