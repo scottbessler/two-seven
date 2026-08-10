@@ -238,8 +238,8 @@ fn card_face(rank: &str, suit: &str) -> String {
                 _ => "♔",
             };
             format!(
-                r#"<span class="card-art card-art-{}"><b>{}</b><span class="court-piece">{}</span><i>{}</i><b class="court-bottom">{}</b></span>"#,
-                display, display, piece, pip, display
+                r#"<span class="card-art card-art-{}"><span class="court-piece">{}</span><i>{}</i></span>"#,
+                display, piece, pip
             )
         }
         _ => format!(

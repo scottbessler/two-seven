@@ -33,7 +33,7 @@ export function Card({ value, card, empty = false, hidden = false }) {
       ${court
         ? court === "A"
           ? html`<span class="card-art card-art-A"><span class="ace-badge"><i>${face.suit}</i></span></span>`
-          : html`<span class=${`card-art card-art-${court}`}><b>${court}</b><span class="court-piece">${courtPiece}</span><i>${face.suit}</i><b class="court-bottom">${court}</b></span>`
+          : html`<span class=${`card-art card-art-${court}`}><span class="court-piece">${courtPiece}</span><i>${face.suit}</i></span>`
         : html`<span class=${`pip-grid pip-grid-${face.numeric}`}>${PIP_POSITIONS[face.numeric].map((position) => html`<i class=${`card-pip-${position}`}>${face.suit}</i>`)}</span>`}
     </span>
     <span class="card-corner card-corner-bottom"><b>${face.rank}</b><i>${face.suit}</i></span>

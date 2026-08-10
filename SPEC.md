@@ -254,6 +254,9 @@ Mark each milestone done here as it lands.
 - **V5** No-debt tables never allow an account below zero.
 - **V6** Every reachable hand state has at least one legal action for the player
   on turn, and the engine rejects any action not in that set.
+- **V7** The shared card face renders all 52 cards with bold corner ranks,
+  undecorated centered aces, and unhatched chess-piece portraits for J/Q/K in
+  both SSR and island views; desktop and mobile snapshots cover the full deck.
 
 ## §B Bug log
 
@@ -285,3 +288,4 @@ Mark each milestone done here as it lands.
 - Sub-dollar stake display and hidden create-form fields were incorrect; fixed with cent formatting and explicit hidden-label CSS.
 - Deferred departures could cash out tournament chips, and out-of-turn departure folds could bypass engine turn bookkeeping; fixed with mode-aware forfeiture and an engine-level arbitrary-seat fold transition.
 - Bot seating submitted an empty kind from browser option elements, hid 400 responses, allowed human-seat replacement, and ignored cash no-debt rules; fixed with explicit option values, visible table errors, occupant guards, and propagated no-debt enforcement.
+- Card-face refinements stacked new ace and court treatments over older pseudo-element artwork, while a later rule reset corner ranks to medium weight; fixed by consolidating the shared styles and enforcing V7 in browser snapshots.

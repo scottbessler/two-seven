@@ -7,6 +7,24 @@ test.describe("card test page", () => {
     await expect(page.locator(".pip-grid-10")).toHaveCount(4);
     await expect(page.locator(".card-art-A")).toHaveCount(4);
     await expect(page.locator(".card-art-K")).toHaveCount(4);
+    await expect(page.locator(".court-piece")).toHaveCount(12);
+    const cardFaceStyles = await page.evaluate(() => {
+      const corner = document.querySelector(".card-corner b");
+      const ace = document.querySelector(".card-art-A");
+      const court = document.querySelector(".card-art-K");
+      return {
+        cornerWeight: corner ? Number(getComputedStyle(corner).fontWeight) : 0,
+        aceBefore: ace ? getComputedStyle(ace, "::before").display : "missing",
+        aceAfter: ace ? getComputedStyle(ace, "::after").display : "missing",
+        courtBefore: court ? getComputedStyle(court, "::before").display : "missing",
+        courtAfter: court ? getComputedStyle(court, "::after").display : "missing",
+      };
+    });
+    expect(cardFaceStyles.cornerWeight).toBeGreaterThanOrEqual(700);
+    expect(cardFaceStyles.aceBefore).toBe("none");
+    expect(cardFaceStyles.aceAfter).toBe("none");
+    expect(cardFaceStyles.courtBefore).toBe("none");
+    expect(cardFaceStyles.courtAfter).toBe("none");
     await expect(page).toHaveScreenshot("card-test.png", { fullPage: true });
   });
 });
