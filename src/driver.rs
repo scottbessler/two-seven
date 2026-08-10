@@ -369,8 +369,8 @@ mod tests {
             },
             TableMode::Cash { no_debt: false },
             2,
-            10,
             100,
+            1_000,
         );
         table.seats[0] = Seat {
             occupant: SeatOccupant::Bot {
@@ -384,11 +384,11 @@ mod tests {
             occupant: SeatOccupant::Bot {
                 kind: BotKind::Fish,
             },
-            stack: 10,
+            stack: 100,
             sitting_out: false,
             pending_departure: false,
         };
-        bank.buy_in(AccountOwner::Bot(BotKind::Fish), table.id, 10, false)
+        bank.buy_in(AccountOwner::Bot(BotKind::Fish), table.id, 100, false)
             .await
             .unwrap();
         let id = tables.insert(table).await.unwrap();
@@ -397,14 +397,14 @@ mod tests {
             .unwrap();
         let table = tables.get(id).await.unwrap();
         let table = table.lock().await;
-        assert_eq!(table.seats[0].stack, 10);
+        assert_eq!(table.seats[0].stack, 100);
         assert!(
             bank.account(AccountOwner::Bot(BotKind::Rock))
                 .await
                 .unwrap()
                 .entries
                 .iter()
-                .any(|entry| entry.delta == -10)
+                .any(|entry| entry.delta == -100)
         );
     }
 

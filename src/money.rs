@@ -2,6 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub type Cents = i64;
+pub const MIN_GAME_AMOUNT: Cents = 100;
+pub const MAX_GAME_ENTRY: Cents = 1_000_000;
+
+pub fn valid_game_amount(value: Cents) -> bool {
+    (MIN_GAME_AMOUNT..=MAX_GAME_ENTRY).contains(&value)
+}
+
+pub fn valid_optional_game_amount(value: Cents) -> bool {
+    value == 0 || valid_game_amount(value)
+}
 
 pub fn format_cents(value: Cents) -> String {
     let sign = if value < 0 { "-" } else { "" };
@@ -34,5 +44,15 @@ mod tests {
     fn formats() {
         assert_eq!(format_cents(123456), "$1,234.56");
         assert_eq!(format_cents(-5), "-$0.05");
+    }
+
+    #[test]
+    fn game_amounts_stay_between_one_and_ten_thousand_dollars() {
+        assert!(!valid_game_amount(99));
+        assert!(valid_game_amount(100));
+        assert!(valid_game_amount(1_000_000));
+        assert!(!valid_game_amount(1_000_001));
+        assert!(valid_optional_game_amount(0));
+        assert!(!valid_optional_game_amount(50));
     }
 }

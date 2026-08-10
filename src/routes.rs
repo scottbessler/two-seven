@@ -5,6 +5,7 @@ use crate::{
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
+    money::{MAX_GAME_ENTRY, MIN_GAME_AMOUNT, valid_game_amount, valid_optional_game_amount},
     render,
     session::{AuthUser, MaybeUser},
     table::{
@@ -74,16 +75,42 @@ pub struct CreateTournament {
     pub payout_percentages: Vec<u8>,
 }
 
+fn valid_stakes(stakes: Stakes) -> bool {
+    match stakes {
+        Stakes::NoLimit {
+            small_blind,
+            big_blind,
+        } => {
+            valid_game_amount(small_blind)
+                && valid_game_amount(big_blind)
+                && big_blind >= small_blind
+        }
+        Stakes::Limit { small_bet, big_bet } => {
+            small_bet / 2 >= MIN_GAME_AMOUNT
+                && valid_game_amount(small_bet)
+                && valid_game_amount(big_bet)
+                && big_bet >= small_bet
+        }
+    }
+}
+
 pub async fn create_tournament(
     AuthUser(_user): AuthUser,
     State(s): State<AppState>,
     Json(input): Json<CreateTournament>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if input.buy_in <= 0
+    if !valid_game_amount(input.buy_in)
         || input.starting_chips <= 0
         || input.seat_count < 2
         || input.levels.is_empty()
         || input.payout_percentages.is_empty()
+        || input.levels.iter().any(|level| {
+            !valid_game_amount(level.small_blind)
+                || !valid_game_amount(level.big_blind)
+                || level.big_blind < level.small_blind
+                || !valid_optional_game_amount(level.ante)
+                || level.hands == 0
+        })
         || input
             .payout_percentages
             .iter()
@@ -218,8 +245,8 @@ pub async fn blackjack_start(
     State(s): State<AppState>,
     Json(input): Json<BlackjackStartRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if input.bet <= 0 {
-        return Err(AppError::bad_request("bet must be positive"));
+    if !valid_game_amount(input.bet) {
+        return Err(AppError::bad_request("bet must be between $1 and $10,000"));
     }
     let id = Uuid::new_v4();
     s.bank
@@ -368,9 +395,9 @@ pub async fn blackjack_insurance(
         .await
         .map_err(blackjack_error)?;
     let wager = before.bet / 2;
-    if wager <= 0 {
+    if wager < MIN_GAME_AMOUNT {
         return Err(AppError::bad_request(
-            "insurance requires a bet of at least two cents",
+            "insurance requires a bet of at least $2",
         ));
     }
     s.bank
@@ -508,6 +535,17 @@ pub async fn create_table(
     State(s): State<AppState>,
     Json(input): Json<CreateTable>,
 ) -> Result<impl IntoResponse, AppError> {
+    let min_buy_in = input.min_buy_in.unwrap_or(MIN_GAME_AMOUNT);
+    let max_buy_in = input.max_buy_in.unwrap_or(10_000);
+    if !valid_stakes(input.stakes)
+        || !valid_game_amount(min_buy_in)
+        || !valid_game_amount(max_buy_in)
+        || min_buy_in > max_buy_in
+    {
+        return Err(AppError::bad_request(
+            "stakes and buy-ins must be between $1 and $10,000",
+        ));
+    }
     let mode = TableMode::Cash {
         no_debt: input.no_debt.unwrap_or(false),
     };
@@ -516,8 +554,8 @@ pub async fn create_table(
         input.stakes,
         mode,
         input.max_seats.unwrap_or(9).clamp(2, 9),
-        input.min_buy_in.unwrap_or(100),
-        input.max_buy_in.unwrap_or(10_000),
+        min_buy_in,
+        max_buy_in,
     );
     let id = s.tables.insert(table).await.map_err(AppError::internal)?;
     Ok(Json(
@@ -925,7 +963,7 @@ pub async fn rebuy_table(
             ));
         }
     }
-    if input.amount <= 0 || input.amount > max {
+    if input.amount < MIN_GAME_AMOUNT || input.amount > max || input.amount > MAX_GAME_ENTRY {
         return Err(AppError::bad_request("invalid rebuy amount"));
     }
     s.bank

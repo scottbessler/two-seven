@@ -74,7 +74,7 @@ function App() {
 
   return html`<section class="blitz-table blackjack-table">
     <form id="blackjack-form" onSubmit=${start}>
-      <label>Bet ($)<input name="bet" type="number" min="0.01" step="0.01" value="25.00" /></label>
+      <label>Bet ($)<input name="bet" type="number" min="1" max="10000" step="0.01" value="25.00" /></label>
       <button disabled=${busy}>Deal</button>
     </form>
     ${game && html`<div class="blitz-score">

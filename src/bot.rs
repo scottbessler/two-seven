@@ -236,6 +236,10 @@ mod tests {
             current_player: Some(0),
             legal_actions: None,
             summary: None,
+            players: Vec::new(),
+            events: Vec::new(),
+            last_bet: 0,
+            to_call: 0,
         };
         let legal = LegalActions {
             seat: 0,

@@ -4,6 +4,7 @@ const BANK_JS: &str = include_str!("../public/bank.js");
 const BLACKJACK_JS: &str = include_str!("../public/blackjack.js");
 const BLITZ_JS: &str = include_str!("../public/blitz.js");
 const CARD_JS: &str = include_str!("../public/card.js");
+const LOBBY_JS: &str = include_str!("../public/lobby.js");
 
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
@@ -25,7 +26,6 @@ fn table_island_has_live_state_and_action_contracts() {
         "Showdown",
         "· bot",
         "Buy in for seat",
-        "table-pot",
         "shared bot account",
         "award-list",
         "waiting-status",
@@ -44,6 +44,13 @@ fn table_island_has_live_state_and_action_contracts() {
         "hand.legal_actions.to_call",
         "clampWager",
         "state.tournament.started",
+        "Hand log",
+        "street_contribution",
+        "SmallBlind",
+        "BigBlind",
+        "Current bet",
+        "acting-role",
+        "seat-wager",
     ] {
         assert!(
             TABLE_JS.contains(literal),
@@ -66,6 +73,11 @@ fn table_css_is_mobile_poker_layout() {
         ".table-center",
         ".empty-seat",
         ".table-pot",
+        ".table-metrics",
+        ".game-log",
+        ".seat.acting",
+        ".seat.folded",
+        ".seat-wager",
         ".bank-widget[aria-expanded=true]",
         "position:absolute",
         "label[hidden]{display:none}",
@@ -148,4 +160,22 @@ fn blackjack_island_has_game_contracts() {
             "missing blackjack.js contract: {literal}"
         );
     }
+}
+
+#[test]
+fn setup_uses_six_bounded_presets() {
+    for preset in [
+        "cash-friendly",
+        "cash-standard",
+        "cash-limit",
+        "tournament-quick",
+        "tournament-classic",
+        "tournament-deep",
+    ] {
+        assert!(LOBBY_JS.contains(preset), "missing setup preset: {preset}");
+    }
+    assert!(LOBBY_JS.contains("max_buy_in: 200_000"));
+    assert!(LOBBY_JS.contains("buy_in: 20_000"));
+    assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
+    assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
 }

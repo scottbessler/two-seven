@@ -1,7 +1,7 @@
 use crate::{
     bank::Account,
     cards::Card,
-    holdem::{Hand, HandSummary, LegalActions},
+    holdem::{Hand, HandEvent, HandSummary, LegalActions},
     money::Cents,
     table::{Seat, SeatOccupant, Table},
 };
@@ -28,6 +28,20 @@ pub struct HandView {
     pub current_player: Option<usize>,
     pub legal_actions: Option<LegalActions>,
     pub summary: Option<HandSummary>,
+    pub players: Vec<HandPlayerView>,
+    pub events: Vec<HandEvent>,
+    pub last_bet: Cents,
+    pub to_call: Cents,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct HandPlayerView {
+    pub seat: usize,
+    pub contribution: Cents,
+    pub street_contribution: Cents,
+    pub folded: bool,
+    pub all_in: bool,
+    pub acted: bool,
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct TableView {
@@ -123,6 +137,28 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             .filter(|seat| hand.current_player == Some(*seat))
             .and_then(|_| hand.legal_actions()),
         summary: hand.summary.clone(),
+        players: hand
+            .players
+            .iter()
+            .map(|player| HandPlayerView {
+                seat: player.seat,
+                contribution: player.contribution,
+                street_contribution: player.street_contribution,
+                folded: player.folded,
+                all_in: player.all_in,
+                acted: player.acted,
+            })
+            .collect(),
+        events: hand.events.clone(),
+        last_bet: hand.last_bet,
+        to_call: hand.current_player.map_or(0, |seat| {
+            hand.players
+                .iter()
+                .find(|player| player.seat == seat)
+                .map_or(0, |player| {
+                    hand.last_bet.saturating_sub(player.street_contribution)
+                })
+        }),
     }
 }
 

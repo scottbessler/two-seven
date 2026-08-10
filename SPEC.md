@@ -57,6 +57,8 @@ Environment variables: `PORT` (8080), `DATA_PATH` (`data`), `RP_ID`,
   2000 cents from the bank account to the seat stack.
 - Tournament chips are **not** money: a tournament seat has a chip stack that is
   unrelated to the bank; only the buy-in and the prizes touch the bank.
+- ∀ positive user-configured stake, blind, ante, buy-in, entry fee, or wager ≥ $1.00.
+  Zero ante remains valid.
 
 ## 4. Bank
 
@@ -72,7 +74,7 @@ Rules
 
 - A new user's account starts at **$0**. Bot accounts are created lazily, also at $0.
 - A normal buy-in may take the balance negative — that is the "going into debt"
-  path and it is the default.
+  path and it is the default; each gameplay buy-in, entry, or wager ≤ $10,000.
 - **No-debt tables** (`no_debt: true`, available for both limit and no-limit):
   a player may only sit down if their balance is `> 0`, and the buy-in must be
   `<= balance`. Rebuys at the table obey the same rule.
@@ -259,6 +261,19 @@ Mark each milestone done here as it lands.
   both SSR and island views; desktop and mobile snapshots cover the full deck.
 - **V8** Every `/card-test` suit row keeps the in-game card dimensions while
   wrapping all 13 cards within its visible width; no suit row scrolls horizontally.
+- **V9** ∀ positive configured stake, blind, ante, buy-in, entry fee, or wager ≥ 100 cents.
+- **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 1,000,000 cents;
+  cumulative account debt remains unbounded.
+- **V11** `TableView` exposes redacted action events + per-seat hand state; UI shows
+  current actor, dealer, blinds, street wager, folded/all-in state, and recent log.
+
+## §T Build tasks
+
+id|status|task|cites
+T1|x|enforce $1 floor + $10k per-entry ceiling|V1,V2,V5,V9,V10
+T2|x|replace setup forms with 3 cash + 3 tournament presets|V9
+T3|x|add structured hand events + per-seat hand state|V3,V4,V6,V11
+T4|x|render game log + table cues|V7,V11
 
 ## §B Bug log
 

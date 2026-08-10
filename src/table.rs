@@ -104,14 +104,14 @@ mod bot_kind_tests {
     }
 
     #[test]
-    fn stakes_display_preserves_sub_dollar_cents() {
+    fn stakes_display_formats_whole_dollar_stakes() {
         assert_eq!(
             Stakes::NoLimit {
-                small_blind: 25,
-                big_blind: 50,
+                small_blind: 100,
+                big_blind: 200,
             }
             .to_string(),
-            "$0.25/$0.50 no-limit"
+            "$1.00/$2.00 no-limit"
         );
     }
 }

@@ -29,10 +29,16 @@ async function responseError(response) {
   return document.querySelector("p")?.textContent?.trim() || text || `Request failed (${response.status})`;
 }
 
-function Seat({ seat, button, openSeat, total }) {
+function blindRole(events, seat) {
+  if (events.some((event) => event.seat === seat && event.kind === "SmallBlind")) return "SB";
+  if (events.some((event) => event.seat === seat && event.kind === "BigBlind")) return "BB";
+  return null;
+}
+
+function Seat({ seat, player, events, current, button, openSeat, total }) {
   const angle = -Math.PI / 2 + (seat.index * 2 * Math.PI) / total;
   const position = {
-    left: `${50 + 38 * Math.cos(angle)}%`,
+    left: `${50 + 44 * Math.cos(angle)}%`,
     top: `${50 + 34 * Math.sin(angle)}%`,
     transform: "translate(-50%, -50%)",
   };
@@ -41,11 +47,16 @@ function Seat({ seat, button, openSeat, total }) {
   }
   const label = seat.display_name || seat.occupant;
   const shared = seat.occupant !== "human" && seat.occupant !== "empty";
-  return html`<article class="seat ${seat.index === button ? "dealer" : ""}" style=${position}>
+  const role = blindRole(events, seat.index);
+  const classes = ["seat", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in"].filter(Boolean).join(" ");
+  return html`<article class=${classes} style=${position}>
     <strong>${label} <span class="coin" title=${shared ? "shared bot account" : "bank details"}>🪙</span></strong>
-    <span>Seat ${seat.index}${shared ? " · bot" : ""}</span>
+    <span class="seat-meta">Seat ${seat.index}${shared ? " · bot" : ""}${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}</span>
     <b>${cents(seat.stack)}</b>
     ${seat.bank_balance != null && html`<small class="seat-bank" title=${seat.bank_entries.map((entry) => entry.memo).join(", ")}>${cents(seat.bank_balance)}</small>`}
+    ${player?.street_contribution > 0 && html`<span class="seat-wager">${cents(player.street_contribution)}</span>`}
+    ${player?.folded && html`<span class="seat-state">Folded</span>`}
+    ${player?.all_in && html`<span class="seat-state">All in</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
 }
@@ -97,6 +108,29 @@ function TournamentPanel({ tournament }) {
   return html`<section class="card tournament-panel"><h2>Tournament</h2><p>Level ${tournament.level} · Blinds ${cents(tournament.small_blind)}/${cents(tournament.big_blind)} · Ante ${cents(tournament.ante)}</p><p>Hands at level: ${tournament.hands_at_level}/${tournament.hands_per_level}</p>${tournament.next_level && html`<p>Next level ${tournament.next_level}: ${cents(tournament.next_small_blind)}/${cents(tournament.next_big_blind)} · Ante ${cents(tournament.next_ante)}</p>`}<p>${tournament.finish_order.length ? `Finish order: ${tournament.finish_order.map((seat) => `Seat ${seat}`).join(", ")}` : "No eliminations yet"}</p></section>`;
 }
 
+function eventLabel(event, seats) {
+  const seat = event.seat == null ? null : seats.find((candidate) => candidate.index === event.seat);
+  const name = seat?.display_name || seat?.occupant || `Seat ${event.seat}`;
+  const amount = event.amount > 0 ? ` ${cents(event.amount)}` : "";
+  return {
+    Ante: `${name} posts ante${amount}`,
+    SmallBlind: `${name} posts small blind${amount}`,
+    BigBlind: `${name} posts big blind${amount}`,
+    Fold: `${name} folds`,
+    Check: `${name} checks`,
+    Call: `${name} calls${amount}`,
+    Bet: `${name} bets${amount}`,
+    Raise: `${name} raises${amount}`,
+    AllIn: `${name} is all in${amount}`,
+    Deal: `${streetName(event.street)} dealt`,
+    Award: `${name} wins${amount}`,
+  }[event.kind] || event.kind;
+}
+
+function GameLog({ events, seats }) {
+  return html`<section class="game-log" aria-live="polite"><h2>Hand log</h2><ol>${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
+}
+
 function TableApp() {
   const [state, setState] = useState(null);
   const [joinSeat, setJoinSeat] = useState(null);
@@ -110,20 +144,22 @@ function TableApp() {
   }, []);
   if (!state) return html`<p class="loading">Loading table…</p>`;
   const hand = state.hand;
+  const handEvents = hand?.events || state.last_hand?.events || [];
   const current = hand?.current_player == null ? null : state.seats.find((seat) => seat.index === hand.current_player);
   const currentName = current?.display_name || current?.occupant || "—";
   return html`<div class="table-shell">
     <div class="table-top"><h1>${state.name}</h1></div>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="felt" aria-label="Poker table">
-      <div class="table-center">${hand ? html`<p class="table-pot">Pot ${cents(hand.pot)}</p><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${streetName(hand.street)} · ${currentName} to act · ${cents(hand.legal_actions?.to_call || 0)} to call</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
-      <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
+      <div class="table-center">${hand ? html`<div class="table-metrics"><span><small>Pot</small><b>${cents(hand.pot)}</b></span><span><small>Current bet</small><b>${cents(hand.last_bet)}</b></span></div><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${streetName(hand.street)} · ${currentName} to act · ${cents(hand.to_call)} to call</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
+      <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || []} current=${hand?.current_player === seat.index} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
     </section>
+    ${handEvents.length > 0 && html`<${GameLog} events=${handEvents} seats=${state.seats} />`}
     ${hand && html`<section class="hand-info"><div class="hole-cards">${(hand.your_hole_cards || []).map((card) => html`<${Card} card=${card} />`)}</div><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     <${LastHand} summary=${state.last_hand} />
-    ${joinSeat != null && state.viewer_seat == null && !state.tournament && html`<section class="card join-card"><h2>Buy in for seat ${joinSeat}</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><input name="buy_in" type="number" min="0.01" step="0.01" placeholder="Buy-in ($)" required /><input type="hidden" name="seat" value=${joinSeat} /><button>Join seat ${joinSeat}</button></form></section>`}
+    ${joinSeat != null && state.viewer_seat == null && !state.tournament && html`<section class="card join-card"><h2>Buy in for seat ${joinSeat}</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><input name="buy_in" type="number" min="1" max="10000" step="0.01" placeholder="Buy-in ($)" required /><input type="hidden" name="seat" value=${joinSeat} /><button>Join seat ${joinSeat}</button></form></section>`}
     <p id="table-error" class="error" role="alert"></p>
-    ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="0.01" step="0.01" required /></label><button>Register</button></form></section>`}
+    ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="1" max="10000" step="0.01" required /></label><button>Register</button></form></section>`}
     ${(!state.tournament || !state.tournament.started) && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}
     <nav class="table-controls"><button onClick=${() => fetch(`/tables/${tableId}/sit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sitting_out: true }) }).then(refresh)}>Sit out</button><button onClick=${() => fetch(`/tables/${tableId}/leave`, { method: "POST" }).then(refresh)}>Leave</button></nav>
   </div>`;

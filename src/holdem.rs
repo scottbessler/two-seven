@@ -73,6 +73,31 @@ pub struct HandSummary {
     pub awards: Vec<Award>,
     pub contributions: BTreeMap<usize, Cents>,
     pub revealed_hole_cards: Vec<(usize, Vec<Card>)>,
+    #[serde(default)]
+    pub events: Vec<HandEvent>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum HandEventKind {
+    Ante,
+    SmallBlind,
+    BigBlind,
+    Fold,
+    Check,
+    Call,
+    Bet,
+    Raise,
+    AllIn,
+    Deal,
+    Award,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct HandEvent {
+    pub street: Street,
+    pub seat: Option<usize>,
+    pub kind: HandEventKind,
+    pub amount: Cents,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -100,6 +125,8 @@ pub struct Hand {
     pub ante: Cents,
     pub complete: bool,
     pub summary: Option<HandSummary>,
+    #[serde(default)]
+    pub events: Vec<HandEvent>,
 }
 
 impl Hand {
@@ -165,6 +192,7 @@ impl Hand {
             ante,
             complete: false,
             summary: None,
+            events: Vec::new(),
         };
         if ante > 0 {
             let seats = hand
@@ -173,7 +201,13 @@ impl Hand {
                 .map(|player| player.seat)
                 .collect::<Vec<_>>();
             for seat in seats {
-                hand.put_chips(seat, ante);
+                let amount = hand.put_chips(seat, ante);
+                hand.events.push(HandEvent {
+                    street: Street::Preflop,
+                    seat: Some(seat),
+                    kind: HandEventKind::Ante,
+                    amount,
+                });
             }
         }
         let (small_blind, big_blind) = stakes.blinds();
@@ -183,8 +217,20 @@ impl Hand {
             hand.next_live(button)
         };
         let bb = hand.next_live(sb);
-        hand.put_chips(sb, small_blind);
-        hand.put_chips(bb, big_blind);
+        let small_blind = hand.put_chips(sb, small_blind);
+        hand.events.push(HandEvent {
+            street: Street::Preflop,
+            seat: Some(sb),
+            kind: HandEventKind::SmallBlind,
+            amount: small_blind,
+        });
+        let big_blind = hand.put_chips(bb, big_blind);
+        hand.events.push(HandEvent {
+            street: Street::Preflop,
+            seat: Some(bb),
+            kind: HandEventKind::BigBlind,
+            amount: big_blind,
+        });
         hand.last_bet = hand.players[hand.player_index(bb)].street_contribution;
         hand.current_player = Some(if hand.players.len() == 2 {
             sb
@@ -327,6 +373,7 @@ impl Hand {
         }
         let seat = self.current_player.ok_or("no player to act")?;
         let legal = self.legal_actions().ok_or("no legal action")?;
+        let original_action = action;
         let action = if matches!(action, Action::AllIn) {
             let stack = self.players[self.player_index(seat)].stack;
             if legal.to_call >= stack {
@@ -345,6 +392,25 @@ impl Hand {
             .any(|candidate| std::mem::discriminant(candidate) == std::mem::discriminant(&action))
         {
             return Err("action is not legal".into());
+        }
+        let event = match original_action {
+            Action::Fold => None,
+            Action::Check => Some((HandEventKind::Check, 0)),
+            Action::Call => Some((HandEventKind::Call, legal.to_call)),
+            Action::Bet { amount } => Some((HandEventKind::Bet, amount)),
+            Action::Raise { amount } => Some((HandEventKind::Raise, amount)),
+            Action::AllIn => Some((
+                HandEventKind::AllIn,
+                self.players[self.player_index(seat)].stack,
+            )),
+        };
+        if let Some((kind, amount)) = event {
+            self.events.push(HandEvent {
+                street: self.street,
+                seat: Some(seat),
+                kind,
+                amount,
+            });
         }
         match action {
             Action::Fold => {
@@ -382,6 +448,12 @@ impl Hand {
         if self.players[i].folded {
             return Err("player has already folded".into());
         }
+        self.events.push(HandEvent {
+            street: self.street,
+            seat: Some(seat),
+            kind: HandEventKind::Fold,
+            amount: 0,
+        });
         let was_current = self.current_player == Some(seat);
         self.players[i].folded = true;
         if self.live_count() == 1 {
@@ -477,6 +549,12 @@ impl Hand {
             }
             _ => return,
         }
+        self.events.push(HandEvent {
+            street: self.street,
+            seat: None,
+            kind: HandEventKind::Deal,
+            amount: 0,
+        });
         self.last_bet = 0;
         self.last_raise = match self.stakes {
             Stakes::Limit { small_bet, big_bet } => {
@@ -546,6 +624,12 @@ impl Hand {
         let amount = self.total_contributions();
         let i = self.player_index(winner);
         self.players[i].stack += amount;
+        self.events.push(HandEvent {
+            street: Street::Complete,
+            seat: Some(winner),
+            kind: HandEventKind::Award,
+            amount,
+        });
         self.summary = Some(HandSummary {
             board: self.board.clone(),
             results: Vec::new(),
@@ -559,6 +643,7 @@ impl Hand {
                 .map(|player| (player.seat, player.contribution))
                 .collect(),
             revealed_hole_cards: Vec::new(),
+            events: self.events.clone(),
         });
         self.complete = true;
         self.street = Street::Complete;
@@ -654,6 +739,14 @@ impl Hand {
                 self.players[i].stack += amount;
             }
         }
+        for award in &awards {
+            self.events.push(HandEvent {
+                street: Street::Showdown,
+                seat: Some(award.seat),
+                kind: HandEventKind::Award,
+                amount: award.amount,
+            });
+        }
         self.summary = Some(HandSummary {
             board: self.board.clone(),
             results,
@@ -669,6 +762,7 @@ impl Hand {
                 .filter(|player| !player.folded)
                 .map(|player| (player.seat, player.hole_cards.clone()))
                 .collect(),
+            events: self.events.clone(),
         });
         self.complete = true;
         self.current_player = None;
@@ -705,6 +799,44 @@ mod tests {
         assert_eq!(h.players[0].contribution, 1);
         assert_eq!(h.players[1].contribution, 2);
         assert_eq!(h.current_player, Some(0));
+    }
+
+    #[test]
+    fn hand_events_track_blinds_actions_and_streets() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            91,
+        );
+        assert!(matches!(
+            hand.events.as_slice(),
+            [
+                HandEvent {
+                    kind: HandEventKind::SmallBlind,
+                    amount: 100,
+                    ..
+                },
+                HandEvent {
+                    kind: HandEventKind::BigBlind,
+                    amount: 200,
+                    ..
+                }
+            ]
+        ));
+        hand.apply_action(Action::Call).unwrap();
+        hand.apply_action(Action::Check).unwrap();
+        assert!(hand.events.iter().any(|event| {
+            event.kind == HandEventKind::Call && event.seat == Some(0) && event.amount == 100
+        }));
+        assert!(
+            hand.events
+                .iter()
+                .any(|event| { event.kind == HandEventKind::Deal && event.street == Street::Flop })
+        );
     }
     #[test]
     fn limit_offers_raise_and_rejects_wrong_size() {

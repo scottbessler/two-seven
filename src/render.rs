@@ -52,7 +52,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Create a table</a> · <a href="/tournaments/new">Create a tournament</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Start a game</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
                 escape(&name)
             ),
             "",
@@ -64,7 +64,7 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String 
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Start a game</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
             escape(name),
             lobby_table_list(tables, true)
         ),
@@ -73,17 +73,17 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String 
 }
 
 pub fn table_create() -> String {
-    layout(
-        "New table",
-        "<section class=\"card\"><h1>New table</h1><form id=\"create-table-form\"><label>Table name<input name=\"name\" required placeholder=\"Table name\"></label><label>Game<select name=\"limit\"><option value=\"no-limit\">No-limit</option><option value=\"limit\">Limit</option></select></label><div class=\"stakes-fields\"><label>Small blind ($)<input name=\"small_blind\" type=\"number\" min=\"0.01\" step=\"0.01\" value=\"1.00\"></label><label>Big blind ($)<input name=\"big_blind\" type=\"number\" min=\"0.02\" step=\"0.01\" value=\"2.00\"></label><label>Small bet ($)<input name=\"small_bet\" type=\"number\" min=\"0.01\" step=\"0.01\" value=\"2.00\"></label><label>Big bet ($)<input name=\"big_bet\" type=\"number\" min=\"0.02\" step=\"0.01\" value=\"4.00\"></label></div><label>Minimum buy-in ($)<input name=\"min_buy_in\" type=\"number\" min=\"0.01\" step=\"0.01\" value=\"10.00\"></label><label>Maximum buy-in ($)<input name=\"max_buy_in\" type=\"number\" min=\"0.01\" step=\"0.01\" value=\"100.00\"></label><label><input type=\"checkbox\" name=\"no_debt\"> No-debt table</label><button>Create table</button></form><p id=\"create-error\" class=\"error\"></p><script type=\"module\" src=\"/public/lobby.js\"></script></section>",
-        "",
-    )
+    game_create()
 }
 
 pub fn tournament_create() -> String {
+    game_create()
+}
+
+fn game_create() -> String {
     layout(
-        "New tournament",
-        r#"<section class="card"><h1>New sit-and-go</h1><form id="create-tournament-form"><label>Tournament name<input name="name" required placeholder="Tournament name"></label><label>Buy-in ($)<input name="buy_in" type="number" min="0.01" step="0.01" value="10.00"></label><label>Players<input name="seat_count" type="number" min="2" max="9" value="4"></label><label>Starting chips<input name="starting_chips" type="number" min="1" value="1000"></label><fieldset><legend>Blind schedule</legend><div id="levels"><label>Small blind ($)<input name="small_blind_1" type="number" step="0.01" value="0.10"></label><label>Big blind ($)<input name="big_blind_1" type="number" step="0.01" value="0.20"></label><label>Ante ($)<input name="ante_1" type="number" step="0.01" value="0"></label><label>Hands<input name="hands_1" type="number" min="1" value="10"></label><label>Small blind ($)<input name="small_blind_2" type="number" step="0.01" value="0.20"></label><label>Big blind ($)<input name="big_blind_2" type="number" step="0.01" value="0.40"></label><label>Ante ($)<input name="ante_2" type="number" step="0.01" value="0.05"></label><label>Hands<input name="hands_2" type="number" min="1" value="10"></label></div></fieldset><label>Payout percentages (comma-separated)<input name="payouts" value="65,35"></label><label><input type="checkbox" name="no_debt"> No-debt registration</label><button>Create tournament</button></form><p id="create-error" class="error"></p><script type="module" src="/public/lobby.js"></script></section>"#,
+        "Start a game",
+        r#"<section class="setup-shell"><h1>Start a game</h1><form id="quick-game-form"><label>Game name<input name="name" required placeholder="Friday night"></label><fieldset class="setup-options"><legend>Setup</legend><label class="setup-option"><input type="radio" name="preset" value="cash-friendly" checked><span><b>Friendly cash</b><small>$1/$2 no-limit · $50–$200 · 6 seats</small></span></label><label class="setup-option"><input type="radio" name="preset" value="cash-standard"><span><b>Standard cash</b><small>$5/$10 no-limit · $250–$1,000 · 6 seats</small></span></label><label class="setup-option"><input type="radio" name="preset" value="cash-limit"><span><b>Limit cash</b><small>$10/$20 blinds · $20/$40 limit · 6 seats</small></span></label><label class="setup-option"><input type="radio" name="preset" value="tournament-quick"><span><b>Quick sit-and-go</b><small>$10 entry · 4 players · winner takes all</small></span></label><label class="setup-option"><input type="radio" name="preset" value="tournament-classic"><span><b>Classic sit-and-go</b><small>$50 entry · 6 players · top 2 paid</small></span></label><label class="setup-option"><input type="radio" name="preset" value="tournament-deep"><span><b>Deep-stack tournament</b><small>$200 entry · 9 players · top 3 paid</small></span></label></fieldset><label class="setup-debt"><input type="checkbox" name="no_debt"> Require available balance</label><button>Create game</button></form><p id="create-error" class="error" role="alert"></p><script type="module" src="/public/lobby.js"></script></section>"#,
         "",
     )
 }
@@ -125,7 +125,7 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
 pub fn blackjack() -> String {
     layout(
         "Blackjack",
-        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-menu"><form id="blackjack-form"><label>Bet ($)<input name="bet" type="number" min="0.01" step="0.01" value="25.00"></label><button>Deal</button></form></section></div></section>"#,
+        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-menu"><form id="blackjack-form"><label>Bet ($)<input name="bet" type="number" min="1" max="10000" step="0.01" value="25.00"></label><button>Deal</button></form></section></div></section>"#,
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/blackjack.js")
@@ -345,7 +345,7 @@ pub fn lobby(tables: &[crate::view::LobbyTableView]) -> String {
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Create a cash table</a> · <a href=\"/tournaments/new\">Create a tournament</a></p></section>",
+            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
             lobby_table_list(tables, false)
         ),
         "",

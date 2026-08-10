@@ -1,4 +1,7 @@
-use crate::{money::Cents, table::BotKind};
+use crate::{
+    money::{Cents, valid_game_amount},
+    table::BotKind,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -132,6 +135,9 @@ impl BankStore {
         amount: Cents,
         no_debt: bool,
     ) -> Result<Account, anyhow::Error> {
+        if !valid_game_amount(amount) {
+            return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
+        }
         let mut guard = self.inner.lock().await;
         if !guard.accounts.contains_key(&owner) {
             let now = Utc::now();
@@ -186,6 +192,9 @@ impl BankStore {
         run: Uuid,
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
+        if !valid_game_amount(amount) {
+            return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
+        }
         self.append(
             owner,
             LedgerKind::HandBlitzBuyIn { run },
@@ -214,6 +223,9 @@ impl BankStore {
         game: Uuid,
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
+        if !valid_game_amount(amount) {
+            return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
+        }
         self.append(
             owner,
             LedgerKind::BlackjackBet { game },
@@ -272,6 +284,24 @@ mod tests {
                 .all(|(i, e)| e.balance_after
                     == a.entries[..=i].iter().map(|x| x.delta).sum::<i64>())
         );
+    }
+
+    #[tokio::test]
+    async fn game_entry_cap_is_per_transaction_not_cumulative_debt() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        assert!(
+            bank.buy_in(owner.clone(), Uuid::new_v4(), 1_000_001, false)
+                .await
+                .is_err()
+        );
+        bank.buy_in(owner.clone(), Uuid::new_v4(), 1_000_000, false)
+            .await
+            .unwrap();
+        bank.buy_in(owner.clone(), Uuid::new_v4(), 1_000_000, false)
+            .await
+            .unwrap();
+        assert_eq!(bank.account(owner).await.unwrap().balance, -2_000_000);
     }
     fn tempfile_dir() -> PathBuf {
         std::env::temp_dir().join(format!("two-seven-bank-{}", Uuid::new_v4()))
