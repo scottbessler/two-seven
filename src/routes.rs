@@ -659,7 +659,25 @@ pub async fn rebuy_table(
         .buy_in(AccountOwner::User(user), id, input.amount, no_debt)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
-    let result = s.tables.update(id, |table| { let seat = table.seats.iter_mut().find(|seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)).ok_or_else(|| anyhow::anyhow!("you are not seated"))?; seat.stack += input.amount; Ok(()) }).await;
+    let result = s
+        .tables
+        .update(id, |table| {
+            if table.hand.is_some() {
+                return Err(anyhow::anyhow!(
+                    "rebuy is unavailable while a hand is in progress"
+                ));
+            }
+            let seat = table
+                .seats
+                .iter_mut()
+                .find(|seat| {
+                    matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
+                })
+                .ok_or_else(|| anyhow::anyhow!("you are not seated"))?;
+            seat.stack += input.amount;
+            Ok(())
+        })
+        .await;
     if let Err(error) = result {
         let _ = s
             .bank
