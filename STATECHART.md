@@ -59,14 +59,19 @@ stateDiagram-v2
     Complete --> [*] : hand machine fires StreetTransition
 ```
 
-The single source of truth is the guard `needs_action(player, last_bet)` — a
-player still owes an action while **any** of these hold:
+The single source of truth is the guard `needs_action(player, last_bet,
+contested)` — a player still owes an action while **any** of these hold:
 
-1. they have not voluntarily acted this street (`!acted`; blind and ante
-   posts do not count, which is what gives the big blind its preflop option);
+1. an incomplete all-in raise obliges them to call (`must_call`);
 2. their street contribution is below the current bet
    (`street_contribution < last_bet`);
-3. an incomplete all-in raise obliges them to call (`must_call`).
+3. the pot is still contested (at least two players can act) and they have
+   not voluntarily acted this street (`!acted`; blind and ante posts do not
+   count, which is what gives the big blind its preflop option).
+
+When everyone else is all in, the lone player with chips owes nothing once
+the bet is matched — no further wager could be called — so the board runs
+out to showdown without prompting them.
 
 The round is `Complete` exactly when no live, non-all-in player satisfies any
 of the above. Both actor rotation (`next_actor`) and round completion use the
@@ -81,7 +86,7 @@ check or a call.
 | `Call` | `to_call > 0`, stack > 0 | put `min(to_call, stack)` in the pot, mark acted |
 | `Bet` | no bet yet, wagers < 4, not `must_call` | set `last_bet`, count a wager, reopen action |
 | `Raise` | bet outstanding, wagers < 4, not `must_call` | raise `last_bet`; a **full** raise (≥ `last_raise`) reopens action, an incomplete all-in raise instead sets `must_call` on unmatched players |
-| `AllIn` | stack > 0 | normalized to `Call`, `Bet`, or `Raise` for the whole stack |
+| `AllIn` | stack > 0; if it exceeds a call, also wagers < 4 and not `must_call` | normalized to `Call`, `Bet`, or `Raise` for the whole stack |
 | `Fold` | always (also out of turn via `fold_seat`) | remove from hand; may complete the round or end the hand by fold win |
 
 Actions are validated (legality, then wager bounds) **before** any event is

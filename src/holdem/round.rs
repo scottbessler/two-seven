@@ -27,25 +27,43 @@ pub enum RoundStatus {
     Complete,
 }
 
-/// Guard: does this player still owe an action this street?
-pub fn needs_action(player: &Player, last_bet: Cents) -> bool {
+/// Guard: does this player still owe an action this street? `contested` is
+/// whether at least two players can still act — a lone player with chips
+/// (everyone else all in) owes nothing once any bet is matched, since no
+/// further wager could ever be called.
+pub fn needs_action(player: &Player, last_bet: Cents, contested: bool) -> bool {
     !player.folded
         && !player.all_in
-        && (!player.acted || player.must_call || player.street_contribution < last_bet)
+        && (player.must_call
+            || player.street_contribution < last_bet
+            || (contested && !player.acted))
 }
 
 impl Hand {
+    /// Whether at least two players can still act voluntarily.
+    pub(crate) fn contested(&self) -> bool {
+        self.players
+            .iter()
+            .filter(|player| !player.folded && !player.all_in)
+            .count()
+            >= 2
+    }
+
     /// Current state of the betting round machine.
     pub fn round_status(&self) -> RoundStatus {
-        match self
-            .current_player
-            .filter(|seat| needs_action(&self.players[self.player_index(*seat)], self.last_bet))
-        {
+        let contested = self.contested();
+        match self.current_player.filter(|seat| {
+            needs_action(
+                &self.players[self.player_index(*seat)],
+                self.last_bet,
+                contested,
+            )
+        }) {
             Some(seat) => RoundStatus::AwaitingAction { seat },
             None => self
                 .players
                 .iter()
-                .find(|player| needs_action(player, self.last_bet))
+                .find(|player| needs_action(player, self.last_bet, contested))
                 .map_or(RoundStatus::Complete, |player| {
                     RoundStatus::AwaitingAction { seat: player.seat }
                 }),
@@ -53,18 +71,20 @@ impl Hand {
     }
 
     pub(crate) fn round_complete(&self) -> bool {
+        let contested = self.contested();
         !self
             .players
             .iter()
-            .any(|player| needs_action(player, self.last_bet))
+            .any(|player| needs_action(player, self.last_bet, contested))
     }
 
     /// Next seat after `from` (clockwise) that still owes an action.
     pub(crate) fn next_actor(&self, from: usize) -> Option<usize> {
+        let contested = self.contested();
         let start = self.player_index(from);
         for n in 1..=self.players.len() {
             let player = &self.players[(start + n) % self.players.len()];
-            if needs_action(player, self.last_bet) {
+            if needs_action(player, self.last_bet, contested) {
                 return Some(player.seat);
             }
         }
@@ -114,7 +134,7 @@ impl Hand {
                 .is_some_and(|fixed| max <= to_call + fixed),
             Stakes::NoLimit { .. } => true,
         };
-        if max > 0 && all_in_allowed && (!player.must_call || max <= to_call) {
+        if max > 0 && all_in_allowed && (max <= to_call || (self.wagers < 4 && !player.must_call)) {
             actions.push(Action::AllIn);
         }
         Some(LegalActions {
@@ -468,6 +488,49 @@ mod tests {
         hand.apply_action(Action::Call).unwrap();
         assert!(hand.complete, "all-in showdown runs out the board");
         assert_eq!(hand.board.len(), 5);
+    }
+
+    #[test]
+    fn lone_player_with_chips_is_not_prompted_after_everyone_is_all_in() {
+        // seat 2 has everyone covered; once both opponents are all in and
+        // called, the board runs out without prompting seat 2 again.
+        let mut hand = no_limit(&[30, 30, 100], 41);
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::Call).unwrap();
+        assert!(
+            hand.complete,
+            "board should run out with no one left to act"
+        );
+        assert_eq!(hand.board.len(), 5);
+    }
+
+    #[test]
+    fn limit_all_in_respects_the_wager_cap() {
+        let mut hand = Hand::new(
+            Stakes::Limit {
+                small_bet: 2,
+                big_bet: 4,
+            },
+            &[100, 100, 7],
+            0,
+            51,
+        );
+        // Street is capped; seat 2 faces a call of 2 with 3 behind, so its
+        // all-in would exceed the call and add a fifth wager.
+        hand.wagers = 4;
+        hand.last_bet = 4;
+        hand.current_player = Some(2);
+        let index = hand.player_index(2);
+        hand.players[index].street_contribution = 2;
+        hand.players[index].stack = 3;
+        let legal = hand.legal_actions().unwrap();
+        assert_eq!(legal.to_call, 2);
+        assert!(
+            !legal.actions.contains(&Action::AllIn),
+            "all-in above a call must not add a fifth wager: {legal:?}"
+        );
+        assert!(hand.apply_action(Action::AllIn).is_err());
     }
 
     #[test]

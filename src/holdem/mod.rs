@@ -260,7 +260,11 @@ impl Hand {
             hand.next_live(bb)
         });
         if let Some(seat) = hand.current_player
-            && !round::needs_action(&hand.players[hand.player_index(seat)], hand.last_bet)
+            && !round::needs_action(
+                &hand.players[hand.player_index(seat)],
+                hand.last_bet,
+                hand.contested(),
+            )
         {
             hand.current_player = hand.next_actor(seat);
         }
