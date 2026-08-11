@@ -1,6 +1,6 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
-import { responseError, wholeDollarMoney } from "/public/shared.js";
+import { responseError, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", pip-grid-${value}, card-pip-${position}, card-art-${court}.
 
 const root = document.getElementById("table-app");
@@ -73,11 +73,11 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
   return html`<article class=${classes} style=${position}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
-      <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : wholeDollarMoney(seat.bank_balance)}</b><span>Stack ${wholeDollarMoney(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${wholeDollarMoney(entry.delta)}</small>`)}</span>
+      <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
-    <span class="seat-stack">${wholeDollarMoney(player?.stack ?? seat.stack)}</span>
+    <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
     <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
-    ${player?.street_contribution > 0 && html`<span class="seat-wager">${wholeDollarMoney(player.street_contribution)}</span>`}
+    ${player?.street_contribution > 0 && html`<span class="seat-wager">${money(player.street_contribution)}</span>`}
     ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} />`)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
@@ -116,21 +116,21 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
   return html`<div class="actions" aria-label="Actions">
     ${actions.has("Fold") && html`<button class="danger" onClick=${() => submit("fold")}>Fold</button>`}
     ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
-    ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${wholeDollarMoney(hand.legal_actions.to_call)}</button>`}
-    ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${option.reason} onClick=${() => submit(wagerKind, option.amount)}>${wholeDollarMoney(option.amount)}</button>`)}
+    ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${money(hand.legal_actions.to_call)}</button>`}
+    ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${option.reason} onClick=${() => submit(wagerKind, option.amount)}>${money(option.amount)}</button>`)}
     ${actions.has("AllIn") && html`<button class="wager-action all-in-action" onClick=${() => submit("all_in")}>All In</button>`}
   </div>`;
 }
 
 function TournamentPanel({ tournament }) {
   if (!tournament) return null;
-  return html`<section class="tournament-panel"><b>Level ${tournament.level}</b><span>Blinds ${wholeDollarMoney(tournament.small_blind)}/${wholeDollarMoney(tournament.big_blind)}</span><span>Ante ${wholeDollarMoney(tournament.ante)}</span><span>${tournament.hands_at_level}/${tournament.hands_per_level} hands</span></section>`;
+  return html`<section class="tournament-panel"><b>Level ${tournament.level}</b><span>Blinds ${money(tournament.small_blind)}/${money(tournament.big_blind)}</span><span>Ante ${money(tournament.ante)}</span><span>${tournament.hands_at_level}/${tournament.hands_per_level} hands</span></section>`;
 }
 
 function eventLabel(event, seats) {
   const seat = event.seat == null ? null : seats.find((candidate) => candidate.index === event.seat);
   const name = seat?.display_name || seat?.occupant || `Seat ${event.seat}`;
-    const amount = event.amount > 0 ? ` ${wholeDollarMoney(event.amount)}` : "";
+  const amount = event.amount > 0 ? ` ${money(event.amount)}` : "";
   return {
     Ante: `${name} posts ante${amount}`,
     SmallBlind: `${name} posts small blind${amount}`,
@@ -153,7 +153,7 @@ function winnerLines(summary, seats) {
   return [...totals.entries()].map(([seatIndex, amount]) => {
     const seat = seats.find((candidate) => candidate.index === seatIndex);
     const result = summary.results.find((candidate) => candidate.seat === seatIndex);
-    return `${seat?.display_name || seat?.occupant || "Player"} wins ${wholeDollarMoney(amount)}${result?.hand?.label ? ` with ${result.hand.label}` : ""}`;
+    return `${seat?.display_name || seat?.occupant || "Player"} wins ${money(amount)}${result?.hand?.label ? ` with ${result.hand.label}` : ""}`;
   });
 }
 
@@ -233,16 +233,16 @@ function TableApp() {
       </dialog>
       <div class="felt">
         <div class="table-center">
-          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${wholeDollarMoney(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${wholeDollarMoney(hand.last_bet)}</b></span>`}</div>`}
+          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
           <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - board.length }).map(() => html`<${Card} empty />`)}</div>
-          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${wholeDollarMoney(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
+          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
         </div>
       </div>
       <div class="seats">${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
     </section>
     ${hand?.legal_actions && html`<section class="decision-area"><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}
-    ${state.viewer_seat == null && !state.tournament && openSeats.length > 0 && html`<section class="card join-card"><h2>Buy in · ${wholeDollarMoney(state.buy_in)}</h2><form onSubmit=${async (event) => { event.preventDefault(); const seat = Number(new FormData(event.currentTarget).get("seat")); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><button>Buy in</button></form></section>`}
+    ${state.viewer_seat == null && !state.tournament && openSeats.length > 0 && html`<section class="card join-card"><h2>Buy in · ${money(state.buy_in)}</h2><form onSubmit=${async (event) => { event.preventDefault(); const seat = Number(new FormData(event.currentTarget).get("seat")); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><button>Buy in</button></form></section>`}
     <p id="table-error" class="error" role="alert"></p>
     ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="1" max="10000" step="1" required /></label><button>Register</button></form></section>`}
     ${(!state.tournament || !state.tournament.started) && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}

@@ -216,6 +216,6 @@ fn setup_uses_six_bounded_presets() {
     assert!(LOBBY_JS.contains("buy_in: 20_000"));
     assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
     assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
-    assert!(TABLE_JS.contains("wholeDollarMoney(state.buy_in)"));
+    assert!(TABLE_JS.contains("money(state.buy_in)"));
     assert!(TABLE_JS.contains("JSON.stringify({ seat })"));
 }

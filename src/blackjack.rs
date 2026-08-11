@@ -28,6 +28,7 @@ pub struct BlackjackView {
     pub hands: Vec<BlackjackHandView>,
     pub active_hand: usize,
 }
+
 #[derive(Clone, Debug, Serialize)]
 pub struct BlackjackHandView {
     pub cards: Vec<Card>,
@@ -36,6 +37,7 @@ pub struct BlackjackHandView {
     pub status: BlackjackHandStatus,
     pub blackjack: bool,
 }
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum BlackjackStatus {
     Playing,
@@ -46,6 +48,7 @@ pub enum BlackjackStatus {
     DealerWin,
     Push,
 }
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum BlackjackHandStatus {
     Playing,
@@ -56,10 +59,12 @@ pub enum BlackjackHandStatus {
     Push,
     Blackjack,
 }
+
 #[derive(Clone)]
 pub struct BlackjackStore {
     inner: Arc<Mutex<HashMap<Uuid, BlackjackGame>>>,
 }
+
 #[derive(Clone, Debug)]
 struct BlackjackHand {
     cards: Vec<Card>,
@@ -68,6 +73,7 @@ struct BlackjackHand {
     split: bool,
     split_aces: bool,
 }
+
 #[derive(Clone, Debug)]
 struct BlackjackGame {
     id: Uuid,
@@ -80,6 +86,7 @@ struct BlackjackGame {
     status: BlackjackStatus,
     payout: Cents,
 }
+
 const MAX_HANDS: usize = 4;
 
 impl Default for BlackjackStore {
@@ -93,6 +100,7 @@ impl BlackjackStore {
     pub fn new() -> Self {
         Self::default()
     }
+
     pub async fn view(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
         let guard = self.inner.lock().await;
         let game = guard.get(&id).ok_or(BlackjackError::NotFound)?;
@@ -106,6 +114,7 @@ impl BlackjackStore {
             .find(|game| game.user == user && game.status == BlackjackStatus::Playing)
             .map(|game| game.view(false))
     }
+
     pub async fn start(
         &self,
         user: Uuid,
@@ -157,6 +166,7 @@ impl BlackjackStore {
         guard.insert(id, game);
         Ok(view)
     }
+
     pub async fn hit(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
@@ -174,6 +184,7 @@ impl BlackjackStore {
         }
         Ok(game.view(false))
     }
+
     pub async fn stand(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
@@ -188,6 +199,7 @@ impl BlackjackStore {
         game.advance();
         Ok(game.view(true))
     }
+
     pub async fn double(
         &self,
         user: Uuid,
@@ -212,6 +224,7 @@ impl BlackjackStore {
         game.advance();
         Ok((game.view(true), wager))
     }
+
     pub async fn split(
         &self,
         user: Uuid,
@@ -249,6 +262,7 @@ impl BlackjackStore {
         }
         Ok((game.view(false), wager))
     }
+
     pub async fn insure(
         &self,
         user: Uuid,
@@ -277,12 +291,14 @@ impl BlackjackGame {
             .then_some(())
             .ok_or(BlackjackError::NotFound)
     }
+
     fn active_index(&self) -> usize {
         self.hands
             .iter()
             .position(|hand| hand.status == BlackjackHandStatus::Playing)
             .unwrap_or(self.hands.len())
     }
+
     fn wager(&self, a: Action) -> Result<Cents, BlackjackError> {
         if self.status != BlackjackStatus::Playing {
             return Err(BlackjackError::Finished);
@@ -317,13 +333,16 @@ impl BlackjackGame {
         }
         Ok(wager)
     }
+
     fn can_hit(&self) -> bool {
         let i = self.active_index();
         self.status == BlackjackStatus::Playing && i < self.hands.len() && !self.hands[i].split_aces
     }
+
     fn can_stand(&self) -> bool {
         self.status == BlackjackStatus::Playing && self.active_index() < self.hands.len()
     }
+
     fn can_double(&self) -> bool {
         let i = self.active_index();
         self.status == BlackjackStatus::Playing
@@ -332,6 +351,7 @@ impl BlackjackGame {
             && !self.hands[i].split_aces
             && valid_game_amount(self.hands[i].bet)
     }
+
     fn can_split(&self) -> bool {
         let i = self.active_index();
         self.status == BlackjackStatus::Playing
@@ -341,6 +361,7 @@ impl BlackjackGame {
             && self.hands.len() < MAX_HANDS
             && valid_game_amount(self.hands[i].bet)
     }
+
     fn can_insure(&self) -> bool {
         self.status == BlackjackStatus::Playing
             && !self.dealer_peeked
@@ -352,11 +373,13 @@ impl BlackjackGame {
             && self.dealer[0].rank as u8 == 14
             && valid_game_amount(self.hands[0].bet / 2)
     }
+
     fn peek_if_needed(&mut self) {
         if !self.dealer_peeked && self.dealer[0].rank as u8 == 14 {
             self.peek();
         }
     }
+
     fn peek(&mut self) {
         self.dealer_peeked = true;
         if score(&self.dealer).0 == 21 && self.dealer.len() == 2 {
@@ -388,6 +411,7 @@ impl BlackjackGame {
             self.status = BlackjackStatus::PlayerBlackjack;
         }
     }
+
     fn advance(&mut self) {
         if self
             .hands
@@ -447,6 +471,7 @@ impl BlackjackGame {
             BlackjackStatus::DealerWin
         };
     }
+
     fn insurance_payout(&self) -> Cents {
         if self.insurance > 0 && score(&self.dealer).0 == 21 && self.dealer.len() == 2 {
             self.insurance * 3
@@ -454,6 +479,7 @@ impl BlackjackGame {
             0
         }
     }
+
     fn view(&self, reveal: bool) -> BlackjackView {
         let finished = self.status != BlackjackStatus::Playing;
         let dealer = if reveal || finished {
