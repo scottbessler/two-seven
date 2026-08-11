@@ -273,6 +273,9 @@ Mark each milestone done here as it lands.
   charge and assign exactly that amount, independent of client payloads.
 - **V13** Every bot personality produces at least one bet or raise across the
   deterministic aggression corpus while retaining distinct style signals.
+- **V14** Desktop + mobile table snapshots keep occupied players outside felt,
+  viewer cards at viewer seat, board unobscured, actions before unified log,
+  one-line header, whole-dollar labels, and integrated showdown winners/cards.
 
 ## §T Build tasks
 
@@ -283,6 +286,7 @@ T3|x|add structured hand events + per-seat hand state|V3,V4,V6,V11
 T4|x|render game log + table cues|V7,V11
 T5|x|replace cash buy-in ranges with one fixed amount|V1,V2,V9,V10,V12
 T6|x|restore and regression-test bot aggression|V6,V13
+T7|x|recompose live table + showdown UI|V3,V7,V11,V14
 
 ## §B Bug log
 
@@ -325,3 +329,5 @@ T6|x|restore and regression-test bot aggression|V6,V13
 - The tournament payout fixture's tiny terminal blinds could outlive its tick cap once bots played more hands; fixed by using a decisive terminal test level while preserving payout/conservation assertions.
 - The frontend asset contract still required the removed variable buy-in form label; replaced it with fixed-price display and seat-only payload assertions under V12.
 - The fixed-buy-in route regression double-counted live blinds by adding the pot to pre-hand table stacks; corrected it to assert each authoritative seated stack directly.
+- Seats, empty-seat controls, board, metrics, and wagers shared one absolute-positioned ellipse while viewer cards/actions lived below it; replace with outer player rail, owner-attached cards, button-only actions, and unified table log under V14.
+- Table asset contracts still required removed range-era labels/formatter; align contracts to player tooltip + whole-dollar `money()` under V14.

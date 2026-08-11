@@ -20,14 +20,13 @@ fn table_island_has_live_state_and_action_contracts() {
         "all_in",
         "Sit out",
         "Leave",
-        "empty-seat",
-        "Wager slider",
-        "½ pot",
-        "Showdown",
-        "· bot",
+        "player-tooltip",
+        "seat-cards",
+        "wagerOptions",
+        "table-stage",
+        "showdown-result",
+        "winner",
         "Buy in</button>",
-        "shared bot account",
-        "award-list",
         "waiting-status",
         "/tables/${tableId}/bot",
         "/tournaments/${tableId}/register",
@@ -42,9 +41,8 @@ fn table_island_has_live_state_and_action_contracts() {
         "card-art-${court}",
         "response.ok",
         "hand.legal_actions.to_call",
-        "clampWager",
         "state.tournament.started",
-        "Hand log",
+        "Table log",
         "street_contribution",
         "SmallBlind",
         "BigBlind",
@@ -57,6 +55,8 @@ fn table_island_has_live_state_and_action_contracts() {
             "missing table.js contract: {literal}"
         );
     }
+    assert!(!TABLE_JS.contains("type=\"range\""));
+    assert!(!TABLE_JS.contains("type=\"number\" min=${wager.min}"));
 }
 
 #[test]
@@ -71,7 +71,11 @@ fn table_css_is_mobile_poker_layout() {
         "@media(max-width:640px)",
         ".actions",
         ".table-center",
-        ".empty-seat",
+        ".player-tooltip",
+        ".seat-cards",
+        ".table-stage",
+        ".showdown-result",
+        ".seat.winner",
         ".table-pot",
         ".table-metrics",
         ".game-log",
@@ -178,6 +182,6 @@ fn setup_uses_six_bounded_presets() {
     assert!(LOBBY_JS.contains("buy_in: 20_000"));
     assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
     assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
-    assert!(TABLE_JS.contains("cents(state.buy_in)"));
-    assert!(TABLE_JS.contains("JSON.stringify({ seat: joinSeat })"));
+    assert!(TABLE_JS.contains("money(state.buy_in)"));
+    assert!(TABLE_JS.contains("JSON.stringify({ seat })"));
 }

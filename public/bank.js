@@ -3,7 +3,7 @@ const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
 
 function money(value) {
-  return `$${(value / 100).toFixed(2)}`;
+  return `$${Math.round(value / 100).toLocaleString()}`;
 }
 
 if (balance && widget) {

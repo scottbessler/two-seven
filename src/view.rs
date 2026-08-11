@@ -37,6 +37,7 @@ pub struct HandView {
 #[derive(Clone, Debug, Serialize)]
 pub struct HandPlayerView {
     pub seat: usize,
+    pub stack: Cents,
     pub contribution: Cents,
     pub street_contribution: Cents,
     pub folded: bool,
@@ -144,6 +145,7 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             .iter()
             .map(|player| HandPlayerView {
                 seat: player.seat,
+                stack: player.stack,
                 contribution: player.contribution,
                 street_contribution: player.street_contribution,
                 folded: player.folded,

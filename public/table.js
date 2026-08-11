@@ -15,8 +15,8 @@ function actionName(action) {
   return typeof action === "string" ? action : Object.keys(action)[0];
 }
 
-function cents(value) {
-  return `$${(value / 100).toFixed(2)}`;
+function money(value) {
+  return `$${Math.round(value / 100).toLocaleString()}`;
 }
 
 function streetName(street) {
@@ -35,83 +35,80 @@ function blindRole(events, seat) {
   return null;
 }
 
-function Seat({ seat, player, events, current, button, openSeat, total }) {
-  const angle = -Math.PI / 2 + (seat.index * 2 * Math.PI) / total;
+function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
+  const angle = Math.PI / 2 + (order * 2 * Math.PI) / total;
   const position = {
-    left: `${50 + 44 * Math.cos(angle)}%`,
-    top: `${50 + 34 * Math.sin(angle)}%`,
+    left: `${50 + 45 * Math.cos(angle)}%`,
+    top: `${50 + 44 * Math.sin(angle)}%`,
     transform: "translate(-50%, -50%)",
   };
-  if (seat.occupant === "empty") {
-    return html`<button class="seat empty-seat" style=${position} onClick=${() => openSeat(seat.index)}><strong>🪙 Sit here</strong><span>Seat ${seat.index}</span>${seat.index === button && html`<i class="button-marker">D</i>`}</button>`;
-  }
   const label = seat.display_name || seat.occupant;
-  const shared = seat.occupant !== "human" && seat.occupant !== "empty";
   const role = blindRole(events, seat.index);
-  const classes = ["seat", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in"].filter(Boolean).join(" ");
+  const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
+  const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
+  const winner = showdown?.awards?.some((award) => award.seat === seat.index);
+  const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position}>
-    <strong>${label} <span class="coin" title=${shared ? "shared bot account" : "bank details"}>🪙</span></strong>
-    <span class="seat-meta">Seat ${seat.index}${shared ? " · bot" : ""}${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}</span>
-    <b>${cents(seat.stack)}</b>
-    ${seat.bank_balance != null && html`<small class="seat-bank" title=${seat.bank_entries.map((entry) => entry.memo).join(", ")}>${cents(seat.bank_balance)}</small>`}
-    ${player?.street_contribution > 0 && html`<span class="seat-wager">${cents(player.street_contribution)}</span>`}
-    ${player?.folded && html`<span class="seat-state">Folded</span>`}
-    ${player?.all_in && html`<span class="seat-state">All in</span>`}
+    <span class="player-info" tabindex="0">
+      <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
+      <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
+    </span>
+    <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
+    <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
+    ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} />`)}</span>`}
+    ${player?.street_contribution > 0 && html`<span class="seat-wager">${money(player.street_contribution)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
 }
 
-function Actions({ hand, tableId: actionTableId, refresh }) {
+function wagerOptions(hand) {
   const wager = hand?.legal_actions?.wager;
+  if (!wager) return [];
+  const player = hand.players.find((candidate) => candidate.seat === hand.legal_actions.seat);
+  const contribution = player?.street_contribution || 0;
+  const candidates = wager.fixed != null
+    ? [{ amount: wager.fixed, reason: "Fixed wager" }]
+    : [
+        { amount: wager.min, reason: "Minimum" },
+        { amount: hand.last_bet * 2 - contribution, reason: "Double current bet" },
+        { amount: hand.pot / 2, reason: "Half pot" },
+        { amount: hand.pot, reason: "Pot" },
+      ];
+  const unique = new Map();
+  for (const candidate of candidates) {
+    const rounded = Math.round(candidate.amount / 100) * 100;
+    const amount = Math.max(wager.min, Math.min(wager.max, rounded));
+    if (amount > 0 && !unique.has(amount)) unique.set(amount, { amount, reason: candidate.reason });
+  }
+  return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
+}
+
+function Actions({ hand, tableId: actionTableId, refresh }) {
   const actions = new Set((hand?.legal_actions?.actions || []).map(actionName));
-  const minimum = wager?.min || wager?.fixed || 0;
-  const [amount, setAmount] = useState(minimum);
-  useEffect(() => setAmount(minimum), [minimum]);
-  const submit = async (kind) => {
-    const response = await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount: Number(amount) || undefined }) });
+  const submit = async (kind, amount) => {
+    const response = await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount }) });
     if (response.ok) refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
   };
-  const clampWager = (value) => Math.max(wager?.min || 0, Math.min(wager?.max || value, Math.round(value)));
-  const noLimit = wager?.max != null && wager?.min != null;
+  const wagerKind = actions.has("Bet") ? "bet" : "raise";
   return html`<div class="actions" aria-label="Actions">
     ${actions.has("Fold") && html`<button class="danger" onClick=${() => submit("fold")}>Fold</button>`}
-    ${actions.has("Check") && html`<button onClick=${() => submit("check")}>Check</button>`}
-    ${actions.has("Call") && html`<button onClick=${() => submit("call")}>Call ${hand.legal_actions.to_call ? cents(hand.legal_actions.to_call) : ""}</button>`}
-    ${(actions.has("Bet") || actions.has("Raise")) && html`
-      <div class="wager-control">
-        ${noLimit && html`<input type="range" min=${wager.min} max=${wager.max} value=${amount} onInput=${(event) => setAmount(event.target.value)} aria-label="Wager slider" />`}
-        ${noLimit && html`<input type="number" min=${wager.min} max=${wager.max} value=${amount} onInput=${(event) => setAmount(event.target.value)} aria-label="Wager amount" />`}
-        ${noLimit && html`<div class="pot-shortcuts"><button type="button" onClick=${() => setAmount(clampWager(hand.pot / 2))}>½ pot</button><button type="button" onClick=${() => setAmount(clampWager(hand.pot))}>Pot</button></div>`}
-        ${!noLimit && html`<span class="fixed-wager">Fixed ${cents(minimum)}</span>`}
-      </div>
-    `}
-    ${actions.has("Bet") && html`<button onClick=${() => submit("bet")}>Bet ${!noLimit ? cents(minimum) : ""}</button>`}
-    ${actions.has("Raise") && html`<button onClick=${() => submit("raise")}>Raise ${!noLimit ? cents(minimum) : ""}</button>`}
-    ${actions.has("AllIn") && html`<button onClick=${() => submit("all_in")}>All in</button>`}
+    ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
+    ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${money(hand.legal_actions.to_call)}</button>`}
+    ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${option.reason} onClick=${() => submit(wagerKind, option.amount)}>${money(option.amount)}</button>`)}
+    ${actions.has("AllIn") && html`<button class="wager-action all-in-action" onClick=${() => submit("all_in")}>All In</button>`}
   </div>`;
-}
-
-function LastHand({ summary }) {
-  if (!summary) return null;
-  const awards = [];
-  for (const award of summary.awards) {
-    const existing = awards.find((entry) => entry.seat === award.seat);
-    if (existing) existing.amounts.push(award.amount);
-    else awards.push({ seat: award.seat, amounts: [award.amount] });
-  }
-  return html`<section class="card last-hand"><h2>Showdown</h2><div class="showdown-board">${summary.board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - summary.board.length }).map(() => html`<${Card} empty />`)}</div>${summary.results.map((result) => html`<article class="showdown-row"><strong>Seat ${result.seat}</strong><span>${result.hand.label}</span><span>${summary.revealed_hole_cards.find(([seat]) => seat === result.seat)?.[1]?.join(" ") || ""}</span></article>`)}<p class="award-list">${awards.map((award) => html`<span>Seat ${award.seat} won ${award.amounts.map((amount, index) => `${index === 0 ? "main pot" : "side pot"} ${cents(amount)}`).join(" and ")}</span>`)}</p></section>`;
 }
 
 function TournamentPanel({ tournament }) {
   if (!tournament) return null;
-  return html`<section class="card tournament-panel"><h2>Tournament</h2><p>Level ${tournament.level} · Blinds ${cents(tournament.small_blind)}/${cents(tournament.big_blind)} · Ante ${cents(tournament.ante)}</p><p>Hands at level: ${tournament.hands_at_level}/${tournament.hands_per_level}</p>${tournament.next_level && html`<p>Next level ${tournament.next_level}: ${cents(tournament.next_small_blind)}/${cents(tournament.next_big_blind)} · Ante ${cents(tournament.next_ante)}</p>`}<p>${tournament.finish_order.length ? `Finish order: ${tournament.finish_order.map((seat) => `Seat ${seat}`).join(", ")}` : "No eliminations yet"}</p></section>`;
+  return html`<section class="tournament-panel"><b>Level ${tournament.level}</b><span>Blinds ${money(tournament.small_blind)}/${money(tournament.big_blind)}</span><span>Ante ${money(tournament.ante)}</span><span>${tournament.hands_at_level}/${tournament.hands_per_level} hands</span></section>`;
 }
 
 function eventLabel(event, seats) {
   const seat = event.seat == null ? null : seats.find((candidate) => candidate.index === event.seat);
   const name = seat?.display_name || seat?.occupant || `Seat ${event.seat}`;
-  const amount = event.amount > 0 ? ` ${cents(event.amount)}` : "";
+  const amount = event.amount > 0 ? ` ${money(event.amount)}` : "";
   return {
     Ante: `${name} posts ante${amount}`,
     SmallBlind: `${name} posts small blind${amount}`,
@@ -127,13 +124,24 @@ function eventLabel(event, seats) {
   }[event.kind] || event.kind;
 }
 
-function GameLog({ events, seats }) {
-  return html`<section class="game-log" aria-live="polite"><h2>Hand log</h2><ol>${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
+function winnerLines(summary, seats) {
+  if (!summary) return [];
+  const totals = new Map();
+  for (const award of summary.awards) totals.set(award.seat, (totals.get(award.seat) || 0) + award.amount);
+  return [...totals.entries()].map(([seatIndex, amount]) => {
+    const seat = seats.find((candidate) => candidate.index === seatIndex);
+    const result = summary.results.find((candidate) => candidate.seat === seatIndex);
+    return `${seat?.display_name || seat?.occupant || "Player"} wins ${money(amount)}${result?.hand?.label ? ` with ${result.hand.label}` : ""}`;
+  });
+}
+
+function TableLog({ events, seats, summary }) {
+  const results = winnerLines(summary, seats);
+  return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
 function TableApp() {
   const [state, setState] = useState(null);
-  const [joinSeat, setJoinSeat] = useState(null);
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
@@ -144,22 +152,33 @@ function TableApp() {
   }, []);
   if (!state) return html`<p class="loading">Loading table…</p>`;
   const hand = state.hand;
-  const handEvents = hand?.events || state.last_hand?.events || [];
+  const showdown = hand ? null : state.last_hand;
+  const handEvents = hand?.events || showdown?.events || [];
   const current = hand?.current_player == null ? null : state.seats.find((seat) => seat.index === hand.current_player);
   const currentName = current?.display_name || current?.occupant || "—";
+  const occupied = state.seats.filter((seat) => seat.occupant !== "empty");
+  const viewerOffset = Math.max(0, occupied.findIndex((seat) => seat.index === state.viewer_seat));
+  const ordered = [...occupied.slice(viewerOffset), ...occupied.slice(0, viewerOffset)];
+  const board = hand?.board || showdown?.board || [];
+  const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
+  const result = winnerLines(showdown, state.seats).join(" · ");
   return html`<div class="table-shell">
-    <div class="table-top"><h1>${state.name}</h1></div>
     <${TournamentPanel} tournament=${state.tournament} />
-    <section class="felt" aria-label="Poker table">
-      <div class="table-center">${hand ? html`<div class="table-metrics"><span><small>Pot</small><b>${cents(hand.pot)}</b></span><span><small>Current bet</small><b>${cents(hand.last_bet)}</b></span></div><div class="board">${(hand.board || []).map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - (hand.board?.length || 0) }).map(() => html`<${Card} empty />`)}</div><p class="table-status">${streetName(hand.street)} · ${currentName} to act · ${cents(hand.to_call)} to call</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}</div>
-      <div class="seats">${state.seats.map((seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || []} current=${hand?.current_player === seat.index} total=${state.seats.length} button=${state.button} openSeat=${setJoinSeat} />`)}</div>
+    <section class="table-stage" aria-label="Poker table">
+      <div class="felt">
+        <div class="table-center">
+          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
+          <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - board.length }).map(() => html`<${Card} empty />`)}</div>
+          ${showdown ? html`<p class="showdown-result">${result}</p>` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
+        </div>
+      </div>
+      <div class="seats">${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
     </section>
-    ${handEvents.length > 0 && html`<${GameLog} events=${handEvents} seats=${state.seats} />`}
-    ${hand && html`<section class="hand-info"><div class="hole-cards">${(hand.your_hole_cards || []).map((card) => html`<${Card} card=${card} />`)}</div><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
-    <${LastHand} summary=${state.last_hand} />
-    ${joinSeat != null && state.viewer_seat == null && !state.tournament && html`<section class="card join-card"><h2>Seat ${joinSeat} · ${cents(state.buy_in)}</h2><form onSubmit=${async (event) => { event.preventDefault(); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: joinSeat }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><button>Buy in</button></form></section>`}
+    ${hand?.legal_actions && html`<section class="decision-area"><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
+    ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}
+    ${state.viewer_seat == null && !state.tournament && openSeats.length > 0 && html`<section class="card join-card"><h2>Buy in · ${money(state.buy_in)}</h2><form onSubmit=${async (event) => { event.preventDefault(); const seat = Number(new FormData(event.currentTarget).get("seat")); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><button>Buy in</button></form></section>`}
     <p id="table-error" class="error" role="alert"></p>
-    ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="1" max="10000" step="0.01" required /></label><button>Register</button></form></section>`}
+    ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="1" max="10000" step="1" required /></label><button>Register</button></form></section>`}
     ${(!state.tournament || !state.tournament.started) && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}
     <nav class="table-controls"><button onClick=${() => fetch(`/tables/${tableId}/sit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sitting_out: true }) }).then(refresh)}>Sit out</button><button onClick=${() => fetch(`/tables/${tableId}/leave`, { method: "POST" }).then(refresh)}>Leave</button></nav>
   </div>`;

@@ -5,13 +5,14 @@ const tableState = {
   name: "Friday Night Hold'em",
   stakes: { NoLimit: { small_blind: 100, big_blind: 200 } },
   button: 5,
-  viewer_seat: 0,
+  viewer_seat: 2,
+  buy_in: 20_000,
   tournament: null,
   last_hand: null,
   seats: [
-    { index: 0, stack: 18_800, occupant: "human", display_name: "You", sitting_out: false, hole_cards: null, bank_balance: -5_000, bank_entries: [] },
+    { index: 0, stack: 18_800, occupant: "human", display_name: "Dev", sitting_out: false, hole_cards: null, bank_balance: -5_000, bank_entries: [] },
     { index: 1, stack: 22_400, occupant: "Fish", display_name: "Mina", sitting_out: false, hole_cards: null, bank_balance: 14_000, bank_entries: [] },
-    { index: 2, stack: 16_600, occupant: "human", display_name: "Dev", sitting_out: false, hole_cards: null, bank_balance: 8_000, bank_entries: [] },
+    { index: 2, stack: 16_600, occupant: "human", display_name: "You", sitting_out: false, hole_cards: null, bank_balance: 8_000, bank_entries: [] },
     { index: 3, stack: 0, occupant: "Rock", display_name: "Ari", sitting_out: false, hole_cards: null, bank_balance: -2_000, bank_entries: [] },
     { index: 4, stack: 20_000, occupant: "human", display_name: "Sam", sitting_out: false, hole_cards: null, bank_balance: 25_000, bank_entries: [] },
     { index: 5, stack: 19_800, occupant: "Grinder", display_name: "Jo", sitting_out: false, hole_cards: null, bank_balance: 5_000, bank_entries: [] },
@@ -25,7 +26,12 @@ const tableState = {
     last_bet: 2_400,
     to_call: 1_200,
     current_player: 2,
-    legal_actions: null,
+    legal_actions: {
+      seat: 2,
+      actions: ["Fold", "Call", { Raise: { amount: 2_400 } }, "AllIn"],
+      to_call: 1_200,
+      wager: { min: 2_400, max: 15_400, fixed: null },
+    },
     summary: null,
     players: [
       { seat: 0, contribution: 1_200, street_contribution: 0, folded: false, all_in: false, acted: true },
@@ -47,6 +53,47 @@ const tableState = {
   },
 };
 
+const showdownState = {
+  ...tableState,
+  viewer_seat: 0,
+  hand: null,
+  last_hand: {
+    board: ["Ah", "7c", "2s", "7d", "As"],
+    results: [
+      { seat: 0, hand: { label: "Two pair, aces and sevens" } },
+      { seat: 1, hand: { label: "Full house, aces over sevens" } },
+    ],
+    awards: [{ seat: 1, amount: 40_000 }],
+    contributions: { 0: 20_000, 1: 20_000 },
+    revealed_hole_cards: [[0, ["Kh", "Qh"]], [1, ["Ac", "Ad"]]],
+    events: [
+      { street: "River", seat: 0, kind: "AllIn", amount: 18_000 },
+      { street: "Complete", seat: 1, kind: "Award", amount: 40_000 },
+    ],
+  },
+};
+
+async function mountTable(page, state) {
+  await page.route("**/tables/mock/state", (route) => route.fulfill({ json: state }));
+  await page.route("**/tables/mock/events", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: `event: state\ndata: ${JSON.stringify(state)}\n\n`,
+    }),
+  );
+  await page.goto("/card-test");
+  await page.locator("main").evaluate((main) => {
+    for (const child of main.querySelectorAll(":scope > :not(.site-header)")) child.remove();
+    const header = main.querySelector(".site-header");
+    const context = document.createElement("span");
+    context.className = "header-context";
+    context.textContent = "Friday Night Hold'em";
+    header?.insertBefore(context, header.querySelector(".bank-widget"));
+    main.insertAdjacentHTML("beforeend", '<div id="table-app" data-table-id="mock"></div>');
+  });
+  await page.evaluate(() => import(`/public/table.js?e2e=${Date.now()}`));
+}
+
 test("offers six concise game presets", async ({ page }) => {
   await page.goto("/tables/new");
   await expect(page.locator(".setup-option")).toHaveCount(6);
@@ -54,22 +101,37 @@ test("offers six concise game presets", async ({ page }) => {
 });
 
 test("shows live hand cues and event log", async ({ page }) => {
-  await page.route("**/tables/mock/state", (route) => route.fulfill({ json: tableState }));
-  await page.route("**/tables/mock/events", (route) =>
-    route.fulfill({
-      contentType: "text/event-stream",
-      body: `event: state\ndata: ${JSON.stringify(tableState)}\n\n`,
-    }),
-  );
-  await page.goto("/card-test");
-  await page.locator("main").evaluate((main) => {
-    main.innerHTML = '<div id="table-app" data-table-id="mock"></div>';
-  });
-  await page.evaluate(() => import(`/public/table.js?e2e=${Date.now()}`));
+  await mountTable(page, tableState);
   await expect(page.locator(".game-log")).toBeVisible();
+  await expect(page.locator(".seat.viewer .seat-cards .playing-card")).toHaveCount(2);
+  await expect(page.locator(".empty-seat")).toHaveCount(0);
+  await expect(page.locator(".actions input")).toHaveCount(0);
+  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "$24", "$36", "$38", "$76", "All In"]);
+  await page.locator(".seat.viewer .player-info").hover();
+  await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
+  await page.locator(".felt").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
   await expect(page.locator(".seat-wager")).toHaveCount(3);
   await expect(page.locator(".seat.folded")).toHaveCount(1);
   await expect(page.locator(".seat.all-in")).toHaveCount(1);
+  expect(await page.locator(".decision-area").evaluate((actions) => actions.compareDocumentPosition(document.querySelector(".game-log")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
+  const overlaps = await page.locator(".table-stage").evaluate((stage) => {
+    const cards = [...stage.querySelectorAll(".board .playing-card")].map((node) => node.getBoundingClientRect());
+    const players = [...stage.querySelectorAll(".seat, .seat-cards")].map((node) => node.getBoundingClientRect());
+    return players.filter((player) => cards.some((card) => player.left < card.right && player.right > card.left && player.top < card.bottom && player.bottom > card.top)).length;
+  });
+  expect(overlaps, "V14: players and attached cards must not overlap the board").toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(await page.locator(".table-shell").innerText()).not.toMatch(/\$-?\d+\.\d{2}/);
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
+});
+
+test("integrates showdown with players and table log", async ({ page }) => {
+  await mountTable(page, showdownState);
+  await expect(page.locator(".seat.winner")).toHaveCount(1);
+  await expect(page.locator(".seat .seat-cards.revealed")).toHaveCount(2);
+  await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
+  await expect(page.locator(".game-log")).toContainText("Mina wins $400");
+  await expect(page.locator(".last-hand")).toHaveCount(0);
+  await expect(page).toHaveScreenshot("showdown-table.png", { fullPage: true });
 });
