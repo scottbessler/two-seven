@@ -18,8 +18,9 @@ fn table_island_has_live_state_and_action_contracts() {
         "call",
         "raise",
         "all_in",
-        "Sit out",
         "Leave",
+        "Leaving...",
+        "Re-Buy In",
         "player-tooltip",
         "seat-cards",
         "card-config-dialog",
@@ -34,12 +35,11 @@ fn table_island_has_live_state_and_action_contracts() {
         "showdown-advance",
         "/tables/${tableId}/continue",
         "winner",
-        "Buy in</button>",
+        "Buy In",
         "waiting-status",
         "/tables/${tableId}/bot",
         "/tournaments/${tableId}/register",
         "Seat a bot",
-        "Register for tournament",
         "option value=\"fish\"",
         "table-error",
         "responseError",
@@ -65,6 +65,9 @@ fn table_island_has_live_state_and_action_contracts() {
     }
     assert!(!TABLE_JS.contains("Wager slider"));
     assert!(!TABLE_JS.contains("type=\"number\" min=${wager.min}"));
+    assert!(!TABLE_JS.contains("Sit out"));
+    assert!(!TABLE_JS.contains("/tables/${tableId}/sit"));
+    assert!(!TABLE_JS.contains("sitting_out: true"));
 }
 
 #[test]
@@ -198,5 +201,6 @@ fn setup_uses_six_bounded_presets() {
     assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
     assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
     assert!(TABLE_JS.contains("money(state.buy_in)"));
-    assert!(TABLE_JS.contains("JSON.stringify({ seat })"));
+    assert!(TABLE_JS.contains("body: \"{}\""));
+    assert!(!TABLE_JS.contains("JSON.stringify({ seat })"));
 }

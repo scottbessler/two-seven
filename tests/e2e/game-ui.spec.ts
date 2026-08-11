@@ -6,6 +6,7 @@ const tableState = {
   stakes: { NoLimit: { small_blind: 100, big_blind: 200 } },
   button: 5,
   viewer_seat: 2,
+  viewer_leaving: false,
   buy_in: 20_000,
   tournament: null,
   last_hand: null,
@@ -256,6 +257,51 @@ test("keeps the table log footprint stable as events accumulate", async ({ page 
   expect(dense.height, "V22: table log height must not grow with events").toBe(sparse.height);
   expect(dense.controlsTop, "V22: content below table log must remain fixed").toBe(sparse.controlsTop);
   expect(dense.scrolls, "V22: excess table events must scroll inside the fixed log").toBe(true);
+});
+
+test("offers one state-aware table lifecycle command", async ({ page }) => {
+  await mountTable(page, tableState);
+  await expect(page.locator(".table-controls button")).toHaveText(["Leave"]);
+  await expect(page.getByRole("button", { name: "Sit out" })).toHaveCount(0);
+
+  let joinBody;
+  await page.route("**/tables/mock/join", async (route) => {
+    joinBody = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true } });
+  });
+  const unseated = {
+    ...tableState,
+    viewer_seat: null,
+    hand: null,
+    seats: tableState.seats.map((seat) => seat.index === 2
+      ? { ...seat, occupant: "empty", display_name: null, stack: 0 }
+      : seat),
+  };
+  await mountTable(page, unseated);
+  await expect(page.locator(".table-controls button")).toHaveText(["Buy In $200"]);
+  await page.locator(".table-controls button").click();
+  expect(joinBody).toEqual({});
+
+  let rebuyBody;
+  await page.route("**/tables/mock/rebuy", async (route) => {
+    rebuyBody = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true } });
+  });
+  const busted = {
+    ...tableState,
+    hand: null,
+    seats: tableState.seats.map((seat) => seat.index === tableState.viewer_seat
+      ? { ...seat, stack: 0 }
+      : seat),
+  };
+  await mountTable(page, busted);
+  await expect(page.locator(".table-controls button")).toHaveText(["Re-Buy In $200"]);
+  await page.locator(".table-controls button").click();
+  expect(rebuyBody).toEqual({});
+
+  await mountTable(page, { ...tableState, viewer_leaving: true });
+  await expect(page.locator(".table-controls button")).toHaveText(["Leaving..."]);
+  await expect(page.locator(".table-controls button")).toBeDisabled();
 });
 
 test("reflows viewer cards at maximum display settings", async ({ page }) => {

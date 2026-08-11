@@ -409,8 +409,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         .unwrap()
         .parse()
         .unwrap();
-    for (cookie_value, seat) in [(&cookie_a, 0), (&cookie_b, 1)] {
-        let request = format!(r#"{{"seat":{seat},"buy_in":2000}}"#);
+    for cookie_value in [&cookie_a, &cookie_b] {
         let response = t
             .router
             .clone()
@@ -420,7 +419,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
                     .uri(format!("/tables/{id}/join"))
                     .header(header::COOKIE, cookie_value)
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(request))
+                    .body(Body::from("{}"))
                     .unwrap(),
             )
             .await
@@ -461,6 +460,8 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
             .all(|seat| seat["stack"] == 10_000),
         "the client-supplied $20 buy-ins must not override the fixed $100 table buy-in"
     );
+    assert_eq!(state_json["viewer_seat"], 0);
+    assert_eq!(state_json["viewer_leaving"], false);
     let wrong_turn = t
         .router
         .clone()
@@ -491,21 +492,23 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         .await
         .unwrap();
     assert_eq!(replace_human.status(), StatusCode::BAD_REQUEST);
-    let fold = t
+    let leave = t
         .router
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/tables/{id}/action"))
+                .uri(format!("/tables/{id}/leave"))
                 .header(header::COOKIE, &cookie_a)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"kind":"fold"}"#))
+                .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(fold.status(), StatusCode::OK);
+    assert_eq!(leave.status(), StatusCode::OK);
+    let leave: serde_json::Value =
+        serde_json::from_slice(&to_bytes(leave.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(leave["pending"], false);
     let showdown = t
         .router
         .clone()
@@ -523,6 +526,8 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     assert!(showdown["hand"].is_null());
     assert!(showdown["last_hand"].is_object());
     assert!(showdown["next_hand_at"].is_string());
+    assert!(showdown["viewer_seat"].is_null());
+    assert_eq!(showdown["viewer_leaving"], false);
     let fold_deadline =
         chrono::DateTime::parse_from_rfc3339(showdown["next_hand_at"].as_str().unwrap())
             .unwrap()
@@ -537,7 +542,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
             Request::builder()
                 .method("POST")
                 .uri(format!("/tables/{id}/continue"))
-                .header(header::COOKIE, &cookie_a)
+                .header(header::COOKIE, &cookie_b)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -565,22 +570,20 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
             .unwrap()
             .with_timezone(&chrono::Utc);
     assert!(acknowledged_at <= chrono::Utc::now());
-    for cookie_value in [&cookie_a, &cookie_b] {
-        let leave = t
-            .router
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/tables/{id}/leave"))
-                    .header(header::COOKIE, cookie_value)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(leave.status(), StatusCode::OK);
-    }
+    let leave = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/leave"))
+                .header(header::COOKIE, &cookie_b)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(leave.status(), StatusCode::OK);
     let account = t
         .router
         .oneshot(
@@ -596,6 +599,73 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         serde_json::from_slice(&to_bytes(account.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(account["balance"], -100);
     assert_eq!(account["entries"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn tournament_registration_uses_configured_buy_in_and_first_open_seat() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "entrant".into(),
+            display_name: "Entrant".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tournaments").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Sit and Go","buy_in":5000,"seat_count":2,"starting_chips":20000,"levels":[{"small_blind":100,"big_blind":200,"ante":0,"hands":10}],"payout_percentages":[100]}"#)).unwrap()).await.unwrap();
+    assert_eq!(create.status(), StatusCode::OK);
+    let id: Uuid = serde_json::from_slice::<serde_json::Value>(
+        &to_bytes(create.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let register = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tournaments/{id}/register"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(register.status(), StatusCode::OK);
+    let state = t
+        .router
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/state"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&to_bytes(state.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(state["viewer_seat"], 0);
+    assert_eq!(state["seats"][0]["stack"], 20_000);
+    assert_eq!(state["seats"][1]["occupant"], "empty");
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance,
+        -5_000
+    );
 }
 
 #[tokio::test]
@@ -689,7 +759,7 @@ async fn no_debt_join_is_rejected() {
                 .uri(format!("/tables/{id}/join"))
                 .header(header::COOKIE, cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"seat":0,"buy_in":2000}"#))
+                .body(Body::from("{}"))
                 .unwrap(),
         )
         .await

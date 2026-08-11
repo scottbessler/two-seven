@@ -94,7 +94,6 @@ pub fn router(s: AppState) -> Router {
             "/tables/{id}/leave",
             axum::routing::post(routes::leave_table),
         )
-        .route("/tables/{id}/sit", axum::routing::post(routes::sit_table))
         .route("/tables/{id}/action", axum::routing::post(routes::action))
         .route(
             "/tables/{id}/continue",
