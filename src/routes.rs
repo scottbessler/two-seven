@@ -162,7 +162,7 @@ pub async fn register_tournament(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(input): Json<JoinRequest>,
+    Json(_input): Json<EmptyRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let table = s
         .tables
@@ -184,7 +184,7 @@ pub async fn register_tournament(
             state.started || state.finished,
         )
     };
-    if input.buy_in != config.buy_in || started || occupied >= config.seat_count || {
+    if started || occupied >= config.seat_count || {
         let table = table.lock().await;
         table
             .seats
@@ -203,12 +203,20 @@ pub async fn register_tournament(
             let TableMode::Tournament(state) = &mut table.mode else {
                 return Err(anyhow::anyhow!("not a tournament"));
             };
-            if input.seat >= table.seats.len()
-                || !matches!(table.seats[input.seat].occupant, SeatOccupant::Empty)
+            if state.started
+                || state.finished
+                || table.seats.iter().any(
+                    |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+                )
             {
-                return Err(anyhow::anyhow!("seat is unavailable"));
+                return Err(anyhow::anyhow!("registration is unavailable"));
             }
-            table.seats[input.seat] = crate::table::Seat {
+            let seat = table
+                .seats
+                .iter()
+                .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+                .ok_or_else(|| anyhow::anyhow!("registration is unavailable"))?;
+            table.seats[seat] = crate::table::Seat {
                 occupant: SeatOccupant::Human { user_id: user },
                 stack: state.config.starting_chips,
                 sitting_out: false,
@@ -693,20 +701,13 @@ pub async fn table_events(
 }
 
 #[derive(Deserialize)]
-pub struct JoinRequest {
-    pub seat: usize,
-    pub buy_in: i64,
-}
-
-#[derive(Deserialize)]
-pub struct CashJoinRequest {
-    pub seat: usize,
-}
+#[serde(deny_unknown_fields)]
+pub struct EmptyRequest {}
 pub async fn join_table(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
-    Json(input): Json<CashJoinRequest>,
+    Json(_input): Json<EmptyRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let table_arc = s
         .tables
@@ -727,6 +728,23 @@ pub async fn join_table(
             "tournament registration uses /tournaments/{id}/register",
         ));
     }
+    {
+        let table = table_arc.lock().await;
+        if table
+            .seats
+            .iter()
+            .any(|seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user))
+        {
+            return Err(AppError::bad_request("you are already seated"));
+        }
+        if !table
+            .seats
+            .iter()
+            .any(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+        {
+            return Err(AppError::bad_request("table is full"));
+        }
+    }
     s.bank
         .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
         .await
@@ -734,13 +752,17 @@ pub async fn join_table(
     let result = s
         .tables
         .update(id, |t| {
-            if input.seat >= t.seats.len() {
-                return Err(anyhow::anyhow!("invalid seat"));
+            if t.seats.iter().any(
+                |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+            ) {
+                return Err(anyhow::anyhow!("you are already seated"));
             }
-            if !matches!(t.seats[input.seat].occupant, SeatOccupant::Empty) {
-                return Err(anyhow::anyhow!("seat is occupied"));
-            }
-            t.seats[input.seat] = crate::table::Seat {
+            let seat = t
+                .seats
+                .iter()
+                .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+                .ok_or_else(|| anyhow::anyhow!("table is full"))?;
+            t.seats[seat] = crate::table::Seat {
                 occupant: SeatOccupant::Human { user_id: user },
                 stack: buy_in,
                 sitting_out: false,
@@ -794,6 +816,9 @@ pub async fn leave_table(
                 if let Some(hand) = t.hand.as_mut() {
                     hand.fold_seat(seat).map_err(|e| anyhow::anyhow!(e))?;
                 }
+                if t.hand.as_ref().is_some_and(|hand| hand.complete) {
+                    settle_finished_hand(t);
+                }
                 let seat = t
                     .seats
                     .get_mut(seat)
@@ -804,7 +829,17 @@ pub async fn leave_table(
             })
             .await
             .map_err(AppError::internal)?;
-        return Ok(Json(serde_json::json!({"ok":true,"pending":true})));
+        crate::driver::settle_pending_departures(&s, id)
+            .await
+            .map_err(AppError::internal)?;
+        let pending = {
+            let table = table.lock().await;
+            table.seats.iter().any(|seat| {
+                matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
+                    && seat.pending_departure
+            })
+        };
+        return Ok(Json(serde_json::json!({"ok":true,"pending":pending})));
     }
     if !tournament {
         s.bank
@@ -817,31 +852,6 @@ pub async fn leave_table(
             t.seats[seat].occupant = SeatOccupant::Empty;
             t.seats[seat].stack = 0;
             t.seats[seat].pending_departure = false;
-            Ok(())
-        })
-        .await
-        .map_err(AppError::internal)?;
-    Ok(Json(serde_json::json!({"ok":true})))
-}
-
-#[derive(Deserialize)]
-pub struct SitRequest {
-    pub sitting_out: bool,
-}
-pub async fn sit_table(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(input): Json<SitRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    s.tables
-        .update(id, |t| {
-            let seat = t
-                .seats
-                .iter_mut()
-                .find(|seat| matches!(seat.occupant,SeatOccupant::Human{user_id} if user_id==user))
-                .ok_or_else(|| anyhow::anyhow!("you are not seated"))?;
-            seat.sitting_out = input.sitting_out;
             Ok(())
         })
         .await
@@ -936,7 +946,6 @@ pub async fn continue_table(
                 return Err(anyhow::anyhow!("no showdown to continue"));
             }
             table.next_action_at = Some(Utc::now());
-            maybe_start_hand(table);
             Ok(())
         })
         .await

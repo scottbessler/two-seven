@@ -100,7 +100,10 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
     Ok(())
 }
 
-async fn settle_pending_departures(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
+pub(crate) async fn settle_pending_departures(
+    state: &AppState,
+    id: uuid::Uuid,
+) -> Result<(), anyhow::Error> {
     let table = state
         .tables
         .get(id)

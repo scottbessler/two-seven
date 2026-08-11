@@ -54,6 +54,7 @@ pub struct TableView {
     pub seats: Vec<SeatView>,
     pub button: usize,
     pub viewer_seat: Option<usize>,
+    pub viewer_leaving: bool,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub next_hand_at: Option<DateTime<Utc>>,
@@ -196,6 +197,9 @@ pub fn table_view_with_banks(
             .collect(),
         button: table.button,
         viewer_seat: viewer,
+        viewer_leaving: viewer
+            .and_then(|index| table.seats.get(index))
+            .is_some_and(|seat| seat.pending_departure),
         hand: table.hand.as_ref().map(|hand| hand_view(hand, viewer)),
         last_hand: table.last_hand.clone(),
         next_hand_at: if table.hand.is_none() && table.last_hand.is_some() {

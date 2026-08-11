@@ -5,7 +5,10 @@ import { responseError, wholeDollarMoney as money } from "/public/shared.js";
 
 const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
-const SHOWDOWN_PAUSE_MS = 10_000;
+const SHOWDOWN_PAUSE_MS = 6_000;
+const FOLD_RESULT_PAUSE_MS = 3_000;
+const DEFAULT_CARD_SCALE = 1.8;
+const DEFAULT_RANK_SCALE = 1.5;
 
 async function fetchState() {
   const response = await fetch(`/tables/${tableId}/state`, { headers: { Accept: "application/json" } });
@@ -29,6 +32,14 @@ function settingHandler(setter, key) {
   };
 }
 
+function savedSetting(key) {
+  const value = Number(localStorage.getItem(key));
+  return value >= 50 && value <= 200 ? value : 100;
+}
+
+function rankWeight(percent) {
+  return percent <= 100 ? percent * 9 : 900 + percent - 100;
+}
 function blindRole(events, seat) {
   if (events.some((event) => event.seat === seat && event.kind === "SmallBlind")) return "SB";
   if (events.some((event) => event.seat === seat && event.kind === "BigBlind")) return "BB";
@@ -64,12 +75,15 @@ function seatPosition(order, total) {
 
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
   const position = seatPosition(order, total);
+  const tooltipBelow = Number.parseFloat(position.top) < 35;
+  const positionLeft = Number.parseFloat(position.left);
+  const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
   const winner = showdown?.awards?.some((award) => award.seat === seat.index);
-  const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
+  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
@@ -162,16 +176,16 @@ function TableLog({ events, seats, summary }) {
   return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
-function ShowdownAdvance({ deadline, canContinue, refresh }) {
+function ShowdownAdvance({ deadline, duration, canContinue, refresh }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
   }, []);
   const dueAt = Date.parse(deadline || "");
-  const remaining = Number.isFinite(dueAt) ? Math.min(SHOWDOWN_PAUSE_MS, Math.max(0, dueAt - now)) : SHOWDOWN_PAUSE_MS;
+  const remaining = Number.isFinite(dueAt) ? Math.min(duration, Math.max(0, dueAt - now)) : duration;
   const seconds = Math.ceil(remaining / 1000);
-  const width = `${(remaining / SHOWDOWN_PAUSE_MS) * 100}%`;
+  const width = `${(remaining / duration) * 100}%`;
   const label = `Next hand in ${seconds}s`;
   if (!canContinue) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}</b></div>`;
   return html`<div class="showdown-advance"><button type="button" aria-label=${`Continue now. ${label}`} onClick=${async () => {
@@ -181,11 +195,47 @@ function ShowdownAdvance({ deadline, canContinue, refresh }) {
   }}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
 }
 
+function TableCommand({ state, openSeats, refresh }) {
+  const viewer = state.viewer_seat == null
+    ? null
+    : state.seats.find((seat) => seat.index === state.viewer_seat);
+  let label;
+  let endpoint;
+  let disabled = false;
+  if (state.viewer_leaving) {
+    label = "Leaving...";
+    disabled = true;
+  } else if (viewer && !state.tournament && viewer.stack <= 0 && !state.hand) {
+    label = `Re-Buy In ${money(state.buy_in)}`;
+    endpoint = `/tables/${tableId}/rebuy`;
+  } else if (viewer) {
+    label = "Leave";
+    endpoint = `/tables/${tableId}/leave`;
+  } else if (openSeats.length > 0 && (!state.tournament || (!state.tournament.started && !state.tournament.finished))) {
+    label = `Buy In ${money(state.buy_in)}`;
+    endpoint = state.tournament
+      ? `/tournaments/${tableId}/register`
+      : `/tables/${tableId}/join`;
+  } else {
+    return null;
+  }
+  const submit = async () => {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (response.ok) refresh();
+    else document.getElementById("table-error").textContent = await responseError(response);
+  };
+  return html`<nav class="table-controls"><button type="button" disabled=${disabled} onClick=${submit}>${label}</button></nav>`;
+}
+
 function TableApp() {
   const [state, setState] = useState(null);
-  const [cardScale, setCardScale] = useState(() => Number(localStorage.getItem("table-card-scale")) || 180);
-  const [rankScale, setRankScale] = useState(() => Number(localStorage.getItem("table-rank-scale")) || 130);
-  const [rankWeight, setRankWeight] = useState(() => Number(localStorage.getItem("table-rank-weight")) || 850);
+  const [cardSize, setCardSize] = useState(() => savedSetting("table-card-size-percent"));
+  const [rankSize, setRankSize] = useState(() => savedSetting("table-rank-size-percent"));
+  const [rankBoldness, setRankBoldness] = useState(() => savedSetting("table-rank-weight-percent"));
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
@@ -206,47 +256,50 @@ function TableApp() {
   const board = hand?.board || showdown?.board || [];
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
-  const scale = cardScale / 100;
+  const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
+  const scale = DEFAULT_CARD_SCALE * cardSize / 100;
+  const contentScale = Math.min(1, (100 / rankSize) ** 2);
   const cardStyle = {
-    "--viewer-card-scale": cardScale,
+    "--viewer-card-scale": DEFAULT_CARD_SCALE * cardSize,
     "--viewer-card-w": `${3 * scale}rem`,
     "--viewer-card-h": `${4.2 * scale}rem`,
     "--viewer-corner": `${0.52 * scale}rem`,
-    "--viewer-pip": `${0.68 * scale}rem`,
-    "--viewer-art": `${1.7 * scale}rem`,
+    "--viewer-pip": `${0.68 * scale * contentScale}rem`,
+    "--viewer-art": `${1.7 * scale * contentScale}rem`,
     "--viewer-card-w-mobile": `${2.1 * scale}rem`,
     "--viewer-card-h-mobile": `${2.95 * scale}rem`,
-    "--card-rank-scale": rankScale / 100,
-    "--card-rank-weight": rankWeight,
+    "--viewer-stage-extra": `${Math.max(0, 8.7 * (scale - DEFAULT_CARD_SCALE))}rem`,
+    "--card-rank-scale": DEFAULT_RANK_SCALE * rankSize / 100,
+    "--card-suit-scale": rankSize / 100,
+    "--card-rank-weight": rankWeight(rankBoldness),
   };
-  return html`<div class="table-shell" style=${cardStyle}>
+  return html`<div class=${`table-shell ${rankSize > 125 ? "compact-card-centers" : ""}`} style=${cardStyle}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
       <button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>
       <dialog id="card-config" class="card-config-dialog">
         <form method="dialog">
           <header><h2>Card display</h2><button type="submit" title="Close" aria-label="Close">×</button></header>
-          <label><span>Card size <output>${cardScale}%</output></span><input name="card-scale" type="range" min="80" max="180" step="5" value=${cardScale} onInput=${settingHandler(setCardScale, "table-card-scale")} /></label>
-          <label><span>Rank size <output>${rankScale}%</output></span><input name="rank-scale" type="range" min="100" max="150" step="5" value=${rankScale} onInput=${settingHandler(setRankScale, "table-rank-scale")} /></label>
-          <label><span>Rank weight <output>${rankWeight}</output></span><input name="rank-weight" type="range" min="600" max="900" step="50" value=${rankWeight} onInput=${settingHandler(setRankWeight, "table-rank-weight")} /></label>
+          <div class="card-config-preview" aria-label="Card preview"><${Card} card="5c" /><${Card} card="6c" /></div>
+          <label><span>Card size <output>${cardSize}%</output></span><input name="card-scale" type="range" min="50" max="200" step="5" value=${cardSize} onInput=${settingHandler(setCardSize, "table-card-size-percent")} /></label>
+          <label><span>Rank size <output>${rankSize}%</output></span><input name="rank-scale" type="range" min="50" max="200" step="5" value=${rankSize} onInput=${settingHandler(setRankSize, "table-rank-size-percent")} /></label>
+          <label><span>Rank weight <output>${rankBoldness}%</output></span><input name="rank-weight" type="range" min="50" max="200" step="5" value=${rankBoldness} onInput=${settingHandler(setRankBoldness, "table-rank-weight-percent")} /></label>
         </form>
       </dialog>
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
-          <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - board.length }).map(() => html`<${Card} empty />`)}</div>
-          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
+          <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}</div>
+          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
         </div>
       </div>
       <div class="seats">${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
     </section>
     ${hand?.legal_actions && html`<section class="decision-area"><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}
-    ${state.viewer_seat == null && !state.tournament && openSeats.length > 0 && html`<section class="card join-card"><h2>Buy in · ${money(state.buy_in)}</h2><form onSubmit=${async (event) => { event.preventDefault(); const seat = Number(new FormData(event.currentTarget).get("seat")); const response = await fetch(`/tables/${tableId}/join`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><button>Buy in</button></form></section>`}
     <p id="table-error" class="error" role="alert"></p>
-    ${state.tournament && !state.tournament.finished && state.viewer_seat == null && html`<section class="card join-card"><h2>Register for tournament</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tournaments/${tableId}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), buy_in: Math.round(Number(data.get("buy_in")) * 100) }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Buy-in ($)<input name="buy_in" type="number" min="1" max="10000" step="1" required /></label><button>Register</button></form></section>`}
     ${(!state.tournament || !state.tournament.started) && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}
-    <nav class="table-controls"><button onClick=${() => fetch(`/tables/${tableId}/sit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sitting_out: true }) }).then(refresh)}>Sit out</button><button onClick=${() => fetch(`/tables/${tableId}/leave`, { method: "POST" }).then(refresh)}>Leave</button></nav>
+    <${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} />
   </div>`;
 }
 

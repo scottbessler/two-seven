@@ -94,8 +94,12 @@ impl FromStr for BotKind {
 
 #[cfg(test)]
 mod bot_kind_tests {
-    use super::{BotKind, Stakes, Table, TableMode};
-    use std::str::FromStr;
+    use super::{
+        BotKind, FOLD_RESULT_PAUSE_SECONDS, SHOWDOWN_PAUSE_SECONDS, Stakes, Table, TableMode,
+        result_pause_seconds,
+    };
+    use crate::holdem::HandSummary;
+    use std::{collections::BTreeMap, str::FromStr};
 
     #[test]
     fn bot_kind_uses_stable_slugs() {
@@ -112,6 +116,26 @@ mod bot_kind_tests {
             }
             .to_string(),
             "$1.00/$2.00 no-limit"
+        );
+    }
+
+    #[test]
+    fn result_pause_distinguishes_showdown_from_fold_win() {
+        let summary = |revealed_hole_cards| HandSummary {
+            board: Vec::new(),
+            results: Vec::new(),
+            awards: Vec::new(),
+            contributions: BTreeMap::new(),
+            revealed_hole_cards,
+            events: Vec::new(),
+        };
+        assert_eq!(
+            result_pause_seconds(Some(&summary(Vec::new()))),
+            FOLD_RESULT_PAUSE_SECONDS
+        );
+        assert_eq!(
+            result_pause_seconds(Some(&summary(vec![(0, Vec::new()), (1, Vec::new())]))),
+            SHOWDOWN_PAUSE_SECONDS
         );
     }
 
@@ -213,7 +237,16 @@ pub struct Table {
     pub next_action_at: Option<DateTime<Utc>>,
 }
 
-pub const SHOWDOWN_PAUSE_SECONDS: i64 = 10;
+pub const SHOWDOWN_PAUSE_SECONDS: i64 = 6;
+pub const FOLD_RESULT_PAUSE_SECONDS: i64 = 3;
+
+fn result_pause_seconds(summary: Option<&HandSummary>) -> i64 {
+    if summary.is_some_and(|summary| summary.revealed_hole_cards.len() > 1) {
+        SHOWDOWN_PAUSE_SECONDS
+    } else {
+        FOLD_RESULT_PAUSE_SECONDS
+    }
+}
 
 impl Table {
     pub fn new(
@@ -364,5 +397,7 @@ pub fn settle_finished_hand(table: &mut Table) {
     }
     table.button = (table.button + 1) % table.seats.len();
     table.last_hand = hand.summary;
-    table.next_action_at = Some(Utc::now() + chrono::Duration::seconds(SHOWDOWN_PAUSE_SECONDS));
+    table.next_action_at = Some(
+        Utc::now() + chrono::Duration::seconds(result_pause_seconds(table.last_hand.as_ref())),
+    );
 }

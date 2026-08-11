@@ -6,6 +6,7 @@ const tableState = {
   stakes: { NoLimit: { small_blind: 100, big_blind: 200 } },
   button: 5,
   viewer_seat: 2,
+  viewer_leaving: false,
   buy_in: 20_000,
   tournament: null,
   last_hand: null,
@@ -15,12 +16,16 @@ const tableState = {
     { index: 2, stack: 16_600, occupant: "human", display_name: "You", sitting_out: false, hole_cards: null, bank_balance: 8_000, bank_entries: [] },
     { index: 3, stack: 0, occupant: "Rock", display_name: "Ari", sitting_out: false, hole_cards: null, bank_balance: -2_000, bank_entries: [] },
     { index: 4, stack: 20_000, occupant: "human", display_name: "Sam", sitting_out: false, hole_cards: null, bank_balance: 25_000, bank_entries: [] },
-    { index: 5, stack: 19_800, occupant: "Grinder", display_name: "Jo", sitting_out: false, hole_cards: null, bank_balance: 5_000, bank_entries: [] },
+    { index: 5, stack: 19_800, occupant: "Grinder", display_name: "Jo", sitting_out: false, hole_cards: null, bank_balance: 5_000, bank_entries: [
+      { memo: "Table buy-in", delta: -20_000 },
+      { memo: "Cash out", delta: 18_000 },
+      { memo: "Table buy-in", delta: -20_000 },
+    ] },
   ],
   hand: {
     street: "Flop",
     board: ["Ah", "7c", "2s"],
-    your_hole_cards: ["Kh", "Qh"],
+    your_hole_cards: ["5c", "6c"],
     seats: [],
     pot: 7_600,
     last_bet: 2_400,
@@ -74,6 +79,16 @@ const showdownState = {
   },
 };
 
+const foldResultState = {
+  ...showdownState,
+  last_hand: {
+    ...showdownState.last_hand,
+    board: ["Ah", "7c", "2s"],
+    results: [],
+    revealed_hole_cards: [],
+  },
+};
+
 async function mountTable(page, state) {
   await page.route("**/tables/mock/state", (route) => route.fulfill({ json: state }));
   await page.route("**/tables/mock/events", (route) =>
@@ -107,35 +122,46 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".seat.viewer .seat-cards .playing-card")).toHaveCount(2);
   const viewerCard = page.locator(".seat.viewer .seat-cards .playing-card").first();
   const secondViewerCard = page.locator(".seat.viewer .seat-cards .playing-card").nth(1);
-  expect(await viewerCard.locator(".card-frame").evaluate((card) => getComputedStyle(card).color)).toBe("rgb(213, 41, 31)");
+  expect(await viewerCard.locator(".card-corner b").first().evaluate((rank) => getComputedStyle(rank).color)).toBe("rgb(32, 35, 31)");
+  const configButtonBox = await page.getByRole("button", { name: "Card display settings" }).boundingBox();
+  expect(configButtonBox.x).toBeGreaterThan((page.viewportSize()?.width || 0) * 0.75);
+  expect(configButtonBox.y).toBeLessThan(80);
   await expect(page.locator(".card-config-dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Card display settings" }).click();
   await expect(page.locator(".card-config-dialog")).toBeVisible();
   const sizeSlider = page.locator('input[name="card-scale"]');
   const rankSlider = page.locator('input[name="rank-scale"]');
   const weightSlider = page.locator('input[name="rank-weight"]');
-  await expect(sizeSlider).toHaveValue("180");
-  await expect(rankSlider).toHaveValue("130");
-  await expect(weightSlider).toHaveValue("850");
+  await Promise.all([sizeSlider, rankSlider, weightSlider].map(async (slider) => {
+    await expect(slider).toHaveValue("100");
+    await expect(slider).toHaveAttribute("min", "50");
+    await expect(slider).toHaveAttribute("max", "200");
+  }));
+  await expect(page.locator(".card-config-preview .playing-card")).toHaveCount(2);
+  const previewBox = await page.locator(".card-config-preview .playing-card").first().boundingBox();
+  const liveBox = await viewerCard.boundingBox();
+  expect(Math.abs(previewBox.width - liveBox.width)).toBeLessThan(1);
+  expect(Math.abs(previewBox.height - liveBox.height)).toBeLessThan(1);
   await expect(page.locator(".card-config-dialog")).toHaveScreenshot("card-config-dialog.png");
-  await sizeSlider.fill("120");
+  await sizeSlider.fill("50");
   const initialCardBox = await viewerCard.boundingBox();
-  await sizeSlider.fill("150");
-  await expect(page.locator(".card-config-dialog output").first()).toHaveText("150%");
+  await sizeSlider.fill("100");
+  await expect(page.locator(".card-config-dialog output").first()).toHaveText("100%");
   const enlargedCardBox = await viewerCard.boundingBox();
-  expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.15);
-  expect(await page.evaluate(() => localStorage.getItem("table-card-scale"))).toBe("150");
-  const initialRank = await viewerCard.locator(".card-corner b").first().evaluate((rank) => ({ size: parseFloat(getComputedStyle(rank).fontSize), weight: Number(getComputedStyle(rank).fontWeight) }));
-  await rankSlider.fill("145");
-  await weightSlider.fill("900");
-  const tunedRank = await viewerCard.locator(".card-corner b").first().evaluate((rank) => ({ size: parseFloat(getComputedStyle(rank).fontSize), weight: Number(getComputedStyle(rank).fontWeight) }));
+  expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.8);
+  expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
+  await rankSlider.fill("50");
+  await weightSlider.fill("50");
+  const initialRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
+  await rankSlider.fill("100");
+  await weightSlider.fill("100");
+  const tunedRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
   expect(tunedRank.size).toBeGreaterThan(initialRank.size);
+  expect(tunedRank.suitSize).toBeGreaterThan(initialRank.suitSize);
   expect(tunedRank.weight).toBeGreaterThan(initialRank.weight);
-  expect(await page.evaluate(() => localStorage.getItem("table-rank-scale"))).toBe("145");
-  expect(await page.evaluate(() => localStorage.getItem("table-rank-weight"))).toBe("900");
-  await sizeSlider.fill("180");
-  await rankSlider.fill("130");
-  await weightSlider.fill("850");
+  expect(tunedRank.weight).toBe(900);
+  expect(await page.evaluate(() => localStorage.getItem("table-rank-size-percent"))).toBe("100");
+  expect(await page.evaluate(() => localStorage.getItem("table-rank-weight-percent"))).toBe("100");
   await page.getByRole("button", { name: "Close" }).click();
   const firstBeforeMagnify = await viewerCard.boundingBox();
   const secondBeforeMagnify = await secondViewerCard.boundingBox();
@@ -148,13 +174,26 @@ test("shows live hand cues and event log", async ({ page }) => {
   await page.locator(".brand").hover();
   await page.waitForTimeout(250);
   await expect(page.locator(".empty-seat")).toHaveCount(0);
+  await expect(page.locator(".board .empty-card")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
   await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "$24", "$36", "$38", "$76", "All In"]);
   await page.locator(".seat.viewer .player-info").hover();
   await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
+  const topSeatIndex = await page.locator(".seat").evaluateAll((seats) => seats
+    .map((seat, index) => ({ index, top: seat.getBoundingClientRect().top }))
+    .toSorted((a, b) => a.top - b.top)[0].index);
+  const topPlayer = page.locator(".seat").nth(topSeatIndex).locator(".player-info");
+  await topPlayer.hover();
+  const tooltipBox = await topPlayer.locator(".player-tooltip").boundingBox();
+  const viewport = page.viewportSize();
+  expect(tooltipBox.x, "V20: top-seat tooltip left edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y, "V20: top-seat tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width, "V20: top-seat tooltip right edge must remain visible").toBeLessThanOrEqual(viewport.width);
+  expect(tooltipBox.y + tooltipBox.height, "V20: top-seat tooltip bottom edge must remain visible").toBeLessThanOrEqual(viewport.height);
   await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
   await expect(page.locator(".seat-wager")).toHaveCount(3);
+  await expect(page.locator(".seat.viewer .seat-wager")).toHaveText("$12");
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
   expect(viewerWager.y + viewerWager.height, "V16: viewer wager must sit above viewer cards").toBeLessThanOrEqual(viewerCards.y + 1);
@@ -192,6 +231,114 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
 });
 
+test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 702, height: 832 });
+  await mountTable(page, tableState);
+  const playerInfo = page.locator(".seat.tooltip-below.tooltip-right .player-info").filter({ hasText: "Sam" });
+  await expect(playerInfo).toHaveCount(1);
+  await playerInfo.hover();
+  const tooltipBox = await playerInfo.locator(".player-tooltip").boundingBox();
+  expect(tooltipBox.x, "V20: narrow top-rail tooltip left edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y, "V20: narrow top-rail tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width, "V20: narrow top-rail tooltip right edge must remain visible").toBeLessThanOrEqual(702);
+  expect(tooltipBox.y + tooltipBox.height, "V20: narrow top-rail tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
+});
+
+test("keeps the table log footprint stable as events accumulate", async ({ page }) => {
+  await mountTable(page, tableState);
+  const log = page.locator(".game-log");
+  await log.locator("ol").evaluate((list) => list.replaceChildren(list.firstElementChild));
+  const sparse = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top }));
+  await log.locator("ol").evaluate((list) => {
+    const row = list.firstElementChild;
+    for (let index = 0; index < 30; index += 1) list.append(row.cloneNode(true));
+  });
+  const dense = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top, scrolls: node.scrollHeight > node.clientHeight }));
+  expect(dense.height, "V22: table log height must not grow with events").toBe(sparse.height);
+  expect(dense.controlsTop, "V22: content below table log must remain fixed").toBe(sparse.controlsTop);
+  expect(dense.scrolls, "V22: excess table events must scroll inside the fixed log").toBe(true);
+});
+
+test("offers one state-aware table lifecycle command", async ({ page }) => {
+  await mountTable(page, tableState);
+  await expect(page.locator(".table-controls button")).toHaveText(["Leave"]);
+  await expect(page.getByRole("button", { name: "Sit out" })).toHaveCount(0);
+
+  let joinBody;
+  await page.route("**/tables/mock/join", async (route) => {
+    joinBody = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true } });
+  });
+  const unseated = {
+    ...tableState,
+    viewer_seat: null,
+    hand: null,
+    seats: tableState.seats.map((seat) => seat.index === 2
+      ? { ...seat, occupant: "empty", display_name: null, stack: 0 }
+      : seat),
+  };
+  await mountTable(page, unseated);
+  await expect(page.locator(".table-controls button")).toHaveText(["Buy In $200"]);
+  await page.locator(".table-controls button").click();
+  expect(joinBody).toEqual({});
+
+  let rebuyBody;
+  await page.route("**/tables/mock/rebuy", async (route) => {
+    rebuyBody = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true } });
+  });
+  const busted = {
+    ...tableState,
+    hand: null,
+    seats: tableState.seats.map((seat) => seat.index === tableState.viewer_seat
+      ? { ...seat, stack: 0 }
+      : seat),
+  };
+  await mountTable(page, busted);
+  await expect(page.locator(".table-controls button")).toHaveText(["Re-Buy In $200"]);
+  await page.locator(".table-controls button").click();
+  expect(rebuyBody).toEqual({});
+
+  await mountTable(page, { ...tableState, viewer_leaving: true });
+  await expect(page.locator(".table-controls button")).toHaveText(["Leaving..."]);
+  await expect(page.locator(".table-controls button")).toBeDisabled();
+});
+
+test("reflows viewer cards at maximum display settings", async ({ page }) => {
+  await mountTable(page, { ...tableState, hand: { ...tableState.hand, your_hole_cards: ["Tc", "9c"] } });
+  await page.getByRole("button", { name: "Card display settings" }).click();
+  await page.locator('input[name="card-scale"]').fill("200");
+  await page.locator('input[name="rank-scale"]').fill("200");
+  await page.locator('input[name="rank-weight"]').fill("200");
+  await page.getByRole("button", { name: "Close" }).click();
+  const geometry = await page.locator(".table-stage").evaluate((stage) => {
+    const viewerCards = stage.querySelector(".seat.viewer .seat-cards").getBoundingClientRect();
+    const viewerWager = stage.querySelector(".seat.viewer .seat-wager")?.getBoundingClientRect();
+    const tableCenter = stage.querySelector(".table-center").getBoundingClientRect();
+    const card = stage.querySelector(".seat.viewer .playing-card");
+    const corners = [...card.querySelectorAll(".card-corner b, .card-corner i")].map((node) => node.getBoundingClientRect());
+    const centerContent = [...card.querySelectorAll(".pip-grid i, .card-art")].map((node) => node.getBoundingClientRect());
+    // Browser-evaluated helpers cannot close over test-scope functions.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return {
+      centerOverlap: overlaps(viewerCards, tableCenter),
+      wagerOverlap: viewerWager ? overlaps(viewerWager, tableCenter) : false,
+      faceOverlap: corners.some((corner) => centerContent.some((content) => overlaps(corner, content))),
+      pipOverlap: centerContent.some((pip, index) => centerContent.slice(index + 1).some((other) => overlaps(pip, other))),
+      viewerCards: { top: viewerCards.top, bottom: viewerCards.bottom },
+      tableCenter: { top: tableCenter.top, bottom: tableCenter.bottom },
+      corners: corners.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
+      centerContent: centerContent.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
+    };
+  });
+  expect(geometry.centerOverlap, `V21: max-size viewer cards must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.wagerOverlap, `V21: max-size viewer wager must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.faceOverlap, `V21: max-size ranks must clear pips and center art ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.pipOverlap, `V21: reflowed pips must remain distinct ${JSON.stringify(geometry)}`).toBe(false);
+  await expect(page).toHaveScreenshot("max-card-table.png", { fullPage: true });
+});
+
 test("integrates showdown with players and table log", async ({ page }) => {
   let continued = false;
   await page.route("**/tables/mock/continue", (route) => {
@@ -203,10 +350,18 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await expect(page.locator(".seat .seat-cards.revealed")).toHaveCount(2);
   await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
-  await expect(page.locator(".showdown-advance button")).toContainText("OK · 10s");
+  const opponentCard = page.locator(".seat:not(.viewer) .seat-cards.revealed .playing-card").first();
+  expect((await opponentCard.boundingBox()).width).toBeGreaterThan(40);
+  await expect(page.locator(".seat.winner")).toHaveCSS("border-top-width", "2px");
+  await expect(page.locator(".showdown-advance button")).toContainText("OK · 6s");
   await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
   await expect(page.locator(".last-hand")).toHaveCount(0);
   await expect(page).toHaveScreenshot("showdown-table.png", { fullPage: true });
   await page.locator(".showdown-advance button").click();
   expect(continued).toBe(true);
+});
+
+test("uses the short acknowledgement window for a fold result", async ({ page }) => {
+  await mountTable(page, foldResultState);
+  await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });

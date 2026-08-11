@@ -170,14 +170,13 @@ and the board) — the same redacted view a human gets (§V3).
 | GET | `/tables/{id}` | SSR table page + island mount |
 | GET | `/tables/{id}/state` | Redacted `TableView` JSON (SSE fallback) |
 | GET | `/tables/{id}/events` | SSE stream of `TableView` |
-| POST | `/tables/{id}/join` | Sit down: `{seat, buy_in}` (bank-checked) |
+| POST | `/tables/{id}/join` | Buy in to the first open seat: `{}` (bank-checked) |
 | POST | `/tables/{id}/leave` | Stand up and cash out |
-| POST | `/tables/{id}/sit` | `{sitting_out: bool}` |
 | POST | `/tables/{id}/rebuy` | Top up the seat stack from the bank |
 | POST | `/tables/{id}/bot` | Seat/remove a bot: `{seat, kind?}` |
 | POST | `/tables/{id}/action` | `{kind: fold\|check\|call\|bet\|raise, amount?}` |
 | GET | `/tournaments/new`, POST `/tournaments` | Create a sit-and-go |
-| POST | `/tournaments/{id}/register` | Buy in |
+| POST | `/tournaments/{id}/register` | Buy in to the first open seat: `{}` |
 | GET | `/api/bank` | Balance + recent ledger entries |
 
 HTML routes return an escaped error page (`AppError`); JSON routes return
@@ -270,31 +269,44 @@ Mark each milestone done here as it lands.
 - **V11** `TableView` exposes redacted action events + per-seat hand state; UI shows
   current actor, dealer, blinds, street wager, folded/all-in state, and recent log.
 - **V12** Every cash table has one fixed buy-in; human joins, bot seats, and rebuys
-  charge and assign exactly that amount, independent of client payloads.
+  charge and assign exactly that server-configured amount.
 - **V13** Every bot personality produces at least one bet or raise across the
   deterministic aggression corpus while retaining distinct style signals.
 - **V14** Desktop + mobile table snapshots keep occupied players outside felt,
   viewer cards at viewer seat, board unobscured, actions before unified log,
   one-line header, whole-dollar labels, and integrated showdown winners/cards.
 - **V15** Viewer cards retain face saturation inside seat, expose persisted
-  80–180% size control, magnify on hover/focus, and sit on compact rounded-rect felt.
+  50–200% relative size control, magnify on hover/focus, and sit on compact rounded-rect felt.
 - **V16** Viewer street wager renders centered above viewer hole cards at desktop
   and mobile widths.
-- **V17** Card display config persists 80–180% viewer size (default 180%),
-  corner-rank size/weight controls; either viewer card magnifies both cards, and
-  default geometry keeps viewer cards/wager clear of board/status.
-- **V18** Completed hands remain visible for 10 seconds unless a seated human
-  acknowledges early; showdown UI shows an OK action with shared-deadline progress.
-- **V19** Blackjack validates action legality and additional wager bounds under
+- **V17** Card display config persists 50–200% relative viewer size/rank
+  size/weight controls; 100% equals former maxima (180%/150%/900), either viewer
+  card magnifies both, and default geometry clears board/status.
+- **V18** Showdowns remain visible for 6 seconds and fold-only results for 3
+  seconds unless a seated human acknowledges early; UI shows OK + deadline progress.
+- **V19** Card config opens from page upper-right and previews the exact viewer
+  dimensions/font; seat ranks retain suit color, revealed hands are legible, and
+  winners have unmistakable gold emphasis without wager/card artifacts.
+- **V20** Every occupied-seat player tooltip remains fully inside the viewport at
+  desktop and mobile widths, including seats on the top player rail.
+- **V21** Rank size scales both rank and suit glyphs; at 200% card/rank settings,
+  viewer cards/wager clear table center content and corner indices/pips remain distinct.
+- **V22** The table log has a fixed responsive height; added events scroll inside
+  it without moving controls or content below the log.
+- **V23** Human table lifecycle exposes exactly one state-dependent command:
+  unseated players can Buy In to the server-selected first open seat, busted cash
+  players can Re-Buy In, seated players can Leave, and deferred live-hand leaves
+  visibly remain Leaving until settlement; no human seat picker or sit-out command.
+- **V24** Blackjack validates action legality and additional wager bounds under
   one game lock before mutation; rejected actions move no chips or ledger rows.
-- **V20** Blackjack view action flags and store validation use the same
+- **V25** Blackjack view action flags and store validation use the same
   predicates; server-derived wagers never trust client state.
-- **V21** Blackjack peeks at deal time unless an ace-up hand has a real
+- **V26** Blackjack peeks at deal time unless an ace-up hand has a real
   insurance decision; ace-up decisions peek immediately after insurance or any
   other action, player/dealer naturals push, and insurance pays 3× its stake.
-- **V22** Each user has at most one live blackjack game; finished games are
+- **V27** Each user has at most one live blackjack game; finished games are
   pruned on a new start and a live game is resumable.
-- **V23** Blackjack and Hand Blitz islands render only legal controls and show
+- **V28** Blackjack and Hand Blitz islands render only legal controls and show
   server error text; shared island helpers remain behavior-compatible.
 - **V24** Live blackjack games survive process restart through atomic JSON
   persistence; finished games are not restored.
@@ -315,6 +327,16 @@ T7|x|recompose live table + showdown UI|V3,V7,V11,V14
 T8|x|tune viewer cards + compact felt geometry|V7,V14,V15
 T9|x|place viewer wager above hole cards|V14,V16
 T10|x|add card display config + paired hand magnification|V14,V15,V17
+T11|x|hold showdown for acknowledgement + countdown|V11,V14,V18
+T12|x|polish card config + showdown card emphasis|V14,V17,V19
+T13|x|rebase card controls around former maxima|V15,V17,V19
+T14|x|contain player tooltips at viewport edges|V14,V20
+T15|x|reflow max-size viewer cards and card faces|V17,V19,V21
+T16|x|reserve a fixed table-log footprint|V11,V14,V22
+T17|x|simplify and harden table lifecycle controls|V2,V10,V23
+T18|x|apply atomic legality, wager bounds, peek, and conservation rules to blackjack|V24,V25,V26
+T19|x|add resumable one-live-game blackjack lifecycle|V27
+T20|x|share island helpers and surface blitz/blackjack UI errors and actions|V28
 T11|~|hold showdown for acknowledgement + countdown|V11,V14,V18
 T12|x|apply atomic legality, wager bounds, peek, and conservation rules to blackjack|V19,V20,V21
 T13|x|add resumable one-live-game blackjack lifecycle|V22
@@ -361,7 +383,7 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - The card-test grid fixed every suit to 13 columns and used horizontal overflow on narrow screens; fixed by wrapping centered cards at their in-game size and enforcing V8 at both snapshot widths.
 - Rock sent premium hands through a check/call-only helper, making that personality incapable of aggression; fix with wager-first premium play and a deterministic all-policy aggression corpus.
 - The tournament payout fixture's tiny terminal blinds could outlive its tick cap once bots played more hands; fixed by using a decisive terminal test level while preserving payout/conservation assertions.
-- The frontend asset contract still required the removed variable buy-in form label; replaced it with fixed-price display and seat-only payload assertions under V12.
+- The frontend asset contract still required the removed variable buy-in form label and later retained client seat payloads; replaced both with fixed-price display and server-selected empty payload assertions under V12/V23.
 - The fixed-buy-in route regression double-counted live blinds by adding the pot to pre-hand table stacks; corrected it to assert each authoritative seated stack directly.
 - Seats, empty-seat controls, board, metrics, and wagers shared one absolute-positioned ellipse while viewer cards/actions lived below it; replace with outer player rail, owner-attached cards, button-only actions, and unified table log under V14.
 - Table asset contracts still required removed range-era labels/formatter; align contracts to player tooltip + whole-dollar `money()` under V14.
@@ -369,6 +391,13 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - Asset contract forbade all range inputs to prevent wager slider, blocking card-size control; narrow guard to wager slider/input identifiers under V15.
 - Viewer wager used a right-edge exception while every other wager sat above its player; remove the exception and enforce wager-over-cards geometry under V16.
 - Three-second automatic redeal hid showdown before users could read it; extend the server-owned pause and expose an acknowledged countdown under V18.
+- `.seat b` overrode nested card ranks with accent gold and enlarged cards could cover the viewer wager; enforce card-face color and wager layering under V19.
+- Starting a new hand directly in showdown acknowledgement bypassed normal driver follow-up ordering; acknowledgement now expires the shared deadline and lets the driver deal.
+- Undealt board slots rendered as dark input-like boxes; render only dealt community cards under V19.
+- Player tooltips always opened above their seat, pushing top-rail details beyond the viewport; choose an inward placement and enforce viewport containment under V20.
+- Viewer card/rank controls scaled outer cards and corners without reserving table or face space, allowing max settings to cover the board and pips; expand the player rail and reflow card centers under V21.
+- The table log used only `max-height`, so its footprint grew with each event and pushed lower controls down; reserve a fixed responsive height under V22.
+- Human join forms exposed seat selection, table controls appeared for spectators, and live-hand leave returned success while leaving the same controls visible; move seat assignment server-side and expose one viewer-state command with explicit pending departure under V23.
 - Blackjack debited double, split, and insurance before validation and refunded rejected
   actions into the ledger; validate and mutate under the game lock, then charge once.
 - Blackjack action flags, handler wager calculations, and store predicates diverged;
