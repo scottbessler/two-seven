@@ -97,6 +97,10 @@ pub fn router(s: AppState) -> Router {
         .route("/tables/{id}/sit", axum::routing::post(routes::sit_table))
         .route("/tables/{id}/action", axum::routing::post(routes::action))
         .route(
+            "/tables/{id}/continue",
+            axum::routing::post(routes::continue_table),
+        )
+        .route(
             "/tables/{id}/rebuy",
             axum::routing::post(routes::rebuy_table),
         )

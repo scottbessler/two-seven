@@ -4,6 +4,7 @@ import { Card } from "/public/card.js";
 
 const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
+const SHOWDOWN_PAUSE_MS = 10_000;
 
 async function fetchState() {
   const response = await fetch(`/tables/${tableId}/state`, { headers: { Accept: "application/json" } });
@@ -170,6 +171,25 @@ function TableLog({ events, seats, summary }) {
   return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
+function ShowdownAdvance({ deadline, canContinue, refresh }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
+  }, []);
+  const dueAt = Date.parse(deadline || "");
+  const remaining = Number.isFinite(dueAt) ? Math.min(SHOWDOWN_PAUSE_MS, Math.max(0, dueAt - now)) : SHOWDOWN_PAUSE_MS;
+  const seconds = Math.ceil(remaining / 1000);
+  const width = `${(remaining / SHOWDOWN_PAUSE_MS) * 100}%`;
+  const label = `Next hand in ${seconds}s`;
+  if (!canContinue) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}</b></div>`;
+  return html`<div class="showdown-advance"><button type="button" aria-label=${`Continue now. ${label}`} onClick=${async () => {
+    const response = await fetch(`/tables/${tableId}/continue`, { method: "POST" });
+    if (response.ok) refresh();
+    else document.getElementById("table-error").textContent = await responseError(response);
+  }}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
+}
+
 function TableApp() {
   const [state, setState] = useState(null);
   const [cardScale, setCardScale] = useState(() => Number(localStorage.getItem("table-card-scale")) || 180);
@@ -224,7 +244,7 @@ function TableApp() {
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
           <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - board.length }).map(() => html`<${Card} empty />`)}</div>
-          ${showdown ? html`<p class="showdown-result">${result}</p>` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
+          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
         </div>
       </div>
       <div class="seats">${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>

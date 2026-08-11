@@ -5,6 +5,7 @@ use crate::{
     money::Cents,
     table::{Seat, SeatOccupant, Table},
 };
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
@@ -55,6 +56,7 @@ pub struct TableView {
     pub viewer_seat: Option<usize>,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
+    pub next_hand_at: Option<DateTime<Utc>>,
     pub tournament: Option<TournamentView>,
 }
 
@@ -196,6 +198,11 @@ pub fn table_view_with_banks(
         viewer_seat: viewer,
         hand: table.hand.as_ref().map(|hand| hand_view(hand, viewer)),
         last_hand: table.last_hand.clone(),
+        next_hand_at: if table.hand.is_none() && table.last_hand.is_some() {
+            table.next_action_at
+        } else {
+            None
+        },
         tournament: match &table.mode {
             crate::table::TableMode::Tournament(state) => state
                 .config

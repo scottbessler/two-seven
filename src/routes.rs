@@ -23,6 +23,7 @@ use axum::{
     },
 };
 use futures_util::stream;
+use chrono::Utc;
 use serde::Deserialize;
 use std::{convert::Infallible, time::Duration};
 use uuid::Uuid;
@@ -917,6 +918,31 @@ pub async fn action(
                 AppError::internal(message)
             }
         })?;
+    Ok(Json(serde_json::json!({"ok":true})))
+}
+
+pub async fn continue_table(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    s.tables
+        .update(id, |table| {
+            let seated = table.seats.iter().any(
+                |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+            );
+            if !seated {
+                return Err(anyhow::anyhow!("you are not seated"));
+            }
+            if table.hand.is_some() || table.last_hand.is_none() {
+                return Err(anyhow::anyhow!("no showdown to continue"));
+            }
+            table.next_action_at = Some(Utc::now());
+            maybe_start_hand(table);
+            Ok(())
+        })
+        .await
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 

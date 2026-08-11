@@ -212,6 +212,9 @@ pub struct Table {
     pub last_hand: Option<HandSummary>,
     pub next_action_at: Option<DateTime<Utc>>,
 }
+
+pub const SHOWDOWN_PAUSE_SECONDS: i64 = 10;
+
 impl Table {
     pub fn new(
         name: String,
@@ -361,5 +364,6 @@ pub fn settle_finished_hand(table: &mut Table) {
     }
     table.button = (table.button + 1) % table.seats.len();
     table.last_hand = hand.summary;
-    table.next_action_at = Some(Utc::now() + chrono::Duration::seconds(3));
+    table.next_action_at =
+        Some(Utc::now() + chrono::Duration::seconds(SHOWDOWN_PAUSE_SECONDS));
 }

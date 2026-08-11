@@ -57,6 +57,7 @@ const showdownState = {
   ...tableState,
   viewer_seat: 0,
   hand: null,
+  next_hand_at: "2099-01-01T00:00:00Z",
   last_hand: {
     board: ["Ah", "7c", "2s", "7d", "As"],
     results: [
@@ -192,11 +193,20 @@ test("shows live hand cues and event log", async ({ page }) => {
 });
 
 test("integrates showdown with players and table log", async ({ page }) => {
+  let continued = false;
+  await page.route("**/tables/mock/continue", (route) => {
+    continued = true;
+    return route.fulfill({ json: { ok: true } });
+  });
   await mountTable(page, showdownState);
   await expect(page.locator(".seat.winner")).toHaveCount(1);
   await expect(page.locator(".seat .seat-cards.revealed")).toHaveCount(2);
   await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
+  await expect(page.locator(".showdown-advance button")).toContainText("OK · 10s");
+  await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
   await expect(page.locator(".last-hand")).toHaveCount(0);
   await expect(page).toHaveScreenshot("showdown-table.png", { fullPage: true });
+  await page.locator(".showdown-advance button").click();
+  expect(continued).toBe(true);
 });
