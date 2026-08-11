@@ -27,7 +27,7 @@ fn layout_with_context(title: &str, body: &str, head: &str, context: Option<&str
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><link rel="stylesheet" href="{}">{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<button class="bank-widget" type="button" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></button></header>{}</main><script src="{}" defer></script></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{}</title><link rel="stylesheet" href="{}">{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<button class="bank-widget" type="button" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></button></header>{}</main><script type="module" src="{}" defer></script></body></html>"#,
         escape(title),
         asset("/public/app.css"),
         head,

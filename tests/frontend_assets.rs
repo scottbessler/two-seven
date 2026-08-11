@@ -6,6 +6,20 @@ const BLITZ_JS: &str = include_str!("../public/blitz.js");
 const CARD_JS: &str = include_str!("../public/card.js");
 const SHARED_JS: &str = include_str!("../public/shared.js");
 const LOBBY_JS: &str = include_str!("../public/lobby.js");
+const RENDER_RS: &str = include_str!("../src/render.rs");
+
+#[test]
+fn imported_islands_are_emitted_as_module_scripts() {
+    let bank_asset = RENDER_RS
+        .find(r#"asset("/public/bank.js")"#)
+        .expect("render.rs should include bank.js");
+    let script = &RENDER_RS[..bank_asset];
+    let script = &script[script.rfind("<script").expect("bank script tag")..];
+    assert!(
+        script.starts_with(r#"<script type="module" src="{}" defer></script>"#),
+        "bank.js must be emitted as a module script"
+    );
+}
 
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
