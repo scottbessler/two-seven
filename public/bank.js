@@ -1,10 +1,8 @@
+import { wholeDollarMoney as money } from "/public/shared.js";
+
 const balance = document.getElementById("bank-balance");
 const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
-
-function money(value) {
-  return `$${Math.round(value / 100).toLocaleString()}`;
-}
 
 if (balance && widget) {
   fetch("/api/bank", { headers: { Accept: "application/json" } })

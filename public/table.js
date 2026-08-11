@@ -1,5 +1,6 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
+import { responseError, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", pip-grid-${value}, card-pip-${position}, card-art-${court}.
 
 const root = document.getElementById("table-app");
@@ -16,10 +17,6 @@ function actionName(action) {
   return typeof action === "string" ? action : Object.keys(action)[0];
 }
 
-function money(value) {
-  return `$${Math.round(value / 100).toLocaleString()}`;
-}
-
 function streetName(street) {
   return { Preflop: "Preflop", Flop: "Flop", Turn: "Turn", River: "River" }[street] || street;
 }
@@ -30,12 +27,6 @@ function settingHandler(setter, key) {
     setter(value);
     localStorage.setItem(key, String(value));
   };
-}
-
-async function responseError(response) {
-  const text = await response.text();
-  const document = new DOMParser().parseFromString(text, "text/html");
-  return document.querySelector("p")?.textContent?.trim() || text || `Request failed (${response.status})`;
 }
 
 function blindRole(events, seat) {

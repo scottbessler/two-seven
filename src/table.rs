@@ -364,6 +364,5 @@ pub fn settle_finished_hand(table: &mut Table) {
     }
     table.button = (table.button + 1) % table.seats.len();
     table.last_hand = hand.summary;
-    table.next_action_at =
-        Some(Utc::now() + chrono::Duration::seconds(SHOWDOWN_PAUSE_SECONDS));
+    table.next_action_at = Some(Utc::now() + chrono::Duration::seconds(SHOWDOWN_PAUSE_SECONDS));
 }

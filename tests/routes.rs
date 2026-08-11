@@ -637,3 +637,151 @@ async fn no_debt_join_is_rejected() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn blackjack_rejected_actions_leave_ledger_untouched() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "blackjack-reject".into(),
+            display_name: "Blackjack Reject".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/blackjack/start")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"bet":100}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let game_id = body["id"].as_str().unwrap();
+    if body["status"] == "Playing" {
+        let response = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/blackjack/stand")
+                    .header(header::COOKIE, &cookie_value)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!(r#"{{"id":"{game_id}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+    let before = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    for kind in ["double", "split", "insurance"] {
+        let response = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/blackjack/{kind}"))
+                    .header(header::COOKIE, &cookie_value)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!(r#"{{"id":"{game_id}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    let after = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(before.entries, after.entries);
+}
+
+#[tokio::test]
+async fn blackjack_start_rejects_live_game_and_resume_returns_it() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "blackjack-resume".into(),
+            display_name: "Blackjack Resume".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let mut live = None;
+    for _ in 0..20 {
+        let response = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/blackjack/start")
+                    .header(header::COOKIE, &cookie_value)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"bet":100}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .unwrap();
+        if body["status"] == "Playing" {
+            live = Some(body);
+            break;
+        }
+    }
+    let live = live.expect("seed a live blackjack hand");
+    let game_id = live["id"].as_str().unwrap();
+    let before = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    let resume = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/blackjack/resume")
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let resumed: serde_json::Value =
+        serde_json::from_slice(&to_bytes(resume.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(resumed["id"].as_str(), Some(game_id));
+    let rejected = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/blackjack/start")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"bet":100}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+    let after = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(before.entries, after.entries);
+}
