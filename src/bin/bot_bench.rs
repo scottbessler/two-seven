@@ -166,30 +166,17 @@ fn main() {
     );
     println!();
     println!(
-        "{:<8} {:>10} {:>8} {:>7} {:>7} {:>7} {:>7} {:>7} {:>6} {:>6} {:>6} {:>6} {:>6} {:>7}",
-        "bot",
-        "net",
-        "bb/100",
-        "win%",
-        "vpip%",
-        "pfr%",
-        "wtsd%",
-        "w$sd%",
-        "bet",
-        "raise",
-        "call",
-        "check",
-        "fold",
-        "AF"
+        "| bot | net | bb/100 | win% | vpip% | pfr% | wtsd% | w$sd% | bet | raise | call | check | fold | AF |"
     );
+    println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
     for (seat, kind) in lineup.iter().enumerate() {
         let s = &stats[seat];
         let hands_f = s.hands as f64;
         let pct = |count: u64| 100.0 * count as f64 / hands_f;
         let aggression = (s.bets + s.raises + s.all_ins) as f64 / (s.calls.max(1)) as f64;
         println!(
-            "{:<8} {:>10} {:>8.1} {:>6.1}% {:>6.1}% {:>6.1}% {:>6.1}% {:>6.1}% {:>6} {:>6} {:>6} {:>6} {:>6} {:>7.2}",
-            kind.to_string(),
+            "| {} | {} | {:.1} | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {} | {} | {} | {} | {} | {:.2} |",
+            kind,
             s.net,
             100.0 * s.net as f64 / big_blind as f64 / hands_f,
             pct(s.hand_wins),
