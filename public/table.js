@@ -23,6 +23,14 @@ function streetName(street) {
   return { Preflop: "Preflop", Flop: "Flop", Turn: "Turn", River: "River" }[street] || street;
 }
 
+function settingHandler(setter, key) {
+  return (event) => {
+    const value = Number(event.currentTarget.value);
+    setter(value);
+    localStorage.setItem(key, String(value));
+  };
+}
+
 async function responseError(response) {
   const text = await response.text();
   const document = new DOMParser().parseFromString(text, "text/html");
@@ -164,7 +172,9 @@ function TableLog({ events, seats, summary }) {
 
 function TableApp() {
   const [state, setState] = useState(null);
-  const [cardScale, setCardScale] = useState(() => Number(localStorage.getItem("table-card-scale")) || 125);
+  const [cardScale, setCardScale] = useState(() => Number(localStorage.getItem("table-card-scale")) || 180);
+  const [rankScale, setRankScale] = useState(() => Number(localStorage.getItem("table-rank-scale")) || 130);
+  const [rankWeight, setRankWeight] = useState(() => Number(localStorage.getItem("table-rank-weight")) || 850);
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
@@ -185,11 +195,6 @@ function TableApp() {
   const board = hand?.board || showdown?.board || [];
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
-  const resizeCards = (event) => {
-    const value = Number(event.currentTarget.value);
-    setCardScale(value);
-    localStorage.setItem("table-card-scale", String(value));
-  };
   const scale = cardScale / 100;
   const cardStyle = {
     "--viewer-card-scale": cardScale,
@@ -200,11 +205,21 @@ function TableApp() {
     "--viewer-art": `${1.7 * scale}rem`,
     "--viewer-card-w-mobile": `${2.1 * scale}rem`,
     "--viewer-card-h-mobile": `${2.95 * scale}rem`,
+    "--card-rank-scale": rankScale / 100,
+    "--card-rank-weight": rankWeight,
   };
   return html`<div class="table-shell" style=${cardStyle}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
-      <label class="card-size-control"><span>Your cards <output>${cardScale}%</output></span><input type="range" min="80" max="180" step="5" value=${cardScale} onInput=${resizeCards} /></label>
+      <button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>
+      <dialog id="card-config" class="card-config-dialog">
+        <form method="dialog">
+          <header><h2>Card display</h2><button type="submit" title="Close" aria-label="Close">×</button></header>
+          <label><span>Card size <output>${cardScale}%</output></span><input name="card-scale" type="range" min="80" max="180" step="5" value=${cardScale} onInput=${settingHandler(setCardScale, "table-card-scale")} /></label>
+          <label><span>Rank size <output>${rankScale}%</output></span><input name="rank-scale" type="range" min="100" max="150" step="5" value=${rankScale} onInput=${settingHandler(setRankScale, "table-rank-scale")} /></label>
+          <label><span>Rank weight <output>${rankWeight}</output></span><input name="rank-weight" type="range" min="600" max="900" step="50" value=${rankWeight} onInput=${settingHandler(setRankWeight, "table-rank-weight")} /></label>
+        </form>
+      </dialog>
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}

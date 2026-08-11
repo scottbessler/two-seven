@@ -280,6 +280,9 @@ Mark each milestone done here as it lands.
   80–180% size control, magnify on hover/focus, and sit on compact rounded-rect felt.
 - **V16** Viewer street wager renders centered above viewer hole cards at desktop
   and mobile widths.
+- **V17** Card display config persists 80–180% viewer size (default 180%),
+  corner-rank size/weight controls; either viewer card magnifies both cards, and
+  default geometry keeps viewer cards/wager clear of board/status.
 
 ## §T Build tasks
 
@@ -293,6 +296,7 @@ T6|x|restore and regression-test bot aggression|V6,V13
 T7|x|recompose live table + showdown UI|V3,V7,V11,V14
 T8|x|tune viewer cards + compact felt geometry|V7,V14,V15
 T9|x|place viewer wager above hole cards|V14,V16
+T10|x|add card display config + paired hand magnification|V14,V15,V17
 
 ## §B Bug log
 
