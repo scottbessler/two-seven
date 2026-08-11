@@ -47,11 +47,13 @@ button.danger{background:var(--danger);color:white}
 .table-shell{gap:.55rem}
 .tournament-panel{display:flex;align-items:center;justify-content:center;gap:1rem;color:var(--muted);font-size:.8rem}
 .tournament-panel b{color:var(--accent)}
-.table-stage{position:relative;width:100%;height:620px;margin:0 auto}
-.table-stage .felt{position:absolute;inset:16% 7% 15%;width:auto;min-height:0;max-width:none;margin:0;border-width:7px}
+.table-stage{position:relative;width:100%;height:500px;margin:0 auto}
+.table-stage .felt{position:absolute;inset:15% 6% 13%;width:auto;min-height:0;max-width:none;margin:0;border-width:7px;border-radius:40px}
 .table-stage .table-center{top:50%;left:50%;width:72%;transform:translate(-50%,-50%)}
 .table-stage .board{align-items:center;gap:.38rem;min-height:7.25rem}
 .table-stage .playing-card,.card-test-grid .playing-card{--card-w:5.2rem;--card-h:7.25rem;--corner-size:.86rem;--corner-gap:.28rem;--pip-size:1.22rem;--art-size:3rem}
+.playing-card{transition:transform .2s cubic-bezier(.2,.8,.2,1.25),box-shadow .2s ease;transform-origin:center}
+.playing-card:not(.empty-card):hover,.playing-card:not(.empty-card):focus-visible{z-index:30;outline:none;transform:scale(1.35)!important;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 12px 28px #000b}
 .empty-card{background:#17362e;color:transparent;border:1px solid #31594c;box-shadow:inset 0 0 0 2px #102820}
 .card-back{background:#193f35;border:1px solid #55776b;box-shadow:inset 0 0 0 3px #102820,inset 0 0 0 5px #31594c,0 3px 8px #0006}
 .card-back i{width:62%;height:72%;border:1px solid #6f8f83;background:repeating-linear-gradient(45deg,#214b40 0 5px,#183a31 5px 10px)}
@@ -72,7 +74,9 @@ button.danger{background:var(--danger);color:white}
 .seat-cards .playing-card{--card-w:2.35rem;--card-h:3.3rem;--corner-size:.43rem;--corner-gap:.12rem;--pip-size:.55rem;--art-size:1.35rem;margin-left:-.2rem;border-radius:3px}
 .seat-cards .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .seat-cards .playing-card:last-child{transform:rotate(3deg)}
-.seat.viewer .seat-cards .playing-card{--card-w:3rem;--card-h:4.2rem;--corner-size:.52rem;--corner-gap:.16rem;--pip-size:.68rem;--art-size:1.7rem}
+.seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w);--card-h:var(--viewer-card-h);--corner-size:var(--viewer-corner);--corner-gap:.16rem;--pip-size:var(--viewer-pip);--art-size:var(--viewer-art)}
+.seat .playing-card.red,.seat .playing-card.red span{color:#d5291f!important}
+.seat .playing-card.black,.seat .playing-card.black span{color:#20231f!important}
 .seat.viewer .seat-cards{top:auto;bottom:calc(100% - .15rem)}
 .seat.viewer .seat-wager{left:calc(100% + .35rem);bottom:50%;transform:translateY(50%)}
 .seat .state-role{border-color:#527d6c;color:var(--muted)}
@@ -95,6 +99,10 @@ button.danger{background:var(--danger);color:white}
 .game-log .result-log b{color:#f1d56e}
 .table-controls{justify-content:flex-end}
 .table-controls button{padding:.4rem .65rem;background:#10241f;color:var(--muted)}
+.card-size-control{position:absolute;left:.2rem;top:.2rem;z-index:8;display:grid;grid-template-columns:auto 7rem;align-items:center;gap:.5rem;padding:.35rem .5rem;border:1px solid #346252;border-radius:6px;background:#10241fe8;color:var(--muted);font-size:.68rem}
+.card-size-control span{display:flex;gap:.3rem;white-space:nowrap}
+.card-size-control output{color:var(--accent);font-weight:800}
+.card-size-control input{width:7rem;height:1rem;margin:0;padding:0;accent-color:var(--accent)}
 
 @media(max-width:640px){
   body:has(.table-shell){padding-bottom:.5rem}
@@ -105,17 +113,19 @@ button.danger{background:var(--danger);color:white}
   .page:has(.table-shell) .bank-widget{font-size:.7rem}
   .tournament-panel{gap:.45rem;overflow:hidden;font-size:.62rem;white-space:nowrap}
   .table-stage{height:auto;display:grid;gap:.4rem}
+  .card-size-control{position:static;grid-template-columns:auto minmax(7rem,12rem);justify-self:center;order:0}
   .table-stage .seats{position:static;display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;order:1;pointer-events:auto}
   .table-stage .seats .seat{position:relative!important;left:auto!important;top:auto!important;min-width:5.6rem;min-height:2.8rem;transform:none!important;font-size:.68rem}
   .table-stage .seat.viewer{order:10;flex-basis:7rem;margin:0 30%}
   .seat-cards{position:static;justify-content:center;margin-top:.15rem;transform:none}
   .seat.viewer .seat-cards{bottom:auto}
   .seat.viewer .seat-wager{position:static;transform:none}
-  .seat-cards .playing-card,.seat.viewer .seat-cards .playing-card{--card-w:2.1rem;--card-h:2.95rem;--corner-size:.4rem;--corner-gap:.1rem;--pip-size:.5rem;--art-size:1.15rem}
+  .seat-cards .playing-card{--card-w:2.1rem;--card-h:2.95rem;--corner-size:.4rem;--corner-gap:.1rem;--pip-size:.5rem;--art-size:1.15rem}
+  .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-mobile);--card-h:var(--viewer-card-h-mobile);--corner-size:var(--viewer-corner);--corner-gap:.1rem;--pip-size:var(--viewer-pip);--art-size:var(--viewer-art)}
   .seat .seat-wager{position:static;transform:none}
   .seat .seat-state{top:auto;bottom:calc(100% + .15rem)}
   .button-marker{left:auto;right:-.25rem;top:-.25rem;transform:none}
-  .table-stage .felt{position:relative;inset:auto;order:2;width:100%;min-height:260px;border-width:5px}
+  .table-stage .felt{position:relative;inset:auto;order:2;width:100%;min-height:245px;border-width:5px;border-radius:24px}
   .table-stage .table-center{width:92%}
   .table-stage .board{gap:.16rem;min-height:4.45rem}
   .table-stage .playing-card,.card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-size:.55rem;--corner-gap:.16rem;--pip-size:.76rem;--art-size:1.8rem}

@@ -23,12 +23,12 @@ function cardFace(value) {
 
 export function Card({ value, card, empty = false, hidden = false }) {
   if (empty) return html`<span class="playing-card empty-card" aria-hidden="true"></span>`;
-  if (hidden) return html`<span class="playing-card card-back" aria-label="Hidden card"><i></i></span>`;
+  if (hidden) return html`<span class="playing-card card-back" aria-label="Hidden card" tabindex="0"><i></i></span>`;
   const face = cardFace(value || card);
   const court = { 1: "A", 11: "J", 12: "Q", 13: "K" }[face.numeric];
   const red = face.suitCode === "h" || face.suitCode === "d";
   const courtPiece = { J: "♘", Q: "♕", K: "♔" }[court];
-  return html`<span class=${`playing-card ${red ? "red" : "black"}`} aria-label=${value || card}>
+  return html`<span class=${`playing-card ${red ? "red" : "black"}`} aria-label=${value || card} tabindex="0">
     <span class="card-corner"><b>${face.rank}</b><i>${face.suit}</i></span>
     <span class="card-frame">
       ${court

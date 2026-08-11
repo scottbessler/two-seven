@@ -35,13 +35,35 @@ function blindRole(events, seat) {
   return null;
 }
 
+function seatPosition(order, total) {
+  const halfWidth = 45;
+  const halfHeight = 42;
+  const perimeter = 4 * (halfWidth + halfHeight);
+  let distance = (order / total) * perimeter;
+  let x;
+  let y;
+  if (distance <= halfWidth) {
+    x = -distance;
+    y = halfHeight;
+  } else if ((distance -= halfWidth) <= 2 * halfHeight) {
+    x = -halfWidth;
+    y = halfHeight - distance;
+  } else if ((distance -= 2 * halfHeight) <= 2 * halfWidth) {
+    x = -halfWidth + distance;
+    y = -halfHeight;
+  } else if ((distance -= 2 * halfWidth) <= 2 * halfHeight) {
+    x = halfWidth;
+    y = -halfHeight + distance;
+  } else {
+    distance -= 2 * halfHeight;
+    x = halfWidth - distance;
+    y = halfHeight;
+  }
+  return { left: `${50 + x}%`, top: `${50 + y}%`, transform: "translate(-50%, -50%)" };
+}
+
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
-  const angle = Math.PI / 2 + (order * 2 * Math.PI) / total;
-  const position = {
-    left: `${50 + 45 * Math.cos(angle)}%`,
-    top: `${50 + 44 * Math.sin(angle)}%`,
-    transform: "translate(-50%, -50%)",
-  };
+  const position = seatPosition(order, total);
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
@@ -142,6 +164,7 @@ function TableLog({ events, seats, summary }) {
 
 function TableApp() {
   const [state, setState] = useState(null);
+  const [cardScale, setCardScale] = useState(() => Number(localStorage.getItem("table-card-scale")) || 125);
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
@@ -162,9 +185,26 @@ function TableApp() {
   const board = hand?.board || showdown?.board || [];
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
-  return html`<div class="table-shell">
+  const resizeCards = (event) => {
+    const value = Number(event.currentTarget.value);
+    setCardScale(value);
+    localStorage.setItem("table-card-scale", String(value));
+  };
+  const scale = cardScale / 100;
+  const cardStyle = {
+    "--viewer-card-scale": cardScale,
+    "--viewer-card-w": `${3 * scale}rem`,
+    "--viewer-card-h": `${4.2 * scale}rem`,
+    "--viewer-corner": `${0.52 * scale}rem`,
+    "--viewer-pip": `${0.68 * scale}rem`,
+    "--viewer-art": `${1.7 * scale}rem`,
+    "--viewer-card-w-mobile": `${2.1 * scale}rem`,
+    "--viewer-card-h-mobile": `${2.95 * scale}rem`,
+  };
+  return html`<div class="table-shell" style=${cardStyle}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
+      <label class="card-size-control"><span>Your cards <output>${cardScale}%</output></span><input type="range" min="80" max="180" step="5" value=${cardScale} onInput=${resizeCards} /></label>
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}

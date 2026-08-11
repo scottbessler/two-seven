@@ -276,6 +276,8 @@ Mark each milestone done here as it lands.
 - **V14** Desktop + mobile table snapshots keep occupied players outside felt,
   viewer cards at viewer seat, board unobscured, actions before unified log,
   one-line header, whole-dollar labels, and integrated showdown winners/cards.
+- **V15** Viewer cards retain face saturation inside seat, expose persisted
+  80–180% size control, magnify on hover/focus, and sit on compact rounded-rect felt.
 
 ## §T Build tasks
 
@@ -287,6 +289,7 @@ T4|x|render game log + table cues|V7,V11
 T5|x|replace cash buy-in ranges with one fixed amount|V1,V2,V9,V10,V12
 T6|x|restore and regression-test bot aggression|V6,V13
 T7|x|recompose live table + showdown UI|V3,V7,V11,V14
+T8|x|tune viewer cards + compact felt geometry|V7,V14,V15
 
 ## §B Bug log
 
@@ -331,3 +334,5 @@ T7|x|recompose live table + showdown UI|V3,V7,V11,V14
 - The fixed-buy-in route regression double-counted live blinds by adding the pot to pre-hand table stacks; corrected it to assert each authoritative seated stack directly.
 - Seats, empty-seat controls, board, metrics, and wagers shared one absolute-positioned ellipse while viewer cards/actions lived below it; replace with outer player rail, owner-attached cards, button-only actions, and unified table log under V14.
 - Table asset contracts still required removed range-era labels/formatter; align contracts to player tooltip + whole-dollar `money()` under V14.
+- `.seat span` muted every nested card-face child, fading viewer pips/art; scope card colors at seat-card boundary and enforce adjustable saturated viewer cards under V15.
+- Asset contract forbade all range inputs to prevent wager slider, blocking card-size control; narrow guard to wager slider/input identifiers under V15.

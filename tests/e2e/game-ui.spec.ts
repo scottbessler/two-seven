@@ -104,12 +104,28 @@ test("shows live hand cues and event log", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".game-log")).toBeVisible();
   await expect(page.locator(".seat.viewer .seat-cards .playing-card")).toHaveCount(2);
+  const viewerCard = page.locator(".seat.viewer .seat-cards .playing-card").first();
+  expect(await viewerCard.locator(".card-frame").evaluate((card) => getComputedStyle(card).color)).toBe("rgb(213, 41, 31)");
+  const initialCardBox = await viewerCard.boundingBox();
+  const sizeSlider = page.locator(".card-size-control input");
+  await sizeSlider.fill("150");
+  await expect(page.locator(".card-size-control output")).toHaveText("150%");
+  const enlargedCardBox = await viewerCard.boundingBox();
+  expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.15);
+  expect(await page.evaluate(() => localStorage.getItem("table-card-scale"))).toBe("150");
+  await viewerCard.hover();
+  await page.waitForTimeout(250);
+  const magnifiedCardBox = await viewerCard.boundingBox();
+  expect(magnifiedCardBox.width).toBeGreaterThan(enlargedCardBox.width * 1.15);
+  await page.locator(".brand").hover();
+  await page.waitForTimeout(250);
+  await sizeSlider.fill("125");
   await expect(page.locator(".empty-seat")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
   await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "$24", "$36", "$38", "$76", "All In"]);
   await page.locator(".seat.viewer .player-info").hover();
   await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
-  await page.locator(".felt").hover();
+  await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
   await expect(page.locator(".seat-wager")).toHaveCount(3);
   await expect(page.locator(".seat.folded")).toHaveCount(1);
@@ -123,6 +139,14 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(overlaps, "V14: players and attached cards must not overlap the board").toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   expect(await page.locator(".table-shell").innerText()).not.toMatch(/\$-?\d+\.\d{2}/);
+  if ((page.viewportSize()?.width || 0) > 640) {
+    const geometry = await page.locator(".table-stage").evaluate((stage) => ({
+      stageHeight: stage.getBoundingClientRect().height,
+      radius: getComputedStyle(stage.querySelector(".felt")).borderRadius,
+    }));
+    expect(geometry.stageHeight).toBeLessThan(550);
+    expect(geometry.radius).not.toContain("%");
+  }
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
 });
 

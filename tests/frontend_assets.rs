@@ -22,6 +22,9 @@ fn table_island_has_live_state_and_action_contracts() {
         "Leave",
         "player-tooltip",
         "seat-cards",
+        "card-size-control",
+        "table-card-scale",
+        "--viewer-card-scale",
         "wagerOptions",
         "table-stage",
         "showdown-result",
@@ -55,7 +58,7 @@ fn table_island_has_live_state_and_action_contracts() {
             "missing table.js contract: {literal}"
         );
     }
-    assert!(!TABLE_JS.contains("type=\"range\""));
+    assert!(!TABLE_JS.contains("Wager slider"));
     assert!(!TABLE_JS.contains("type=\"number\" min=${wager.min}"));
 }
 
@@ -73,6 +76,10 @@ fn table_css_is_mobile_poker_layout() {
         ".table-center",
         ".player-tooltip",
         ".seat-cards",
+        ".card-size-control",
+        "--viewer-card-w",
+        ".playing-card:not(.empty-card):hover",
+        "border-radius:40px",
         ".table-stage",
         ".showdown-result",
         ".seat.winner",
