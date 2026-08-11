@@ -434,7 +434,7 @@ mod tests {
         tick_once_at(&state, Utc::now() + Duration::seconds(30))
             .await
             .unwrap();
-        assert!(!blitz.resume(user).await.unwrap().active);
+        assert!(blitz.resume(user).await.is_none());
         assert!(
             blitz
                 .start(user, crate::blitz::BlitzDifficulty::Easy, Uuid::new_v4())

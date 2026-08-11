@@ -15,7 +15,7 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-const EXPIRY_GRACE_MS: i64 = 250;
+const EXPIRY_GRACE_MS: i64 = 3_000;
 const FINISHED_RUN_RETENTION_MS: i64 = 60_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -244,7 +244,7 @@ impl BlitzStore {
         guard
             .runs
             .values()
-            .find(|run| run.user == user)
+            .find(|run| run.user == user && run.active)
             .map(BlitzRun::view)
     }
 
@@ -367,13 +367,17 @@ impl BlitzRun {
 }
 
 impl BlitzRound {
+    fn deadline_ms(&self) -> i64 {
+        self.dealt_at.timestamp_millis() + self.time_limit_ms as i64
+    }
+
     fn view(&self) -> BlitzRoundView {
         BlitzRoundView {
             id: self.id,
             board: self.board.clone(),
             hands: self.hands.clone(),
             time_limit_ms: self.time_limit_ms,
-            deadline_ms: self.dealt_at.timestamp_millis() + self.time_limit_ms as i64,
+            deadline_ms: self.deadline_ms(),
         }
     }
 }
@@ -407,7 +411,7 @@ fn deal_round(time_limit_ms: u64) -> BlitzRound {
 
 fn expire_runs(runs: &mut HashMap<Uuid, BlitzRun>, now: DateTime<Utc>) {
     for run in runs.values_mut() {
-        if run.active && now.timestamp_millis() > run.round.view().deadline_ms + EXPIRY_GRACE_MS {
+        if run.active && now.timestamp_millis() > run.round.deadline_ms() + EXPIRY_GRACE_MS {
             run.active = false;
             run.inactive_since = Some(now);
         }
@@ -472,5 +476,30 @@ mod tests {
         let round = deal_round(5_000);
         assert_ne!(round.ranks[0].rank, round.ranks[1].rank);
         assert!(round.winner <= 1);
+    }
+
+    #[tokio::test]
+    async fn slightly_late_answer_survives_expiry_sweep() {
+        let store = BlitzStore::load(
+            std::env::temp_dir().join(format!("two-seven-blitz-late-{}", Uuid::new_v4())),
+        )
+        .await
+        .unwrap();
+        let user = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let run = store.start(user, BlitzDifficulty::Easy, id).await.unwrap();
+        let winner = {
+            let guard = store.inner.lock().await;
+            guard.runs.get(&id).unwrap().round.winner
+        };
+        {
+            let mut guard = store.inner.lock().await;
+            guard.runs.get_mut(&id).unwrap().round.dealt_at =
+                Utc::now() - chrono::Duration::seconds(21);
+        }
+        store.expire(Utc::now()).await;
+        let result = store.answer(user, id, run.round.id, winner).await.unwrap();
+        assert!(result.timed_out);
+        assert!(!result.active);
     }
 }
