@@ -112,7 +112,7 @@ button.danger{background:var(--danger);color:white}
 .actions .primary-action{background:#d9ad55;color:#1a160d}
 .actions .wager-action{background:#245a49;color:var(--ink)}
 .actions .all-in-action{border-color:#d9ad55}
-.game-log{max-height:10.5rem;overflow:auto;grid-template-columns:6rem 1fr;padding:.6rem 0}
+.game-log{height:10.5rem;overflow:auto;grid-template-columns:6rem 1fr;padding:.6rem 0}
 .game-log ol{grid-template-columns:1fr}
 .game-log li{grid-template-columns:4.25rem 1fr}
 .game-log .result-log b{color:#f1d56e}
@@ -170,7 +170,7 @@ button.danger{background:var(--danger);color:white}
   .decision-area{padding:.4rem .15rem}
   .actions{grid-template-columns:repeat(4,minmax(0,1fr));gap:.25rem}
   .actions button{min-height:2.5rem;padding:.35rem .1rem;font-size:.72rem}
-  .game-log{max-height:8rem;grid-template-columns:1fr}
+  .game-log{height:8rem;grid-template-columns:1fr}
   .game-log h2{font-size:.85rem}
   .game-log li{font-size:.68rem}
 }

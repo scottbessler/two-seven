@@ -243,6 +243,21 @@ test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page 
   expect(tooltipBox.y + tooltipBox.height, "V20: narrow top-rail tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
 });
 
+test("keeps the table log footprint stable as events accumulate", async ({ page }) => {
+  await mountTable(page, tableState);
+  const log = page.locator(".game-log");
+  await log.locator("ol").evaluate((list) => list.replaceChildren(list.firstElementChild));
+  const sparse = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top }));
+  await log.locator("ol").evaluate((list) => {
+    const row = list.firstElementChild;
+    for (let index = 0; index < 30; index += 1) list.append(row.cloneNode(true));
+  });
+  const dense = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top, scrolls: node.scrollHeight > node.clientHeight }));
+  expect(dense.height, "V22: table log height must not grow with events").toBe(sparse.height);
+  expect(dense.controlsTop, "V22: content below table log must remain fixed").toBe(sparse.controlsTop);
+  expect(dense.scrolls, "V22: excess table events must scroll inside the fixed log").toBe(true);
+});
+
 test("reflows viewer cards at maximum display settings", async ({ page }) => {
   await mountTable(page, { ...tableState, hand: { ...tableState.hand, your_hole_cards: ["Tc", "9c"] } });
   await page.getByRole("button", { name: "Card display settings" }).click();

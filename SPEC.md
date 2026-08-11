@@ -292,6 +292,8 @@ Mark each milestone done here as it lands.
   desktop and mobile widths, including seats on the top player rail.
 - **V21** Rank size scales both rank and suit glyphs; at 200% card/rank settings,
   viewer cards/wager clear table center content and corner indices/pips remain distinct.
+- **V22** The table log has a fixed responsive height; added events scroll inside
+  it without moving controls or content below the log.
 
 ## §T Build tasks
 
@@ -311,6 +313,7 @@ T12|x|polish card config + showdown card emphasis|V14,V17,V19
 T13|x|rebase card controls around former maxima|V15,V17,V19
 T14|x|contain player tooltips at viewport edges|V14,V20
 T15|x|reflow max-size viewer cards and card faces|V17,V19,V21
+T16|x|reserve a fixed table-log footprint|V11,V14,V22
 
 ## §B Bug log
 
@@ -364,3 +367,4 @@ T15|x|reflow max-size viewer cards and card faces|V17,V19,V21
 - Undealt board slots rendered as dark input-like boxes; render only dealt community cards under V19.
 - Player tooltips always opened above their seat, pushing top-rail details beyond the viewport; choose an inward placement and enforce viewport containment under V20.
 - Viewer card/rank controls scaled outer cards and corners without reserving table or face space, allowing max settings to cover the board and pips; expand the player rail and reflow card centers under V21.
+- The table log used only `max-height`, so its footprint grew with each event and pushed lower controls down; reserve a fixed responsive height under V22.
