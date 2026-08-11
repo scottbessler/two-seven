@@ -134,6 +134,7 @@ fn bank_widget_fetches_signed_in_balance() {
 fn hand_blitz_island_has_mode_contracts() {
     for literal in [
         "/hand-blitz/start",
+        "/hand-blitz/resume",
         "/hand-blitz/answer",
         "run_id",
         "round_id",

@@ -4,7 +4,11 @@ use crate::{
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -63,9 +67,10 @@ pub enum BlackjackHandStatus {
 #[derive(Clone)]
 pub struct BlackjackStore {
     inner: Arc<Mutex<HashMap<Uuid, BlackjackGame>>>,
+    path: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct BlackjackHand {
     cards: Vec<Card>,
     bet: Cents,
@@ -74,7 +79,7 @@ struct BlackjackHand {
     split_aces: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct BlackjackGame {
     id: Uuid,
     user: Uuid,
@@ -93,12 +98,52 @@ impl Default for BlackjackStore {
     fn default() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
+            path: None,
         }
     }
 }
 impl BlackjackStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
+        let dir = root.as_ref().join("blackjack");
+        tokio::fs::create_dir_all(&dir).await?;
+        let path = dir.join("games.json");
+        let games = match tokio::fs::read(&path).await {
+            Ok(bytes) => serde_json::from_slice::<HashMap<Uuid, BlackjackGame>>(&bytes)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+            Err(error) => return Err(error.into()),
+        };
+        Ok(Self {
+            inner: Arc::new(Mutex::new(
+                games
+                    .into_iter()
+                    .filter(|(_, game)| game.status == BlackjackStatus::Playing)
+                    .collect(),
+            )),
+            path: Some(path),
+        })
+    }
+
+    pub async fn persist(&self) -> Result<(), anyhow::Error> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        let games = self
+            .inner
+            .lock()
+            .await
+            .iter()
+            .filter(|(_, game)| game.status == BlackjackStatus::Playing)
+            .map(|(id, game)| (*id, game.clone()))
+            .collect::<HashMap<_, _>>();
+        let data = serde_json::to_vec_pretty(&games)?;
+        let tmp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
+        tokio::fs::write(&tmp, data).await?;
+        tokio::fs::rename(tmp, path).await?;
+        Ok(())
     }
 
     pub async fn view(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
@@ -686,5 +731,26 @@ mod tests {
     fn aces_score_soft_until_they_must_drop() {
         let cards = vec![card(Rank::Ace), card(Rank::Nine), card(Rank::Five)];
         assert_eq!(score(&cards), (15, false));
+    }
+
+    #[tokio::test]
+    async fn live_games_survive_persistence_but_finished_games_do_not() {
+        let root = std::env::temp_dir().join(format!("two-seven-blackjack-{}", Uuid::new_v4()));
+        let user = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let store = BlackjackStore::load(&root).await.unwrap();
+        store.start(user, 100, id).await.unwrap();
+        store.persist().await.unwrap();
+
+        let restored = BlackjackStore::load(&root).await.unwrap();
+        assert_eq!(restored.resume(user).await.unwrap().id, id);
+
+        {
+            let mut guard = restored.inner.lock().await;
+            guard.get_mut(&id).unwrap().status = BlackjackStatus::PlayerWin;
+        }
+        restored.persist().await.unwrap();
+        let restored_again = BlackjackStore::load(&root).await.unwrap();
+        assert!(restored_again.resume(user).await.is_none());
     }
 }
