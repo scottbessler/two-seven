@@ -64,6 +64,9 @@ button.danger{background:var(--danger);color:white}
 .player-info>strong{max-width:8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .player-info>i{color:var(--muted);font-size:.65rem;font-style:normal}
 .player-tooltip{position:absolute;left:50%;bottom:calc(100% + .55rem);z-index:20;display:none;width:15rem;padding:.65rem;border:1px solid #527d6c;border-radius:6px;background:#091713;color:var(--ink);font-size:.7rem;line-height:1.4;text-align:left;transform:translateX(-50%);box-shadow:0 8px 24px #000a}
+.seat.tooltip-below .player-tooltip{top:calc(100% + .55rem);bottom:auto}
+.seat.tooltip-right .player-tooltip{left:0;transform:none}
+.seat.tooltip-left .player-tooltip{right:0;left:auto;transform:none}
 .player-tooltip>*{display:block}
 .player-tooltip span,.player-tooltip small{color:var(--muted)}
 .player-info:hover .player-tooltip,.player-info:focus .player-tooltip,.player-info:focus-within .player-tooltip{display:block}
@@ -137,6 +140,7 @@ button.danger{background:var(--danger);color:white}
   .table-config-button{right:3.25rem;top:.6rem}
   .table-stage .seats{position:static;display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;order:1;pointer-events:auto}
   .table-stage .seats .seat{position:relative!important;left:auto!important;top:auto!important;min-width:5.6rem;min-height:2.8rem;transform:none!important;font-size:.68rem}
+  .seat .player-tooltip{top:calc(100% + .4rem);right:auto;bottom:auto;left:50%;width:min(12rem,calc(100vw - 1rem));transform:translateX(-50%)}
   .table-stage .seat.viewer{order:10;flex-basis:7rem;margin:0 30%}
   .seat-cards{position:static;justify-content:center;margin-top:.15rem;transform:none}
   .seat.viewer .seat-cards{bottom:auto}

@@ -85,12 +85,15 @@ function seatPosition(order, total) {
 
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
   const position = seatPosition(order, total);
+  const tooltipBelow = Number.parseFloat(position.top) < 35;
+  const positionLeft = Number.parseFloat(position.left);
+  const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
   const winner = showdown?.awards?.some((award) => award.seat === seat.index);
-  const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
+  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>

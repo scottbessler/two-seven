@@ -15,7 +15,11 @@ const tableState = {
     { index: 2, stack: 16_600, occupant: "human", display_name: "You", sitting_out: false, hole_cards: null, bank_balance: 8_000, bank_entries: [] },
     { index: 3, stack: 0, occupant: "Rock", display_name: "Ari", sitting_out: false, hole_cards: null, bank_balance: -2_000, bank_entries: [] },
     { index: 4, stack: 20_000, occupant: "human", display_name: "Sam", sitting_out: false, hole_cards: null, bank_balance: 25_000, bank_entries: [] },
-    { index: 5, stack: 19_800, occupant: "Grinder", display_name: "Jo", sitting_out: false, hole_cards: null, bank_balance: 5_000, bank_entries: [] },
+    { index: 5, stack: 19_800, occupant: "Grinder", display_name: "Jo", sitting_out: false, hole_cards: null, bank_balance: 5_000, bank_entries: [
+      { memo: "Table buy-in", delta: -20_000 },
+      { memo: "Cash out", delta: 18_000 },
+      { memo: "Table buy-in", delta: -20_000 },
+    ] },
   ],
   hand: {
     street: "Flop",
@@ -173,6 +177,17 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "$24", "$36", "$38", "$76", "All In"]);
   await page.locator(".seat.viewer .player-info").hover();
   await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
+  const topSeatIndex = await page.locator(".seat").evaluateAll((seats) => seats
+    .map((seat, index) => ({ index, top: seat.getBoundingClientRect().top }))
+    .toSorted((a, b) => a.top - b.top)[0].index);
+  const topPlayer = page.locator(".seat").nth(topSeatIndex).locator(".player-info");
+  await topPlayer.hover();
+  const tooltipBox = await topPlayer.locator(".player-tooltip").boundingBox();
+  const viewport = page.viewportSize();
+  expect(tooltipBox.x, "V20: top-seat tooltip left edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y, "V20: top-seat tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width, "V20: top-seat tooltip right edge must remain visible").toBeLessThanOrEqual(viewport.width);
+  expect(tooltipBox.y + tooltipBox.height, "V20: top-seat tooltip bottom edge must remain visible").toBeLessThanOrEqual(viewport.height);
   await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
   await expect(page.locator(".seat-wager")).toHaveCount(3);
@@ -212,6 +227,19 @@ test("shows live hand cues and event log", async ({ page }) => {
     expect(geometry.radius).not.toContain("%");
   }
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
+});
+
+test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 702, height: 832 });
+  await mountTable(page, tableState);
+  const playerInfo = page.locator(".seat.tooltip-below.tooltip-right .player-info").filter({ hasText: "Sam" });
+  await expect(playerInfo).toHaveCount(1);
+  await playerInfo.hover();
+  const tooltipBox = await playerInfo.locator(".player-tooltip").boundingBox();
+  expect(tooltipBox.x, "V20: narrow top-rail tooltip left edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y, "V20: narrow top-rail tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width, "V20: narrow top-rail tooltip right edge must remain visible").toBeLessThanOrEqual(702);
+  expect(tooltipBox.y + tooltipBox.height, "V20: narrow top-rail tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
 });
 
 test("integrates showdown with players and table log", async ({ page }) => {

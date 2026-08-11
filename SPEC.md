@@ -288,6 +288,8 @@ Mark each milestone done here as it lands.
 - **V19** Card config opens from page upper-right and previews the exact viewer
   dimensions/font; seat ranks retain suit color, revealed hands are legible, and
   winners have unmistakable gold emphasis without wager/card artifacts.
+- **V20** Every occupied-seat player tooltip remains fully inside the viewport at
+  desktop and mobile widths, including seats on the top player rail.
 
 ## §T Build tasks
 
@@ -305,6 +307,7 @@ T10|x|add card display config + paired hand magnification|V14,V15,V17
 T11|x|hold showdown for acknowledgement + countdown|V11,V14,V18
 T12|x|polish card config + showdown card emphasis|V14,V17,V19
 T13|x|rebase card controls around former maxima|V15,V17,V19
+T14|x|contain player tooltips at viewport edges|V14,V20
 
 ## §B Bug log
 
@@ -356,3 +359,4 @@ T13|x|rebase card controls around former maxima|V15,V17,V19
 - `.seat b` overrode nested card ranks with accent gold and enlarged cards could cover the viewer wager; enforce card-face color and wager layering under V19.
 - Starting a new hand directly in showdown acknowledgement bypassed normal driver follow-up ordering; acknowledgement now expires the shared deadline and lets the driver deal.
 - Undealt board slots rendered as dark input-like boxes; render only dealt community cards under V19.
+- Player tooltips always opened above their seat, pushing top-rail details beyond the viewport; choose an inward placement and enforce viewport containment under V20.
