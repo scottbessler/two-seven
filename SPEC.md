@@ -277,12 +277,12 @@ Mark each milestone done here as it lands.
   viewer cards at viewer seat, board unobscured, actions before unified log,
   one-line header, whole-dollar labels, and integrated showdown winners/cards.
 - **V15** Viewer cards retain face saturation inside seat, expose persisted
-  80–180% size control, magnify on hover/focus, and sit on compact rounded-rect felt.
+  50–200% relative size control, magnify on hover/focus, and sit on compact rounded-rect felt.
 - **V16** Viewer street wager renders centered above viewer hole cards at desktop
   and mobile widths.
-- **V17** Card display config persists 80–180% viewer size (default 180%),
-  corner-rank size/weight controls; either viewer card magnifies both cards, and
-  default geometry keeps viewer cards/wager clear of board/status.
+- **V17** Card display config persists 50–200% relative viewer size/rank
+  size/weight controls; 100% equals former maxima (180%/150%/900), either viewer
+  card magnifies both, and default geometry clears board/status.
 - **V18** Showdowns remain visible for 6 seconds and fold-only results for 3
   seconds unless a seated human acknowledges early; UI shows OK + deadline progress.
 - **V19** Card config opens from page upper-right and previews the exact viewer
@@ -304,6 +304,7 @@ T9|x|place viewer wager above hole cards|V14,V16
 T10|x|add card display config + paired hand magnification|V14,V15,V17
 T11|x|hold showdown for acknowledgement + countdown|V11,V14,V18
 T12|x|polish card config + showdown card emphasis|V14,V17,V19
+T13|x|rebase card controls around former maxima|V15,V17,V19
 
 ## §B Bug log
 

@@ -6,6 +6,8 @@ const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
 const SHOWDOWN_PAUSE_MS = 6_000;
 const FOLD_RESULT_PAUSE_MS = 3_000;
+const DEFAULT_CARD_SCALE = 1.8;
+const DEFAULT_RANK_SCALE = 1.5;
 
 async function fetchState() {
   const response = await fetch(`/tables/${tableId}/state`, { headers: { Accept: "application/json" } });
@@ -31,6 +33,15 @@ function settingHandler(setter, key) {
     setter(value);
     localStorage.setItem(key, String(value));
   };
+}
+
+function savedSetting(key) {
+  const value = Number(localStorage.getItem(key));
+  return value >= 50 && value <= 200 ? value : 100;
+}
+
+function rankWeight(percent) {
+  return percent <= 100 ? percent * 9 : 900 + percent - 100;
 }
 
 async function responseError(response) {
@@ -193,9 +204,9 @@ function ShowdownAdvance({ deadline, duration, canContinue, refresh }) {
 
 function TableApp() {
   const [state, setState] = useState(null);
-  const [cardScale, setCardScale] = useState(() => Number(localStorage.getItem("table-card-scale")) || 180);
-  const [rankScale, setRankScale] = useState(() => Number(localStorage.getItem("table-rank-scale")) || 130);
-  const [rankWeight, setRankWeight] = useState(() => Number(localStorage.getItem("table-rank-weight")) || 850);
+  const [cardSize, setCardSize] = useState(() => savedSetting("table-card-size-percent"));
+  const [rankSize, setRankSize] = useState(() => savedSetting("table-rank-size-percent"));
+  const [rankBoldness, setRankBoldness] = useState(() => savedSetting("table-rank-weight-percent"));
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
@@ -217,9 +228,9 @@ function TableApp() {
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
   const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
-  const scale = cardScale / 100;
+  const scale = DEFAULT_CARD_SCALE * cardSize / 100;
   const cardStyle = {
-    "--viewer-card-scale": cardScale,
+    "--viewer-card-scale": DEFAULT_CARD_SCALE * cardSize,
     "--viewer-card-w": `${3 * scale}rem`,
     "--viewer-card-h": `${4.2 * scale}rem`,
     "--viewer-corner": `${0.52 * scale}rem`,
@@ -227,8 +238,8 @@ function TableApp() {
     "--viewer-art": `${1.7 * scale}rem`,
     "--viewer-card-w-mobile": `${2.1 * scale}rem`,
     "--viewer-card-h-mobile": `${2.95 * scale}rem`,
-    "--card-rank-scale": rankScale / 100,
-    "--card-rank-weight": rankWeight,
+    "--card-rank-scale": DEFAULT_RANK_SCALE * rankSize / 100,
+    "--card-rank-weight": rankWeight(rankBoldness),
   };
   return html`<div class="table-shell" style=${cardStyle}>
     <${TournamentPanel} tournament=${state.tournament} />
@@ -238,9 +249,9 @@ function TableApp() {
         <form method="dialog">
           <header><h2>Card display</h2><button type="submit" title="Close" aria-label="Close">×</button></header>
           <div class="card-config-preview" aria-label="Card preview"><${Card} card="5c" /><${Card} card="6c" /></div>
-          <label><span>Card size <output>${cardScale}%</output></span><input name="card-scale" type="range" min="80" max="180" step="5" value=${cardScale} onInput=${settingHandler(setCardScale, "table-card-scale")} /></label>
-          <label><span>Rank size <output>${rankScale}%</output></span><input name="rank-scale" type="range" min="100" max="150" step="5" value=${rankScale} onInput=${settingHandler(setRankScale, "table-rank-scale")} /></label>
-          <label><span>Rank weight <output>${rankWeight}</output></span><input name="rank-weight" type="range" min="600" max="900" step="50" value=${rankWeight} onInput=${settingHandler(setRankWeight, "table-rank-weight")} /></label>
+          <label><span>Card size <output>${cardSize}%</output></span><input name="card-scale" type="range" min="50" max="200" step="5" value=${cardSize} onInput=${settingHandler(setCardSize, "table-card-size-percent")} /></label>
+          <label><span>Rank size <output>${rankSize}%</output></span><input name="rank-scale" type="range" min="50" max="200" step="5" value=${rankSize} onInput=${settingHandler(setRankSize, "table-rank-size-percent")} /></label>
+          <label><span>Rank weight <output>${rankBoldness}%</output></span><input name="rank-weight" type="range" min="50" max="200" step="5" value=${rankBoldness} onInput=${settingHandler(setRankBoldness, "table-rank-weight-percent")} /></label>
         </form>
       </dialog>
       <div class="felt">

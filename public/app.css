@@ -111,7 +111,7 @@ button.danger{background:var(--danger);color:white}
 .table-controls{justify-content:flex-end}
 .table-controls button{padding:.4rem .65rem;background:#10241f;color:var(--muted)}
 .table-config-button{position:fixed;right:4.25rem;top:.75rem;z-index:8;width:2rem;height:2rem;padding:0;border-color:#527d6c;background:#10241f;color:var(--muted);font-size:1rem}
-.card-config-dialog{width:min(22rem,calc(100vw - 2rem));padding:0;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--ink);box-shadow:0 18px 60px #000c}
+.card-config-dialog{width:min(28rem,calc(100vw - 2rem));padding:0;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--ink);box-shadow:0 18px 60px #000c}
 .card-config-dialog::backdrop{background:#06100dcc}
 .card-config-dialog form{gap:1rem;margin:0;padding:1rem}
 .card-config-dialog header{display:flex;align-items:center;justify-content:space-between}
