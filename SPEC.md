@@ -202,7 +202,10 @@ src/
   error.rs                       # AppError -> HTML/JSON
   cards.rs                       # Card/Rank/Suit/Deck (seeded shuffle)
   eval.rs                        # 7-card hand evaluation
-  holdem.rs                      # hand state machine, betting, side pots
+  holdem/                        # hand engine statechart (see STATECHART.md)
+    mod.rs                       #   shared types, side pots, showdown resolution
+    street.rs                    #   hand machine: street progression + fold win
+    round.rs                     #   betting round machine: actions + rotation
   table.rs                       # table/seat lifecycle, buy-ins, hand plumbing
   money.rs                       # cents type and money formatting
   tournament.rs                  # sit-and-go state
@@ -305,6 +308,11 @@ T6|x|restore and regression-test bot aggression|V6,V13
 - Bank widget navigation exposed raw JSON and interpolated ledger text as HTML; fixed with a toggle button and DOM text nodes.
 - Felt seat placement could collide with the board/status center and cash bots could remain busted forever; fixed with a reserved center/ring layout and automatic cash-table bot rebuys while preserving tournament eliminations.
 - Leaving during a live hand could cash out stale pre-hand chips, and mid-hand rebuys could be overwritten at settlement; fixed with fold-and-pending-departure settlement and rejecting rebuys during active hands.
+- Betting rounds could complete while players still owed a check or call (skipping the big blind's preflop option, ending checked streets after one check, and skipping pending calls behind a bet when only one non-all-in player remained); fixed with a single `needs_action` predicate driving both actor rotation and round completion (see STATECHART.md).
+- Rejected wagers logged phantom hand events; fixed by validating legality and wager bounds before logging or moving chips.
+- An offered all-in could be rejected once the wager cap was hit (legality was checked on the normalized action), and conversely a limit all-in above a call could add a fifth wager to a capped street; fixed by validating the submitted action and gating the all-in offer on the cap.
+- Side pots dropped dead money when the highest contributor had folded; fixed by keying pot levels on live contributions and folding all contributions (plus any excess dead money) into the pots.
+- The lone player with chips was prompted to act on every street after all opponents were all in; fixed via the `contested` guard so the board runs out instead.
 - Tournament cash sit-downs could bypass registration, tournament payouts could index elimination order backwards, and post-start departures could stop dealing; fixed with dedicated registration, explicit payout positions, exact pool distribution, and separate seats-sold/start gating.
 - Tournament bots incorrectly used cash table chip limits; fixed by charging the configured money buy-in while assigning starting tournament chips.
 - Driver errors on one table could starve later tables; fixed by sorted per-table sweeps that log and continue.
