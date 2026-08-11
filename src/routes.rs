@@ -22,8 +22,8 @@ use axum::{
         sse::{Event, Sse},
     },
 };
-use futures_util::stream;
 use chrono::Utc;
+use futures_util::stream;
 use serde::Deserialize;
 use std::{convert::Infallible, time::Duration};
 use uuid::Uuid;
@@ -248,12 +248,21 @@ pub async fn blackjack_start(
     if !valid_game_amount(input.bet) {
         return Err(AppError::bad_request("bet must be between $1 and $10,000"));
     }
+    if s.blackjack.resume(user).await.is_some() {
+        return Err(AppError::bad_request(
+            "blackjack hand is already in progress",
+        ));
+    }
     let id = Uuid::new_v4();
     s.bank
         .blackjack_bet(AccountOwner::User(user), id, input.bet)
         .await
         .map_err(AppError::internal)?;
-    let view = s.blackjack.start(user, input.bet, id).await;
+    let view = s
+        .blackjack
+        .start(user, input.bet, id)
+        .await
+        .map_err(blackjack_error)?;
     if view.payout > 0 {
         s.bank
             .blackjack_payout(AccountOwner::User(user), id, view.payout)
@@ -261,6 +270,13 @@ pub async fn blackjack_start(
             .map_err(AppError::internal)?;
     }
     Ok(Json(serde_json::json!(view)))
+}
+
+pub async fn blackjack_resume(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Json<Option<crate::blackjack::BlackjackView>> {
+    Json(s.blackjack.resume(user).await)
 }
 
 #[derive(Deserialize)]
@@ -311,22 +327,14 @@ pub async fn blackjack_double(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let before = s
-        .blackjack
-        .view(user, input.id)
-        .await
-        .map_err(blackjack_error)?;
-    let wager = before
-        .hands
-        .get(before.active_hand)
-        .ok_or_else(|| AppError::bad_request("blackjack hand is unavailable"))?
-        .bet;
-    s.bank
-        .blackjack_bet(AccountOwner::User(user), input.id, wager)
-        .await
-        .map_err(AppError::internal)?;
     match s.blackjack.double(user, input.id).await {
-        Ok(view) => {
+        Ok((view, wager)) => {
+            if wager > 0 {
+                s.bank
+                    .blackjack_bet(AccountOwner::User(user), input.id, wager)
+                    .await
+                    .map_err(AppError::internal)?;
+            }
             if view.payout > 0 {
                 s.bank
                     .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
@@ -335,13 +343,7 @@ pub async fn blackjack_double(
             }
             Ok(Json(serde_json::json!(view)))
         }
-        Err(error) => {
-            s.bank
-                .blackjack_payout(AccountOwner::User(user), input.id, wager)
-                .await
-                .map_err(AppError::internal)?;
-            Err(blackjack_error(error))
-        }
+        Err(error) => Err(blackjack_error(error)),
     }
 }
 
@@ -350,22 +352,14 @@ pub async fn blackjack_split(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let before = s
-        .blackjack
-        .view(user, input.id)
-        .await
-        .map_err(blackjack_error)?;
-    let wager = before
-        .hands
-        .get(before.active_hand)
-        .ok_or_else(|| AppError::bad_request("blackjack hand is unavailable"))?
-        .bet;
-    s.bank
-        .blackjack_bet(AccountOwner::User(user), input.id, wager)
-        .await
-        .map_err(AppError::internal)?;
     match s.blackjack.split(user, input.id).await {
-        Ok(view) => {
+        Ok((view, wager)) => {
+            if wager > 0 {
+                s.bank
+                    .blackjack_bet(AccountOwner::User(user), input.id, wager)
+                    .await
+                    .map_err(AppError::internal)?;
+            }
             if view.payout > 0 {
                 s.bank
                     .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
@@ -374,13 +368,7 @@ pub async fn blackjack_split(
             }
             Ok(Json(serde_json::json!(view)))
         }
-        Err(error) => {
-            s.bank
-                .blackjack_payout(AccountOwner::User(user), input.id, wager)
-                .await
-                .map_err(AppError::internal)?;
-            Err(blackjack_error(error))
-        }
+        Err(error) => Err(blackjack_error(error)),
     }
 }
 
@@ -389,30 +377,21 @@ pub async fn blackjack_insurance(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let before = s
-        .blackjack
-        .view(user, input.id)
-        .await
-        .map_err(blackjack_error)?;
-    let wager = before.bet / 2;
-    if wager < MIN_GAME_AMOUNT {
-        return Err(AppError::bad_request(
-            "insurance requires a bet of at least $2",
-        ));
-    }
-    s.bank
-        .blackjack_bet(AccountOwner::User(user), input.id, wager)
-        .await
-        .map_err(AppError::internal)?;
     match s.blackjack.insure(user, input.id).await {
-        Ok(view) => Ok(Json(serde_json::json!(view))),
-        Err(error) => {
+        Ok((view, wager)) => {
             s.bank
-                .blackjack_payout(AccountOwner::User(user), input.id, wager)
+                .blackjack_bet(AccountOwner::User(user), input.id, wager)
                 .await
                 .map_err(AppError::internal)?;
-            Err(blackjack_error(error))
+            if view.payout > 0 {
+                s.bank
+                    .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
+                    .await
+                    .map_err(AppError::internal)?;
+            }
+            Ok(Json(serde_json::json!(view)))
         }
+        Err(error) => Err(blackjack_error(error)),
     }
 }
 
@@ -420,6 +399,9 @@ fn blackjack_error(error: BlackjackError) -> AppError {
     match error {
         BlackjackError::NotFound => AppError::not_found("blackjack game not found"),
         BlackjackError::Finished => AppError::bad_request("blackjack game is finished"),
+        BlackjackError::ActiveGame => {
+            AppError::bad_request("blackjack hand is already in progress")
+        }
         BlackjackError::IllegalAction(message) => AppError::bad_request(message),
     }
 }

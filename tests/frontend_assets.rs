@@ -4,6 +4,7 @@ const BANK_JS: &str = include_str!("../public/bank.js");
 const BLACKJACK_JS: &str = include_str!("../public/blackjack.js");
 const BLITZ_JS: &str = include_str!("../public/blitz.js");
 const CARD_JS: &str = include_str!("../public/card.js");
+const SHARED_JS: &str = include_str!("../public/shared.js");
 const LOBBY_JS: &str = include_str!("../public/lobby.js");
 
 #[test]
@@ -164,6 +165,7 @@ fn blackjack_island_has_game_contracts() {
     for literal in [
         "/blackjack/start",
         "/blackjack/${kind}",
+        "/blackjack/resume",
         "act(\"hit\")",
         "act(\"stand\")",
         "dealer_score",
@@ -171,12 +173,30 @@ fn blackjack_island_has_game_contracts() {
         "can_stand",
         "Dealer",
         "card-pip-${position}",
+        "game.can_hit && html",
+        "game.can_double && html",
+        "actions blackjack-actions",
     ] {
         assert!(
             BLACKJACK_JS.contains(literal),
             "missing blackjack.js contract: {literal}"
         );
     }
+}
+
+#[test]
+fn shared_island_helpers_have_contracts() {
+    for literal in [
+        "export function cents",
+        "export function money",
+        "export async function responseError",
+    ] {
+        assert!(
+            SHARED_JS.contains(literal),
+            "missing shared.js contract: {literal}"
+        );
+    }
+    assert!(BLITZ_JS.contains("responseError(response)"));
 }
 
 #[test]

@@ -46,6 +46,7 @@ pub fn router(s: AppState) -> Router {
             "/blackjack/start",
             axum::routing::post(routes::blackjack_start),
         )
+        .route("/blackjack/resume", get(routes::blackjack_resume))
         .route("/blackjack/hit", axum::routing::post(routes::blackjack_hit))
         .route(
             "/blackjack/stand",
@@ -254,6 +255,7 @@ fn asset_version() -> String {
         "public/bank.js",
         "public/blackjack.js",
         "public/blitz.js",
+        "public/shared.js",
         "public/card.js",
         "public/lobby.js",
         "public/table.js",

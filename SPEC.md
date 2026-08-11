@@ -285,6 +285,16 @@ Mark each milestone done here as it lands.
   default geometry keeps viewer cards/wager clear of board/status.
 - **V18** Completed hands remain visible for 10 seconds unless a seated human
   acknowledges early; showdown UI shows an OK action with shared-deadline progress.
+- **V19** Blackjack validates action legality and additional wager bounds under
+  one game lock before mutation; rejected actions move no chips or ledger rows.
+- **V20** Blackjack view action flags and store validation use the same
+  predicates; server-derived wagers never trust client state.
+- **V21** Blackjack peeks for dealer naturals at the mandated decision boundary;
+  player/dealer naturals push and insurance pays 3× its stake.
+- **V22** Each user has at most one live blackjack game; finished games are
+  pruned on a new start and a live game is resumable.
+- **V23** Blackjack and Hand Blitz islands render only legal controls and show
+  server error text; shared island helpers remain behavior-compatible.
 
 ## §T Build tasks
 
@@ -300,6 +310,9 @@ T8|x|tune viewer cards + compact felt geometry|V7,V14,V15
 T9|x|place viewer wager above hole cards|V14,V16
 T10|x|add card display config + paired hand magnification|V14,V15,V17
 T11|~|hold showdown for acknowledgement + countdown|V11,V14,V18
+T12|x|apply atomic legality, wager bounds, peek, and conservation rules to blackjack|V19,V20,V21
+T13|x|add resumable one-live-game blackjack lifecycle|V22
+T14|x|share island helpers and surface blitz/blackjack UI errors and actions|V23
 
 ## §B Bug log
 
@@ -348,3 +361,13 @@ T11|~|hold showdown for acknowledgement + countdown|V11,V14,V18
 - Asset contract forbade all range inputs to prevent wager slider, blocking card-size control; narrow guard to wager slider/input identifiers under V15.
 - Viewer wager used a right-edge exception while every other wager sat above its player; remove the exception and enforce wager-over-cards geometry under V16.
 - Three-second automatic redeal hid showdown before users could read it; extend the server-owned pause and expose an acknowledged countdown under V18.
+- Blackjack debited double, split, and insurance before validation and refunded rejected
+  actions into the ledger; validate and mutate under the game lock, then charge once.
+- Blackjack action flags, handler wager calculations, and store predicates diverged;
+  use one server-owned legality and wager source.
+- Blackjack never peeked for dealer naturals, incorrectly paying player naturals
+  against a dealer natural; peek at deal/insurance boundaries and treat both naturals as push.
+- Blackjack starts abandoned live bets on reload and retained finished games forever;
+  reject concurrent starts, resume live games, and prune finished user games.
+- Blackjack rendered unavailable disabled controls and Hand Blitz hid server errors;
+  conditionally render legal actions and share response/error helpers across islands.
