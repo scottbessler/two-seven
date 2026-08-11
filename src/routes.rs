@@ -22,8 +22,8 @@ use axum::{
         sse::{Event, Sse},
     },
 };
-use futures_util::stream;
 use chrono::Utc;
+use futures_util::stream;
 use serde::Deserialize;
 use std::{convert::Infallible, time::Duration};
 use uuid::Uuid;
