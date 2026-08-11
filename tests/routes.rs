@@ -506,6 +506,65 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         .await
         .unwrap();
     assert_eq!(fold.status(), StatusCode::OK);
+    let showdown = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/state"))
+                .header(header::COOKIE, &cookie_a)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let showdown: serde_json::Value =
+        serde_json::from_slice(&to_bytes(showdown.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert!(showdown["hand"].is_null());
+    assert!(showdown["last_hand"].is_object());
+    assert!(showdown["next_hand_at"].is_string());
+    let fold_deadline =
+        chrono::DateTime::parse_from_rfc3339(showdown["next_hand_at"].as_str().unwrap())
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+    let fold_pause = fold_deadline - chrono::Utc::now();
+    assert!(fold_pause >= chrono::Duration::seconds(2));
+    assert!(fold_pause <= chrono::Duration::seconds(3));
+    let continue_hand = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/continue"))
+                .header(header::COOKIE, &cookie_a)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(continue_hand.status(), StatusCode::OK);
+    let continued = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/state"))
+                .header(header::COOKIE, &cookie_a)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let continued: serde_json::Value =
+        serde_json::from_slice(&to_bytes(continued.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert!(continued["hand"].is_null());
+    let acknowledged_at =
+        chrono::DateTime::parse_from_rfc3339(continued["next_hand_at"].as_str().unwrap())
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+    assert!(acknowledged_at <= chrono::Utc::now());
     for cookie_value in [&cookie_a, &cookie_b] {
         let leave = t
             .router

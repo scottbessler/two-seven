@@ -20,7 +20,7 @@ const tableState = {
   hand: {
     street: "Flop",
     board: ["Ah", "7c", "2s"],
-    your_hole_cards: ["Kh", "Qh"],
+    your_hole_cards: ["5c", "6c"],
     seats: [],
     pot: 7_600,
     last_bet: 2_400,
@@ -74,6 +74,16 @@ const showdownState = {
   },
 };
 
+const foldResultState = {
+  ...showdownState,
+  last_hand: {
+    ...showdownState.last_hand,
+    board: ["Ah", "7c", "2s"],
+    results: [],
+    revealed_hole_cards: [],
+  },
+};
+
 async function mountTable(page, state) {
   await page.route("**/tables/mock/state", (route) => route.fulfill({ json: state }));
   await page.route("**/tables/mock/events", (route) =>
@@ -107,7 +117,10 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".seat.viewer .seat-cards .playing-card")).toHaveCount(2);
   const viewerCard = page.locator(".seat.viewer .seat-cards .playing-card").first();
   const secondViewerCard = page.locator(".seat.viewer .seat-cards .playing-card").nth(1);
-  expect(await viewerCard.locator(".card-frame").evaluate((card) => getComputedStyle(card).color)).toBe("rgb(213, 41, 31)");
+  expect(await viewerCard.locator(".card-corner b").first().evaluate((rank) => getComputedStyle(rank).color)).toBe("rgb(32, 35, 31)");
+  const configButtonBox = await page.getByRole("button", { name: "Card display settings" }).boundingBox();
+  expect(configButtonBox.x).toBeGreaterThan((page.viewportSize()?.width || 0) * 0.75);
+  expect(configButtonBox.y).toBeLessThan(80);
   await expect(page.locator(".card-config-dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Card display settings" }).click();
   await expect(page.locator(".card-config-dialog")).toBeVisible();
@@ -117,6 +130,11 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(sizeSlider).toHaveValue("180");
   await expect(rankSlider).toHaveValue("130");
   await expect(weightSlider).toHaveValue("850");
+  await expect(page.locator(".card-config-preview .playing-card")).toHaveCount(2);
+  const previewBox = await page.locator(".card-config-preview .playing-card").first().boundingBox();
+  const liveBox = await viewerCard.boundingBox();
+  expect(Math.abs(previewBox.width - liveBox.width)).toBeLessThan(1);
+  expect(Math.abs(previewBox.height - liveBox.height)).toBeLessThan(1);
   await expect(page.locator(".card-config-dialog")).toHaveScreenshot("card-config-dialog.png");
   await sizeSlider.fill("120");
   const initialCardBox = await viewerCard.boundingBox();
@@ -148,6 +166,7 @@ test("shows live hand cues and event log", async ({ page }) => {
   await page.locator(".brand").hover();
   await page.waitForTimeout(250);
   await expect(page.locator(".empty-seat")).toHaveCount(0);
+  await expect(page.locator(".board .empty-card")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
   await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "$24", "$36", "$38", "$76", "All In"]);
   await page.locator(".seat.viewer .player-info").hover();
@@ -155,6 +174,7 @@ test("shows live hand cues and event log", async ({ page }) => {
   await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
   await expect(page.locator(".seat-wager")).toHaveCount(3);
+  await expect(page.locator(".seat.viewer .seat-wager")).toHaveText("$12");
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
   expect(viewerWager.y + viewerWager.height, "V16: viewer wager must sit above viewer cards").toBeLessThanOrEqual(viewerCards.y + 1);
@@ -203,10 +223,18 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await expect(page.locator(".seat .seat-cards.revealed")).toHaveCount(2);
   await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
-  await expect(page.locator(".showdown-advance button")).toContainText("OK · 10s");
+  const opponentCard = page.locator(".seat:not(.viewer) .seat-cards.revealed .playing-card").first();
+  expect((await opponentCard.boundingBox()).width).toBeGreaterThan(40);
+  await expect(page.locator(".seat.winner")).toHaveCSS("border-top-width", "2px");
+  await expect(page.locator(".showdown-advance button")).toContainText("OK · 6s");
   await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
   await expect(page.locator(".last-hand")).toHaveCount(0);
   await expect(page).toHaveScreenshot("showdown-table.png", { fullPage: true });
   await page.locator(".showdown-advance button").click();
   expect(continued).toBe(true);
+});
+
+test("uses the short acknowledgement window for a fold result", async ({ page }) => {
+  await mountTable(page, foldResultState);
+  await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });

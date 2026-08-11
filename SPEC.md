@@ -283,8 +283,11 @@ Mark each milestone done here as it lands.
 - **V17** Card display config persists 80–180% viewer size (default 180%),
   corner-rank size/weight controls; either viewer card magnifies both cards, and
   default geometry keeps viewer cards/wager clear of board/status.
-- **V18** Completed hands remain visible for 10 seconds unless a seated human
-  acknowledges early; showdown UI shows an OK action with shared-deadline progress.
+- **V18** Showdowns remain visible for 6 seconds and fold-only results for 3
+  seconds unless a seated human acknowledges early; UI shows OK + deadline progress.
+- **V19** Card config opens from page upper-right and previews the exact viewer
+  dimensions/font; seat ranks retain suit color, revealed hands are legible, and
+  winners have unmistakable gold emphasis without wager/card artifacts.
 
 ## §T Build tasks
 
@@ -299,7 +302,8 @@ T7|x|recompose live table + showdown UI|V3,V7,V11,V14
 T8|x|tune viewer cards + compact felt geometry|V7,V14,V15
 T9|x|place viewer wager above hole cards|V14,V16
 T10|x|add card display config + paired hand magnification|V14,V15,V17
-T11|~|hold showdown for acknowledgement + countdown|V11,V14,V18
+T11|x|hold showdown for acknowledgement + countdown|V11,V14,V18
+T12|x|polish card config + showdown card emphasis|V14,V17,V19
 
 ## §B Bug log
 
@@ -348,3 +352,6 @@ T11|~|hold showdown for acknowledgement + countdown|V11,V14,V18
 - Asset contract forbade all range inputs to prevent wager slider, blocking card-size control; narrow guard to wager slider/input identifiers under V15.
 - Viewer wager used a right-edge exception while every other wager sat above its player; remove the exception and enforce wager-over-cards geometry under V16.
 - Three-second automatic redeal hid showdown before users could read it; extend the server-owned pause and expose an acknowledged countdown under V18.
+- `.seat b` overrode nested card ranks with accent gold and enlarged cards could cover the viewer wager; enforce card-face color and wager layering under V19.
+- Starting a new hand directly in showdown acknowledgement bypassed normal driver follow-up ordering; acknowledgement now expires the shared deadline and lets the driver deal.
+- Undealt board slots rendered as dark input-like boxes; render only dealt community cards under V19.

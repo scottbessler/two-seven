@@ -22,8 +22,8 @@ use axum::{
         sse::{Event, Sse},
     },
 };
-use futures_util::stream;
 use chrono::Utc;
+use futures_util::stream;
 use serde::Deserialize;
 use std::{convert::Infallible, time::Duration};
 use uuid::Uuid;
@@ -938,7 +938,6 @@ pub async fn continue_table(
                 return Err(anyhow::anyhow!("no showdown to continue"));
             }
             table.next_action_at = Some(Utc::now());
-            maybe_start_hand(table);
             Ok(())
         })
         .await

@@ -4,7 +4,8 @@ import { Card } from "/public/card.js";
 
 const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
-const SHOWDOWN_PAUSE_MS = 10_000;
+const SHOWDOWN_PAUSE_MS = 6_000;
+const FOLD_RESULT_PAUSE_MS = 3_000;
 
 async function fetchState() {
   const response = await fetch(`/tables/${tableId}/state`, { headers: { Accept: "application/json" } });
@@ -171,16 +172,16 @@ function TableLog({ events, seats, summary }) {
   return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
-function ShowdownAdvance({ deadline, canContinue, refresh }) {
+function ShowdownAdvance({ deadline, duration, canContinue, refresh }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
   }, []);
   const dueAt = Date.parse(deadline || "");
-  const remaining = Number.isFinite(dueAt) ? Math.min(SHOWDOWN_PAUSE_MS, Math.max(0, dueAt - now)) : SHOWDOWN_PAUSE_MS;
+  const remaining = Number.isFinite(dueAt) ? Math.min(duration, Math.max(0, dueAt - now)) : duration;
   const seconds = Math.ceil(remaining / 1000);
-  const width = `${(remaining / SHOWDOWN_PAUSE_MS) * 100}%`;
+  const width = `${(remaining / duration) * 100}%`;
   const label = `Next hand in ${seconds}s`;
   if (!canContinue) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}</b></div>`;
   return html`<div class="showdown-advance"><button type="button" aria-label=${`Continue now. ${label}`} onClick=${async () => {
@@ -215,6 +216,7 @@ function TableApp() {
   const board = hand?.board || showdown?.board || [];
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
+  const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
   const scale = cardScale / 100;
   const cardStyle = {
     "--viewer-card-scale": cardScale,
@@ -235,6 +237,7 @@ function TableApp() {
       <dialog id="card-config" class="card-config-dialog">
         <form method="dialog">
           <header><h2>Card display</h2><button type="submit" title="Close" aria-label="Close">×</button></header>
+          <div class="card-config-preview" aria-label="Card preview"><${Card} card="5c" /><${Card} card="6c" /></div>
           <label><span>Card size <output>${cardScale}%</output></span><input name="card-scale" type="range" min="80" max="180" step="5" value=${cardScale} onInput=${settingHandler(setCardScale, "table-card-scale")} /></label>
           <label><span>Rank size <output>${rankScale}%</output></span><input name="rank-scale" type="range" min="100" max="150" step="5" value=${rankScale} onInput=${settingHandler(setRankScale, "table-rank-scale")} /></label>
           <label><span>Rank weight <output>${rankWeight}</output></span><input name="rank-weight" type="range" min="600" max="900" step="50" value=${rankWeight} onInput=${settingHandler(setRankWeight, "table-rank-weight")} /></label>
@@ -243,8 +246,8 @@ function TableApp() {
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
-          <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}${Array.from({ length: 5 - board.length }).map(() => html`<${Card} empty />`)}</div>
-          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
+          <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}</div>
+          ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
         </div>
       </div>
       <div class="seats">${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
