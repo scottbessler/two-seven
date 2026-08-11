@@ -78,7 +78,7 @@ button.danger{background:var(--danger);color:white}
 .seat .playing-card.red,.seat .playing-card.red span{color:#d5291f!important}
 .seat .playing-card.black,.seat .playing-card.black span{color:#20231f!important}
 .seat.viewer .seat-cards{top:auto;bottom:calc(100% - .15rem)}
-.seat.viewer .seat-wager{left:calc(100% + .35rem);bottom:50%;transform:translateY(50%)}
+.seat.viewer .seat-wager{left:50%;bottom:calc(100% + var(--viewer-card-h) + .25rem);transform:translateX(-50%)}
 .seat .state-role{border-color:#527d6c;color:var(--muted)}
 .seat .seat-wager{top:auto;bottom:calc(100% + .35rem);font-size:.68rem}
 .seat .seat-state{bottom:auto;top:calc(100% + 3.1rem)}
@@ -86,6 +86,7 @@ button.danger{background:var(--danger);color:white}
 .table-metrics span{min-width:5.2rem;padding:.18rem .45rem;background:#10241fe8}
 .table-metrics b{font-size:.9rem}
 .table-status,.showdown-result{margin:.42rem 0 0;color:var(--muted);font-size:.82rem;white-space:normal}
+.table-status{transform:translateY(-.5rem)}
 .showdown-result{color:#f1d56e;font-weight:800}
 .decision-area{position:relative;z-index:5;padding:.5rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
 .actions{position:static;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
@@ -128,6 +129,7 @@ button.danger{background:var(--danger);color:white}
   .table-stage .felt{position:relative;inset:auto;order:2;width:100%;min-height:245px;border-width:5px;border-radius:24px}
   .table-stage .table-center{width:92%}
   .table-stage .board{gap:.16rem;min-height:4.45rem}
+  .table-status{transform:none}
   .table-stage .playing-card,.card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-size:.55rem;--corner-gap:.16rem;--pip-size:.76rem;--art-size:1.8rem}
   .table-metrics{bottom:calc(100% + .2rem)}
   .table-metrics span{min-width:4.2rem}

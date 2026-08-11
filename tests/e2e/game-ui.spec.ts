@@ -128,6 +128,12 @@ test("shows live hand cues and event log", async ({ page }) => {
   await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
   await expect(page.locator(".seat-wager")).toHaveCount(3);
+  const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
+  const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
+  expect(viewerWager.y + viewerWager.height, "V16: viewer wager must sit above viewer cards").toBeLessThanOrEqual(viewerCards.y + 1);
+  const tableStatus = await page.locator(".table-status").boundingBox();
+  const wagerOverlapsStatus = viewerWager.x < tableStatus.x + tableStatus.width && viewerWager.x + viewerWager.width > tableStatus.x && viewerWager.y < tableStatus.y + tableStatus.height && viewerWager.y + viewerWager.height > tableStatus.y;
+  expect(wagerOverlapsStatus, "V16: viewer wager must not cover table status").toBe(false);
   await expect(page.locator(".seat.folded")).toHaveCount(1);
   await expect(page.locator(".seat.all-in")).toHaveCount(1);
   expect(await page.locator(".decision-area").evaluate((actions) => actions.compareDocumentPosition(document.querySelector(".game-log")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
