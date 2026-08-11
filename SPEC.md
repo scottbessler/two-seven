@@ -202,7 +202,10 @@ src/
   error.rs                       # AppError -> HTML/JSON
   cards.rs                       # Card/Rank/Suit/Deck (seeded shuffle)
   eval.rs                        # 7-card hand evaluation
-  holdem.rs                      # hand state machine, betting, side pots
+  holdem/                        # hand engine statechart (see STATECHART.md)
+    mod.rs                       #   shared types, side pots, showdown resolution
+    street.rs                    #   hand machine: street progression + fold win
+    round.rs                     #   betting round machine: actions + rotation
   table.rs                       # table/seat lifecycle, buy-ins, hand plumbing
   money.rs                       # cents type and money formatting
   tournament.rs                  # sit-and-go state
