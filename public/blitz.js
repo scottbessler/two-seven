@@ -40,6 +40,13 @@ function App() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    fetch("/hand-blitz/resume", { headers: { Accept: "application/json" } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((savedRun) => savedRun && setRun(savedRun))
+      .catch(() => {});
+  }, []);
+
   const start = async (difficulty) => {
     setBusy(true);
     setError("");

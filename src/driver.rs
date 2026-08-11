@@ -24,6 +24,7 @@ pub async fn tick_once(state: &AppState) -> Result<(), anyhow::Error> {
 }
 
 pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), anyhow::Error> {
+    state.blitz.expire(now).await;
     let mut ids = state.tables.ids().await;
     ids.sort();
     for id in ids {
@@ -404,6 +405,41 @@ mod tests {
                 .entries
                 .iter()
                 .any(|entry| entry.delta == -100)
+        );
+    }
+
+    #[tokio::test]
+    async fn blitz_expiry_sweep_closes_run_and_allows_restart() {
+        let root = std::env::temp_dir().join(format!("two-seven-blitz-expiry-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let user = Uuid::new_v4();
+        let state = AppState {
+            users,
+            bank,
+            blackjack: crate::blackjack::BlackjackStore::load(&root).await.unwrap(),
+            blitz: blitz.clone(),
+            tables,
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        blitz
+            .start(user, crate::blitz::BlitzDifficulty::Easy, Uuid::new_v4())
+            .await
+            .unwrap();
+
+        tick_once_at(&state, Utc::now() + Duration::seconds(30))
+            .await
+            .unwrap();
+        assert!(!blitz.resume(user).await.unwrap().active);
+        assert!(
+            blitz
+                .start(user, crate::blitz::BlitzDifficulty::Easy, Uuid::new_v4())
+                .await
+                .is_ok()
         );
     }
 
