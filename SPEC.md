@@ -289,8 +289,9 @@ Mark each milestone done here as it lands.
   one game lock before mutation; rejected actions move no chips or ledger rows.
 - **V20** Blackjack view action flags and store validation use the same
   predicates; server-derived wagers never trust client state.
-- **V21** Blackjack peeks for dealer naturals at the mandated decision boundary;
-  player/dealer naturals push and insurance pays 3× its stake.
+- **V21** Blackjack peeks at deal time unless an ace-up hand has a real
+  insurance decision; ace-up decisions peek immediately after insurance or any
+  other action, player/dealer naturals push, and insurance pays 3× its stake.
 - **V22** Each user has at most one live blackjack game; finished games are
   pruned on a new start and a live game is resumable.
 - **V23** Blackjack and Hand Blitz islands render only legal controls and show
@@ -371,3 +372,7 @@ T14|x|share island helpers and surface blitz/blackjack UI errors and actions|V23
   reject concurrent starts, resume live games, and prune finished user games.
 - Blackjack rendered unavailable disabled controls and Hand Blitz hid server errors;
   conditionally render legal actions and share response/error helpers across islands.
+- Blackjack exposed the dealer hole card after a non-natural insurance peek; keep
+  in-progress responses redacted until resolution.
+- Blackjack charged the start bet before atomically rejecting an invalid or live
+  start; create the game first and charge only after successful validation.

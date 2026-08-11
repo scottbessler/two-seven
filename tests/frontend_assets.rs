@@ -189,6 +189,7 @@ fn shared_island_helpers_have_contracts() {
     for literal in [
         "export function cents",
         "export function money",
+        "export function wholeDollarMoney",
         "export async function responseError",
     ] {
         assert!(
@@ -215,6 +216,6 @@ fn setup_uses_six_bounded_presets() {
     assert!(LOBBY_JS.contains("buy_in: 20_000"));
     assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
     assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
-    assert!(TABLE_JS.contains("money(state.buy_in)"));
+    assert!(TABLE_JS.contains("wholeDollarMoney(state.buy_in)"));
     assert!(TABLE_JS.contains("JSON.stringify({ seat })"));
 }

@@ -248,21 +248,16 @@ pub async fn blackjack_start(
     if !valid_game_amount(input.bet) {
         return Err(AppError::bad_request("bet must be between $1 and $10,000"));
     }
-    if s.blackjack.resume(user).await.is_some() {
-        return Err(AppError::bad_request(
-            "blackjack hand is already in progress",
-        ));
-    }
     let id = Uuid::new_v4();
-    s.bank
-        .blackjack_bet(AccountOwner::User(user), id, input.bet)
-        .await
-        .map_err(AppError::internal)?;
     let view = s
         .blackjack
         .start(user, input.bet, id)
         .await
         .map_err(blackjack_error)?;
+    s.bank
+        .blackjack_bet(AccountOwner::User(user), id, input.bet)
+        .await
+        .map_err(AppError::internal)?;
     if view.payout > 0 {
         s.bank
             .blackjack_payout(AccountOwner::User(user), id, view.payout)

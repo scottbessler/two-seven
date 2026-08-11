@@ -2,11 +2,15 @@ export function cents(value) {
   return Math.round(Number(value) * 100);
 }
 
-export function money(value, whole = false) {
+export function money(value) {
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
-  if (whole) return `${sign}$${Math.round(abs / 100).toLocaleString()}`;
   return `${sign}$${Math.floor(abs / 100).toLocaleString()}.${String(abs % 100).padStart(2, "0")}`;
+}
+
+export function wholeDollarMoney(value) {
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${Math.round(Math.abs(value) / 100).toLocaleString()}`;
 }
 
 export async function responseError(response) {
