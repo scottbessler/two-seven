@@ -4,7 +4,22 @@ const BANK_JS: &str = include_str!("../public/bank.js");
 const BLACKJACK_JS: &str = include_str!("../public/blackjack.js");
 const BLITZ_JS: &str = include_str!("../public/blitz.js");
 const CARD_JS: &str = include_str!("../public/card.js");
+const SHARED_JS: &str = include_str!("../public/shared.js");
 const LOBBY_JS: &str = include_str!("../public/lobby.js");
+const RENDER_RS: &str = include_str!("../src/render.rs");
+
+#[test]
+fn imported_islands_are_emitted_as_module_scripts() {
+    let bank_asset = RENDER_RS
+        .find(r#"asset("/public/bank.js")"#)
+        .expect("render.rs should include bank.js");
+    let script = &RENDER_RS[..bank_asset];
+    let script = &script[script.rfind("<script").expect("bank script tag")..];
+    assert!(
+        script.starts_with(r#"<script type="module" src="{}" defer></script>"#),
+        "bank.js must be emitted as a module script"
+    );
+}
 
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
@@ -169,6 +184,7 @@ fn blackjack_island_has_game_contracts() {
     for literal in [
         "/blackjack/start",
         "/blackjack/${kind}",
+        "/blackjack/resume",
         "act(\"hit\")",
         "act(\"stand\")",
         "dealer_score",
@@ -176,12 +192,31 @@ fn blackjack_island_has_game_contracts() {
         "can_stand",
         "Dealer",
         "card-pip-${position}",
+        "game.can_hit && html",
+        "game.can_double && html",
+        "actions blackjack-actions",
     ] {
         assert!(
             BLACKJACK_JS.contains(literal),
             "missing blackjack.js contract: {literal}"
         );
     }
+}
+
+#[test]
+fn shared_island_helpers_have_contracts() {
+    for literal in [
+        "export function cents",
+        "export function money",
+        "export function wholeDollarMoney",
+        "export async function responseError",
+    ] {
+        assert!(
+            SHARED_JS.contains(literal),
+            "missing shared.js contract: {literal}"
+        );
+    }
+    assert!(BLITZ_JS.contains("responseError(response)"));
 }
 
 #[test]

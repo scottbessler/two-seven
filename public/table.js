@@ -1,5 +1,6 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
+import { responseError, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", pip-grid-${value}, card-pip-${position}, card-art-${court}.
 
 const root = document.getElementById("table-app");
@@ -17,10 +18,6 @@ async function fetchState() {
 
 function actionName(action) {
   return typeof action === "string" ? action : Object.keys(action)[0];
-}
-
-function money(value) {
-  return `$${Math.round(value / 100).toLocaleString()}`;
 }
 
 function streetName(street) {
@@ -43,13 +40,6 @@ function savedSetting(key) {
 function rankWeight(percent) {
   return percent <= 100 ? percent * 9 : 900 + percent - 100;
 }
-
-async function responseError(response) {
-  const text = await response.text();
-  const document = new DOMParser().parseFromString(text, "text/html");
-  return document.querySelector("p")?.textContent?.trim() || text || `Request failed (${response.status})`;
-}
-
 function blindRole(events, seat) {
   if (events.some((event) => event.seat === seat && event.kind === "SmallBlind")) return "SB";
   if (events.some((event) => event.seat === seat && event.kind === "BigBlind")) return "BB";

@@ -1,14 +1,9 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
+import { money, responseError } from "/public/shared.js";
 // Shared renderer contracts: rawRank === "T" ? "10", pip-grid-${numeric}, card-pip-${position}, card-art-${court}.
 
 const root = document.getElementById("blitz-app");
-
-function money(cents) {
-  const sign = cents < 0 ? "-" : "";
-  const abs = Math.abs(cents);
-  return `${sign}$${Math.floor(abs / 100).toLocaleString()}.${String(abs % 100).padStart(2, "0")}`;
-}
 
 function seconds(ms) {
   return `${(ms / 1000).toFixed(1)}s`;
@@ -56,7 +51,7 @@ function App() {
     });
     setBusy(false);
     if (!response.ok) {
-      setError("Unable to start Hand Blitz");
+      setError(await responseError(response));
       return;
     }
     const data = await response.json();
@@ -74,7 +69,7 @@ function App() {
     });
     setBusy(false);
     if (!response.ok) {
-      setError("That round is no longer available");
+      setError(await responseError(response));
       return;
     }
     const data = await response.json();

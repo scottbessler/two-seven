@@ -297,6 +297,17 @@ Mark each milestone done here as it lands.
   unseated players can Buy In to the server-selected first open seat, busted cash
   players can Re-Buy In, seated players can Leave, and deferred live-hand leaves
   visibly remain Leaving until settlement; no human seat picker or sit-out command.
+- **V24** Blackjack validates action legality and additional wager bounds under
+  one game lock before mutation; rejected actions move no chips or ledger rows.
+- **V25** Blackjack view action flags and store validation use the same
+  predicates; server-derived wagers never trust client state.
+- **V26** Blackjack peeks at deal time unless an ace-up hand has a real
+  insurance decision; ace-up decisions peek immediately after insurance or any
+  other action, player/dealer naturals push, and insurance pays 3× its stake.
+- **V27** Each user has at most one live blackjack game; finished games are
+  pruned on a new start and a live game is resumable.
+- **V28** Blackjack and Hand Blitz islands render only legal controls and show
+  server error text; shared island helpers remain behavior-compatible.
 
 ## §T Build tasks
 
@@ -318,6 +329,9 @@ T14|x|contain player tooltips at viewport edges|V14,V20
 T15|x|reflow max-size viewer cards and card faces|V17,V19,V21
 T16|x|reserve a fixed table-log footprint|V11,V14,V22
 T17|x|simplify and harden table lifecycle controls|V2,V10,V23
+T18|x|apply atomic legality, wager bounds, peek, and conservation rules to blackjack|V24,V25,V26
+T19|x|add resumable one-live-game blackjack lifecycle|V27
+T20|x|share island helpers and surface blitz/blackjack UI errors and actions|V28
 
 ## §B Bug log
 
@@ -373,3 +387,17 @@ T17|x|simplify and harden table lifecycle controls|V2,V10,V23
 - Viewer card/rank controls scaled outer cards and corners without reserving table or face space, allowing max settings to cover the board and pips; expand the player rail and reflow card centers under V21.
 - The table log used only `max-height`, so its footprint grew with each event and pushed lower controls down; reserve a fixed responsive height under V22.
 - Human join forms exposed seat selection, table controls appeared for spectators, and live-hand leave returned success while leaving the same controls visible; move seat assignment server-side and expose one viewer-state command with explicit pending departure under V23.
+- Blackjack debited double, split, and insurance before validation and refunded rejected
+  actions into the ledger; validate and mutate under the game lock, then charge once.
+- Blackjack action flags, handler wager calculations, and store predicates diverged;
+  use one server-owned legality and wager source.
+- Blackjack never peeked for dealer naturals, incorrectly paying player naturals
+  against a dealer natural; peek at deal/insurance boundaries and treat both naturals as push.
+- Blackjack starts abandoned live bets on reload and retained finished games forever;
+  reject concurrent starts, resume live games, and prune finished user games.
+- Blackjack rendered unavailable disabled controls and Hand Blitz hid server errors;
+  conditionally render legal actions and share response/error helpers across islands.
+- Blackjack exposed the dealer hole card after a non-natural insurance peek; keep
+  in-progress responses redacted until resolution.
+- Blackjack charged the start bet before atomically rejecting an invalid or live
+  start; create the game first and charge only after successful validation.
