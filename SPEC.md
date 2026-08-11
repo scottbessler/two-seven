@@ -308,6 +308,11 @@ Mark each milestone done here as it lands.
   pruned on a new start and a live game is resumable.
 - **V28** Blackjack and Hand Blitz islands render only legal controls and show
   server error text; shared island helpers remain behavior-compatible.
+- **V24** Live blackjack games survive process restart through atomic JSON
+  persistence; finished games are not restored.
+- **V25** Hand Blitz runs expire server-side after their round deadline (with a
+  small request grace), each user has at most one live run, and completed runs
+  are eventually pruned; starts charge only after successful creation.
 
 ## §T Build tasks
 
@@ -332,6 +337,12 @@ T17|x|simplify and harden table lifecycle controls|V2,V10,V23
 T18|x|apply atomic legality, wager bounds, peek, and conservation rules to blackjack|V24,V25,V26
 T19|x|add resumable one-live-game blackjack lifecycle|V27
 T20|x|share island helpers and surface blitz/blackjack UI errors and actions|V28
+T11|~|hold showdown for acknowledgement + countdown|V11,V14,V18
+T12|x|apply atomic legality, wager bounds, peek, and conservation rules to blackjack|V19,V20,V21
+T13|x|add resumable one-live-game blackjack lifecycle|V22
+T14|x|share island helpers and surface blitz/blackjack UI errors and actions|V23
+T15|x|persist live blackjack games and restore them after restart|V1,V24
+T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 
 ## §B Bug log
 
@@ -401,3 +412,11 @@ T20|x|share island helpers and surface blitz/blackjack UI errors and actions|V28
   in-progress responses redacted until resolution.
 - Blackjack charged the start bet before atomically rejecting an invalid or live
   start; create the game first and charge only after successful validation.
+- Blackjack live games existed only in memory; persist live state atomically and
+  restore it on startup while dropping finished games.
+- Hand Blitz runs never expired without an answer and could pin a charged buy-in
+  indefinitely; sweep overdue rounds server-side and prune finished runs.
+- Hand Blitz charged its buy-in before rejecting a concurrent live start; create
+  the run first and charge only after successful validation.
+- Blackjack payouts and Hand Blitz wins accepted non-positive amounts; reject
+  zero and negative awards without imposing an upper bound.

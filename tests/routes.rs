@@ -40,7 +40,9 @@ async fn appx() -> T {
     let state = app::AppState {
         users: users.clone(),
         bank: bank.clone(),
-        blackjack: two_seven::blackjack::BlackjackStore::new(),
+        blackjack: two_seven::blackjack::BlackjackStore::load(&dir)
+            .await
+            .unwrap(),
         blitz,
         tables,
         webauthn: Arc::new(app::build_webauthn().unwrap()),
@@ -248,6 +250,13 @@ async fn hand_blitz_start_charges_buy_in_and_correct_answer_pays() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, id);
+    let initial_entries = t
+        .bank
+        .account(AccountOwner::User(id))
+        .await
+        .unwrap()
+        .entries
+        .len();
     let start = t
         .router
         .clone()
@@ -267,6 +276,46 @@ async fn hand_blitz_start_charges_buy_in_and_correct_answer_pays() {
         serde_json::from_slice(&to_bytes(start.into_body(), usize::MAX).await.unwrap()).unwrap();
     let run_id = body["run"]["id"].as_str().unwrap();
     let round_id = body["run"]["round"]["id"].as_str().unwrap();
+    let resume = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/hand-blitz/resume")
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let resumed: serde_json::Value =
+        serde_json::from_slice(&to_bytes(resume.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(resumed["id"].as_str(), Some(run_id));
+
+    let second_start = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/hand-blitz/start")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"difficulty":"easy"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_start.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(id))
+            .await
+            .unwrap()
+            .entries
+            .len(),
+        initial_entries + 1
+    );
 
     let board = body["run"]["round"]["board"]
         .as_array()

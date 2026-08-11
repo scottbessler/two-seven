@@ -272,6 +272,7 @@ pub async fn blackjack_start(
             .await
             .map_err(AppError::internal)?;
     }
+    s.blackjack.persist().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!(view)))
 }
 
@@ -303,6 +304,7 @@ pub async fn blackjack_hit(
             .await
             .map_err(AppError::internal)?;
     }
+    s.blackjack.persist().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!(view)))
 }
 
@@ -322,6 +324,7 @@ pub async fn blackjack_stand(
             .await
             .map_err(AppError::internal)?;
     }
+    s.blackjack.persist().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!(view)))
 }
 
@@ -344,6 +347,7 @@ pub async fn blackjack_double(
                     .await
                     .map_err(AppError::internal)?;
             }
+            s.blackjack.persist().await.map_err(AppError::internal)?;
             Ok(Json(serde_json::json!(view)))
         }
         Err(error) => Err(blackjack_error(error)),
@@ -369,6 +373,7 @@ pub async fn blackjack_split(
                     .await
                     .map_err(AppError::internal)?;
             }
+            s.blackjack.persist().await.map_err(AppError::internal)?;
             Ok(Json(serde_json::json!(view)))
         }
         Err(error) => Err(blackjack_error(error)),
@@ -392,6 +397,7 @@ pub async fn blackjack_insurance(
                     .await
                     .map_err(AppError::internal)?;
             }
+            s.blackjack.persist().await.map_err(AppError::internal)?;
             Ok(Json(serde_json::json!(view)))
         }
         Err(error) => Err(blackjack_error(error)),
@@ -432,16 +438,31 @@ pub async fn hand_blitz_start(
         .map_err(AppError::bad_request)?;
     let run_id = Uuid::new_v4();
     let config = difficulty.config();
+    let run = s
+        .blitz
+        .start(user, difficulty, run_id)
+        .await
+        .map_err(|error| match error {
+            crate::blitz::BlitzStartError::ActiveRun => {
+                AppError::bad_request("hand blitz run is already in progress")
+            }
+        })?;
     s.bank
         .hand_blitz_buy_in(AccountOwner::User(user), run_id, config.buy_in)
         .await
         .map_err(AppError::internal)?;
-    let run = s.blitz.start(user, difficulty, run_id).await;
     s.blitz.persist_stats().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!({
         "run": run,
         "stats": s.blitz.stats(user).await
     })))
+}
+
+pub async fn hand_blitz_resume(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Json<Option<crate::blitz::BlitzRunView>> {
+    Json(s.blitz.resume(user).await)
 }
 
 #[derive(Deserialize)]

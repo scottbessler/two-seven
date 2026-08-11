@@ -2,6 +2,7 @@ use crate::{
     cards::{Card, Deck, Rank},
     eval::{Category, evaluate},
     holdem::{Action, LegalActions},
+    money::Cents,
     table::BotKind,
     view::HandView,
 };
@@ -75,23 +76,129 @@ fn grinder(view: &HandView, legal: &LegalActions) -> Action {
 }
 
 fn shark(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
+    if view.board.is_empty() {
+        return shark_preflop(view, legal, seed);
+    }
     let mut rng = StdRng::seed_from_u64(seed ^ 0x0053_4841_524b);
-    let equity = estimate_equity(view, seed);
+    let opponents = active_opponents(view, legal.seat);
+    let equity = estimate_equity(view, seed, opponents);
+    let fair_share = 1.0 / (opponents + 1) as f64;
     let pot_odds = if legal.to_call == 0 {
         0.0
     } else {
         legal.to_call as f64 / (view.pot + legal.to_call) as f64
     };
-    if equity < pot_odds && legal.to_call > 0 {
-        return first(legal, Action::Fold);
+    if equity > fair_share + 0.18 || equity > 0.72 {
+        let target = legal.to_call + (view.pot * 2) / 3;
+        return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
     }
-    if equity > 0.65 || (equity > 0.4 && rng.gen_ratio(1, 5)) {
-        return wager_or_call(legal);
+    if equity > fair_share + 0.05 && rng.gen_ratio(1, 4) {
+        let target = legal.to_call + view.pot / 2;
+        return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+    }
+    if legal.to_call > 0 && equity < pot_odds {
+        return first(legal, Action::Fold);
     }
     first_calling(legal)
 }
 
-fn estimate_equity(view: &HandView, seed: u64) -> f64 {
+fn shark_preflop(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x0050_4645);
+    let score = preflop_score(view);
+    let unraised = legal.to_call * 2 <= view.pot;
+    let pot_odds = if legal.to_call == 0 {
+        0.0
+    } else {
+        legal.to_call as f64 / (view.pot + legal.to_call) as f64
+    };
+    if score >= 10 {
+        let target = legal.to_call + view.pot + view.pot / 2;
+        return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+    }
+    if score >= 6 && (unraised || pot_odds < 0.2) {
+        if legal.to_call == 0 || rng.gen_ratio(2, 3) {
+            let target = legal.to_call + view.pot;
+            return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+        }
+        return first_calling(legal);
+    }
+    if score >= 4 && pot_odds < 0.15 {
+        return first_calling(legal);
+    }
+    if legal.to_call == 0 {
+        return first_calling(legal);
+    }
+    first(legal, Action::Fold)
+}
+
+/// Rough Chen-style preflop hand score: pairs and big suited/connected
+/// combinations score high, offsuit trash scores near zero.
+fn preflop_score(view: &HandView) -> i32 {
+    let Some(cards) = view.your_hole_cards.as_ref() else {
+        return 0;
+    };
+    if cards.len() != 2 {
+        return 0;
+    }
+    let (high, low) = if cards[0].rank >= cards[1].rank {
+        (cards[0], cards[1])
+    } else {
+        (cards[1], cards[0])
+    };
+    let rank_points = |rank: Rank| match rank {
+        Rank::Ace => 6,
+        Rank::King => 5,
+        Rank::Queen => 4,
+        Rank::Jack => 3,
+        Rank::Ten => 2,
+        Rank::Nine | Rank::Eight => 1,
+        _ => 0,
+    };
+    let mut score = rank_points(high.rank) + rank_points(low.rank);
+    if high.rank == low.rank {
+        score = (score * 2).max(5);
+    }
+    if high.suit == low.suit {
+        score += 1;
+    }
+    let gap = (high.rank as i32) - (low.rank as i32);
+    if gap == 1 {
+        score += 1;
+    } else if gap > 2 {
+        score -= (gap - 2).min(3);
+    }
+    score
+}
+
+fn active_opponents(view: &HandView, seat: usize) -> usize {
+    let live = view
+        .players
+        .iter()
+        .filter(|player| player.seat != seat && !player.folded)
+        .count();
+    live.max(1)
+}
+
+fn sized_wager(legal: &LegalActions, target: Cents) -> Option<Action> {
+    legal.actions.iter().find_map(|action| match action {
+        Action::Bet { amount } => Some(Action::Bet {
+            amount: sized_amount(legal, target, *amount),
+        }),
+        Action::Raise { amount } => Some(Action::Raise {
+            amount: sized_amount(legal, target, *amount),
+        }),
+        _ => None,
+    })
+}
+
+fn sized_amount(legal: &LegalActions, target: Cents, offered: Cents) -> Cents {
+    match legal.wager {
+        Some(bounds) => target.clamp(bounds.min, bounds.max),
+        None => offered,
+    }
+}
+
+fn estimate_equity(view: &HandView, seed: u64, opponents: usize) -> f64 {
     let Some(hero) = view.your_hole_cards.as_ref() else {
         return 0.25;
     };
@@ -101,7 +208,7 @@ fn estimate_equity(view: &HandView, seed: u64) -> f64 {
     let mut deck = Deck::seeded(0);
     let mut unseen: Vec<Card> = (0..52).filter_map(|_| deck.deal()).collect();
     unseen.retain(|card| !hero.contains(card) && !view.board.contains(card));
-    let opponents = view.seats.len().saturating_sub(1).max(1);
+    let opponents = opponents.max(1);
     let mut wins = 0.0;
     let samples = 64;
     let mut rng = StdRng::seed_from_u64(seed ^ 0x0053_4841_524b);

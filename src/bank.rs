@@ -209,6 +209,9 @@ impl BankStore {
         run: Uuid,
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
+        if amount <= 0 {
+            return Err(anyhow::anyhow!("win amount must be positive"));
+        }
         self.append(
             owner,
             LedgerKind::HandBlitzWin { run },
@@ -240,6 +243,9 @@ impl BankStore {
         game: Uuid,
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
+        if amount <= 0 {
+            return Err(anyhow::anyhow!("payout amount must be positive"));
+        }
         self.append(
             owner,
             LedgerKind::BlackjackPayout { game },
@@ -303,6 +309,33 @@ mod tests {
             .unwrap();
         assert_eq!(bank.account(owner).await.unwrap().balance, -2_000_000);
     }
+
+    #[tokio::test]
+    async fn game_payouts_require_positive_amounts() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        assert!(
+            bank.hand_blitz_win(owner.clone(), Uuid::new_v4(), 0)
+                .await
+                .is_err()
+        );
+        assert!(
+            bank.hand_blitz_win(owner.clone(), Uuid::new_v4(), -1)
+                .await
+                .is_err()
+        );
+        assert!(
+            bank.blackjack_payout(owner.clone(), Uuid::new_v4(), 0)
+                .await
+                .is_err()
+        );
+        assert!(
+            bank.blackjack_payout(owner, Uuid::new_v4(), -1)
+                .await
+                .is_err()
+        );
+    }
+
     fn tempfile_dir() -> PathBuf {
         std::env::temp_dir().join(format!("two-seven-bank-{}", Uuid::new_v4()))
     }

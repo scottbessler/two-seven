@@ -15,6 +15,9 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+const EXPIRY_GRACE_MS: i64 = 3_000;
+const FINISHED_RUN_RETENTION_MS: i64 = 60_000;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum BlitzDifficulty {
     Easy,
@@ -156,6 +159,7 @@ struct BlitzRun {
     correct: u64,
     earnings: Cents,
     round: BlitzRound,
+    inactive_since: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone, Debug)]
@@ -198,9 +202,23 @@ impl BlitzStore {
             .unwrap_or_default()
     }
 
-    pub async fn start(&self, user: Uuid, difficulty: BlitzDifficulty, id: Uuid) -> BlitzRunView {
+    pub async fn start(
+        &self,
+        user: Uuid,
+        difficulty: BlitzDifficulty,
+        id: Uuid,
+    ) -> Result<BlitzRunView, BlitzStartError> {
         let config = difficulty.config();
         let mut guard = self.inner.lock().await;
+        expire_runs(&mut guard.runs, Utc::now());
+        if guard
+            .runs
+            .values()
+            .any(|run| run.user == user && run.active)
+        {
+            return Err(BlitzStartError::ActiveRun);
+        }
+        guard.runs.retain(|_, run| run.active || run.user != user);
         let stats = guard.stats.entry(user).or_default();
         stats.runs += 1;
         let run = BlitzRun {
@@ -213,10 +231,26 @@ impl BlitzStore {
             correct: 0,
             earnings: 0,
             round: deal_round(config.time_limit_ms),
+            inactive_since: None,
         };
         let view = run.view();
         guard.runs.insert(id, run);
-        view
+        Ok(view)
+    }
+
+    pub async fn resume(&self, user: Uuid) -> Option<BlitzRunView> {
+        let mut guard = self.inner.lock().await;
+        expire_runs(&mut guard.runs, Utc::now());
+        guard
+            .runs
+            .values()
+            .find(|run| run.user == user && run.active)
+            .map(BlitzRun::view)
+    }
+
+    pub async fn expire(&self, now: DateTime<Utc>) {
+        let mut guard = self.inner.lock().await;
+        expire_runs(&mut guard.runs, now);
     }
 
     pub async fn answer(
@@ -264,6 +298,7 @@ impl BlitzStore {
             run.round = deal_round(run.current_time_limit_ms());
         } else {
             run.active = false;
+            run.inactive_since = Some(now);
         }
         let stats = guard.stats.get(&user).cloned().unwrap_or_default();
         let result = BlitzAnswerResult {
@@ -297,6 +332,11 @@ pub enum BlitzAnswerError {
     Unavailable,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlitzStartError {
+    ActiveRun,
+}
+
 impl BlitzRun {
     fn current_time_limit_ms(&self) -> u64 {
         let mut limit = self.base_time_ms;
@@ -327,13 +367,17 @@ impl BlitzRun {
 }
 
 impl BlitzRound {
+    fn deadline_ms(&self) -> i64 {
+        self.dealt_at.timestamp_millis() + self.time_limit_ms as i64
+    }
+
     fn view(&self) -> BlitzRoundView {
         BlitzRoundView {
             id: self.id,
             board: self.board.clone(),
             hands: self.hands.clone(),
             time_limit_ms: self.time_limit_ms,
-            deadline_ms: self.dealt_at.timestamp_millis() + self.time_limit_ms as i64,
+            deadline_ms: self.deadline_ms(),
         }
     }
 }
@@ -365,6 +409,22 @@ fn deal_round(time_limit_ms: u64) -> BlitzRound {
     }
 }
 
+fn expire_runs(runs: &mut HashMap<Uuid, BlitzRun>, now: DateTime<Utc>) {
+    for run in runs.values_mut() {
+        if run.active && now.timestamp_millis() > run.round.deadline_ms() + EXPIRY_GRACE_MS {
+            run.active = false;
+            run.inactive_since = Some(now);
+        }
+    }
+    runs.retain(|_, run| {
+        run.active
+            || run.inactive_since.is_none_or(|inactive_since| {
+                now.signed_duration_since(inactive_since).num_milliseconds()
+                    < FINISHED_RUN_RETENTION_MS
+            })
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,6 +441,7 @@ mod tests {
             correct: 0,
             earnings: 1_199,
             round: deal_round(8_000),
+            inactive_since: None,
         };
         assert_eq!(run.current_time_limit_ms(), 4_000);
         run.earnings = 1_200;
@@ -399,6 +460,7 @@ mod tests {
             correct: 0,
             earnings: 0,
             round: deal_round(8_000),
+            inactive_since: None,
         };
         assert_eq!(run.next_payout(), 33);
         run.correct = 1;
@@ -414,5 +476,30 @@ mod tests {
         let round = deal_round(5_000);
         assert_ne!(round.ranks[0].rank, round.ranks[1].rank);
         assert!(round.winner <= 1);
+    }
+
+    #[tokio::test]
+    async fn slightly_late_answer_survives_expiry_sweep() {
+        let store = BlitzStore::load(
+            std::env::temp_dir().join(format!("two-seven-blitz-late-{}", Uuid::new_v4())),
+        )
+        .await
+        .unwrap();
+        let user = Uuid::new_v4();
+        let id = Uuid::new_v4();
+        let run = store.start(user, BlitzDifficulty::Easy, id).await.unwrap();
+        let winner = {
+            let guard = store.inner.lock().await;
+            guard.runs.get(&id).unwrap().round.winner
+        };
+        {
+            let mut guard = store.inner.lock().await;
+            guard.runs.get_mut(&id).unwrap().round.dealt_at =
+                Utc::now() - chrono::Duration::seconds(21);
+        }
+        store.expire(Utc::now()).await;
+        let result = store.answer(user, id, run.round.id, winner).await.unwrap();
+        assert!(result.timed_out);
+        assert!(!result.active);
     }
 }

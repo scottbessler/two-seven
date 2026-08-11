@@ -69,6 +69,7 @@ pub fn router(s: AppState) -> Router {
             "/hand-blitz/start",
             axum::routing::post(routes::hand_blitz_start),
         )
+        .route("/hand-blitz/resume", get(routes::hand_blitz_resume))
         .route(
             "/hand-blitz/answer",
             axum::routing::post(routes::hand_blitz_answer),
@@ -165,7 +166,7 @@ pub async fn run() -> Result<()> {
     let data = env::var("DATA_PATH").unwrap_or_else(|_| "data".into());
     let users = Arc::new(UserStore::load(&data).await?);
     let bank = BankStore::load(&data).await?;
-    let blackjack = BlackjackStore::new();
+    let blackjack = BlackjackStore::load(&data).await?;
     let blitz = BlitzStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
     let state = AppState {
