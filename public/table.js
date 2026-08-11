@@ -232,19 +232,22 @@ function TableApp() {
   const result = winnerLines(showdown, state.seats).join(" · ");
   const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
   const scale = DEFAULT_CARD_SCALE * cardSize / 100;
+  const contentScale = Math.min(1, (100 / rankSize) ** 2);
   const cardStyle = {
     "--viewer-card-scale": DEFAULT_CARD_SCALE * cardSize,
     "--viewer-card-w": `${3 * scale}rem`,
     "--viewer-card-h": `${4.2 * scale}rem`,
     "--viewer-corner": `${0.52 * scale}rem`,
-    "--viewer-pip": `${0.68 * scale}rem`,
-    "--viewer-art": `${1.7 * scale}rem`,
+    "--viewer-pip": `${0.68 * scale * contentScale}rem`,
+    "--viewer-art": `${1.7 * scale * contentScale}rem`,
     "--viewer-card-w-mobile": `${2.1 * scale}rem`,
     "--viewer-card-h-mobile": `${2.95 * scale}rem`,
+    "--viewer-stage-extra": `${Math.max(0, 8.7 * (scale - DEFAULT_CARD_SCALE))}rem`,
     "--card-rank-scale": DEFAULT_RANK_SCALE * rankSize / 100,
+    "--card-suit-scale": rankSize / 100,
     "--card-rank-weight": rankWeight(rankBoldness),
   };
-  return html`<div class="table-shell" style=${cardStyle}>
+  return html`<div class=${`table-shell ${rankSize > 125 ? "compact-card-centers" : ""}`} style=${cardStyle}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
       <button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>

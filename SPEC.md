@@ -290,6 +290,8 @@ Mark each milestone done here as it lands.
   winners have unmistakable gold emphasis without wager/card artifacts.
 - **V20** Every occupied-seat player tooltip remains fully inside the viewport at
   desktop and mobile widths, including seats on the top player rail.
+- **V21** Rank size scales both rank and suit glyphs; at 200% card/rank settings,
+  viewer cards/wager clear table center content and corner indices/pips remain distinct.
 
 ## §T Build tasks
 
@@ -308,6 +310,7 @@ T11|x|hold showdown for acknowledgement + countdown|V11,V14,V18
 T12|x|polish card config + showdown card emphasis|V14,V17,V19
 T13|x|rebase card controls around former maxima|V15,V17,V19
 T14|x|contain player tooltips at viewport edges|V14,V20
+T15|x|reflow max-size viewer cards and card faces|V17,V19,V21
 
 ## §B Bug log
 
@@ -360,3 +363,4 @@ T14|x|contain player tooltips at viewport edges|V14,V20
 - Starting a new hand directly in showdown acknowledgement bypassed normal driver follow-up ordering; acknowledgement now expires the shared deadline and lets the driver deal.
 - Undealt board slots rendered as dark input-like boxes; render only dealt community cards under V19.
 - Player tooltips always opened above their seat, pushing top-rail details beyond the viewport; choose an inward placement and enforce viewport containment under V20.
+- Viewer card/rank controls scaled outer cards and corners without reserving table or face space, allowing max settings to cover the board and pips; expand the player rail and reflow card centers under V21.

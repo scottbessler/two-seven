@@ -21,6 +21,15 @@ function cardFace(value) {
   return { suitCode, rank, suit, numeric };
 }
 
+function compactPipStyle(count, index) {
+  const sideCount = Math.floor(count / 2);
+  if (count % 2 === 1 && index === sideCount) return { "--compact-pip-left": "95%", "--compact-pip-top": "50%" };
+  const lower = index > sideCount || (count % 2 === 0 && index >= sideCount);
+  const sideIndex = lower ? index - sideCount - (count % 2) : index;
+  const positions = sideCount === 1 ? [30] : Array.from({ length: sideCount }, (_, item) => 5 + (25 * item) / (sideCount - 1));
+  return { "--compact-pip-left": lower ? "5%" : "95%", "--compact-pip-top": `${lower ? 100 - positions[sideIndex] : positions[sideIndex]}%` };
+}
+
 export function Card({ value, card, empty = false, hidden = false }) {
   if (empty) return html`<span class="playing-card empty-card" aria-hidden="true"></span>`;
   if (hidden) return html`<span class="playing-card card-back" aria-label="Hidden card" tabindex="0"><i></i></span>`;
@@ -35,7 +44,7 @@ export function Card({ value, card, empty = false, hidden = false }) {
         ? court === "A"
           ? html`<span class="card-art card-art-A"><span class="ace-badge"><i>${face.suit}</i></span></span>`
           : html`<span class=${`card-art card-art-${court}`}><span class="court-piece">${courtPiece}</span><i>${face.suit}</i></span>`
-        : html`<span class=${`pip-grid pip-grid-${face.numeric}`}>${PIP_POSITIONS[face.numeric].map((position) => html`<i class=${`card-pip-${position}`}>${face.suit}</i>`)}</span>`}
+        : html`<span class=${`pip-grid pip-grid-${face.numeric}`}>${PIP_POSITIONS[face.numeric].map((position, index) => html`<i class=${`card-pip-${position}`} style=${compactPipStyle(face.numeric, index)}>${face.suit}</i>`)}</span>`}
     </span>
     <span class="card-corner card-corner-bottom"><b>${face.rank}</b><i>${face.suit}</i></span>
   </span>`;

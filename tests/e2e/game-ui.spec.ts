@@ -151,11 +151,12 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
   await rankSlider.fill("50");
   await weightSlider.fill("50");
-  const initialRank = await viewerCard.locator(".card-corner b").first().evaluate((rank) => ({ size: parseFloat(getComputedStyle(rank).fontSize), weight: Number(getComputedStyle(rank).fontWeight) }));
+  const initialRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
   await rankSlider.fill("100");
   await weightSlider.fill("100");
-  const tunedRank = await viewerCard.locator(".card-corner b").first().evaluate((rank) => ({ size: parseFloat(getComputedStyle(rank).fontSize), weight: Number(getComputedStyle(rank).fontWeight) }));
+  const tunedRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
   expect(tunedRank.size).toBeGreaterThan(initialRank.size);
+  expect(tunedRank.suitSize).toBeGreaterThan(initialRank.suitSize);
   expect(tunedRank.weight).toBeGreaterThan(initialRank.weight);
   expect(tunedRank.weight).toBe(900);
   expect(await page.evaluate(() => localStorage.getItem("table-rank-size-percent"))).toBe("100");
@@ -240,6 +241,41 @@ test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page 
   expect(tooltipBox.y, "V20: narrow top-rail tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
   expect(tooltipBox.x + tooltipBox.width, "V20: narrow top-rail tooltip right edge must remain visible").toBeLessThanOrEqual(702);
   expect(tooltipBox.y + tooltipBox.height, "V20: narrow top-rail tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
+});
+
+test("reflows viewer cards at maximum display settings", async ({ page }) => {
+  await mountTable(page, { ...tableState, hand: { ...tableState.hand, your_hole_cards: ["Tc", "9c"] } });
+  await page.getByRole("button", { name: "Card display settings" }).click();
+  await page.locator('input[name="card-scale"]').fill("200");
+  await page.locator('input[name="rank-scale"]').fill("200");
+  await page.locator('input[name="rank-weight"]').fill("200");
+  await page.getByRole("button", { name: "Close" }).click();
+  const geometry = await page.locator(".table-stage").evaluate((stage) => {
+    const viewerCards = stage.querySelector(".seat.viewer .seat-cards").getBoundingClientRect();
+    const viewerWager = stage.querySelector(".seat.viewer .seat-wager")?.getBoundingClientRect();
+    const tableCenter = stage.querySelector(".table-center").getBoundingClientRect();
+    const card = stage.querySelector(".seat.viewer .playing-card");
+    const corners = [...card.querySelectorAll(".card-corner b, .card-corner i")].map((node) => node.getBoundingClientRect());
+    const centerContent = [...card.querySelectorAll(".pip-grid i, .card-art")].map((node) => node.getBoundingClientRect());
+    // Browser-evaluated helpers cannot close over test-scope functions.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return {
+      centerOverlap: overlaps(viewerCards, tableCenter),
+      wagerOverlap: viewerWager ? overlaps(viewerWager, tableCenter) : false,
+      faceOverlap: corners.some((corner) => centerContent.some((content) => overlaps(corner, content))),
+      pipOverlap: centerContent.some((pip, index) => centerContent.slice(index + 1).some((other) => overlaps(pip, other))),
+      viewerCards: { top: viewerCards.top, bottom: viewerCards.bottom },
+      tableCenter: { top: tableCenter.top, bottom: tableCenter.bottom },
+      corners: corners.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
+      centerContent: centerContent.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
+    };
+  });
+  expect(geometry.centerOverlap, `V21: max-size viewer cards must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.wagerOverlap, `V21: max-size viewer wager must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.faceOverlap, `V21: max-size ranks must clear pips and center art ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.pipOverlap, `V21: reflowed pips must remain distinct ${JSON.stringify(geometry)}`).toBe(false);
+  await expect(page).toHaveScreenshot("max-card-table.png", { fullPage: true });
 });
 
 test("integrates showdown with players and table log", async ({ page }) => {
