@@ -67,7 +67,7 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
   const winner = showdown?.awards?.some((award) => award.seat === seat.index);
   const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
-  return html`<article class=${classes} style=${position}>
+  return html`<article class=${classes} style=${position} data-seat-order=${order}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
@@ -249,7 +249,7 @@ function TableApp() {
           ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
         </div>
       </div>
-      <div class="seats">${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
+      <div class="seats" data-seat-total=${ordered.length}>${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
     </section>
     ${hand?.legal_actions && html`<section class="decision-area"><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}

@@ -40,6 +40,7 @@ pub fn router(s: AppState) -> Router {
     Router::new()
         .route("/", get(routes::index))
         .route("/healthcheck", get(routes::healthcheck))
+        .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
         .route("/blackjack", get(routes::blackjack))
         .route(
@@ -260,6 +261,9 @@ fn asset_version() -> String {
         "public/lobby.js",
         "public/table.js",
         "public/vendor/htm-preact.js",
+        "public/manifest.webmanifest",
+        "public/icon.svg",
+        "public/apple-touch-icon.svg",
     ] {
         if let Ok(b) = std::fs::read(f) {
             b.hash(&mut h)

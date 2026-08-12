@@ -1,5 +1,7 @@
 import { wholeDollarMoney as money } from "/public/shared.js";
 
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
 const balance = document.getElementById("bank-balance");
 const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
