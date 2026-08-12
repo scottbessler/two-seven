@@ -1,5 +1,6 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
+import { CardSettings } from "/public/card-settings.js";
 import { cents, money, responseError } from "/public/shared.js";
 // Shared renderer contract: card-pip-${position}.
 
@@ -62,6 +63,7 @@ function App() {
   };
 
   return html`<section class="blitz-table blackjack-table">
+    <${CardSettings} />
     <form id="blackjack-form" onSubmit=${start}>
       <label>Bet ($)<input name="bet" type="number" min="1" max="10000" step="0.01" value="25.00" /></label>
     </form>

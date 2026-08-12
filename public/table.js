@@ -1,5 +1,6 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
+import { CardSettings, useCardSettings } from "/public/card-settings.js";
 import { responseError, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", pip-grid-${value}, card-pip-${position}, card-art-${court}.
 
@@ -7,8 +8,6 @@ const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
 const SHOWDOWN_PAUSE_MS = 6_000;
 const FOLD_RESULT_PAUSE_MS = 3_000;
-const DEFAULT_CARD_SCALE = 1.8;
-const DEFAULT_RANK_SCALE = 1.5;
 
 async function fetchState() {
   const response = await fetch(`/tables/${tableId}/state`, { headers: { Accept: "application/json" } });
@@ -24,22 +23,6 @@ function streetName(street) {
   return { Preflop: "Preflop", Flop: "Flop", Turn: "Turn", River: "River" }[street] || street;
 }
 
-function settingHandler(setter, key) {
-  return (event) => {
-    const value = Number(event.currentTarget.value);
-    setter(value);
-    localStorage.setItem(key, String(value));
-  };
-}
-
-function savedSetting(key) {
-  const value = Number(localStorage.getItem(key));
-  return value >= 50 && value <= 200 ? value : 100;
-}
-
-function rankWeight(percent) {
-  return percent <= 100 ? percent * 9 : 900 + percent - 100;
-}
 function blindRole(events, seat) {
   if (events.some((event) => event.seat === seat && event.kind === "SmallBlind")) return "SB";
   if (events.some((event) => event.seat === seat && event.kind === "BigBlind")) return "BB";
@@ -92,7 +75,7 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
     <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
     <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     ${player?.street_contribution > 0 && html`<span class="seat-wager">${money(player.street_contribution)}</span>`}
-    ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} />`)}</span>`}
+    ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
 }
@@ -233,9 +216,7 @@ function TableCommand({ state, openSeats, refresh }) {
 
 function TableApp() {
   const [state, setState] = useState(null);
-  const [cardSize, setCardSize] = useState(() => savedSetting("table-card-size-percent"));
-  const [rankSize, setRankSize] = useState(() => savedSetting("table-rank-size-percent"));
-  const [rankBoldness, setRankBoldness] = useState(() => savedSetting("table-rank-weight-percent"));
+  const [settings, setSettings] = useCardSettings();
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
@@ -257,39 +238,14 @@ function TableApp() {
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
   const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
-  const scale = DEFAULT_CARD_SCALE * cardSize / 100;
-  const contentScale = Math.min(1, (100 / rankSize) ** 2);
-  const cardStyle = {
-    "--viewer-card-scale": DEFAULT_CARD_SCALE * cardSize,
-    "--viewer-card-w": `${3 * scale}rem`,
-    "--viewer-card-h": `${4.2 * scale}rem`,
-    "--viewer-corner": `${0.52 * scale}rem`,
-    "--viewer-pip": `${0.68 * scale * contentScale}rem`,
-    "--viewer-art": `${1.7 * scale * contentScale}rem`,
-    "--viewer-card-w-mobile": `${2.1 * scale}rem`,
-    "--viewer-card-h-mobile": `${2.95 * scale}rem`,
-    "--viewer-stage-extra": `${Math.max(0, 8.7 * (scale - DEFAULT_CARD_SCALE))}rem`,
-    "--card-rank-scale": DEFAULT_RANK_SCALE * rankSize / 100,
-    "--card-suit-scale": rankSize / 100,
-    "--card-rank-weight": rankWeight(rankBoldness),
-  };
-  return html`<div class=${`table-shell ${rankSize > 125 ? "compact-card-centers" : ""}`} style=${cardStyle}>
+  return html`<div class=${`table-shell ${settings.rankSize > 125 ? "compact-card-centers" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
-      <button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>
-      <dialog id="card-config" class="card-config-dialog">
-        <form method="dialog">
-          <header><h2>Card display</h2><button type="submit" title="Close" aria-label="Close">×</button></header>
-          <div class="card-config-preview" aria-label="Card preview"><${Card} card="5c" /><${Card} card="6c" /></div>
-          <label><span>Card size <output>${cardSize}%</output></span><input name="card-scale" type="range" min="50" max="200" step="5" value=${cardSize} onInput=${settingHandler(setCardSize, "table-card-size-percent")} /></label>
-          <label><span>Rank size <output>${rankSize}%</output></span><input name="rank-scale" type="range" min="50" max="200" step="5" value=${rankSize} onInput=${settingHandler(setRankSize, "table-rank-size-percent")} /></label>
-          <label><span>Rank weight <output>${rankBoldness}%</output></span><input name="rank-weight" type="range" min="50" max="200" step="5" value=${rankBoldness} onInput=${settingHandler(setRankBoldness, "table-rank-weight-percent")} /></label>
-        </form>
-      </dialog>
+      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
-          <div class="board">${board.map((card) => html`<${Card} card=${card} />`)}</div>
+          <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
           ${showdown ? html`<p class="showdown-result">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />` : hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`}
         </div>
       </div>

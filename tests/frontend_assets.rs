@@ -6,6 +6,7 @@ const BLITZ_JS: &str = include_str!("../public/blitz.js");
 const CARD_JS: &str = include_str!("../public/card.js");
 const SHARED_JS: &str = include_str!("../public/shared.js");
 const LOBBY_JS: &str = include_str!("../public/lobby.js");
+const CARD_SETTINGS_JS: &str = include_str!("../public/card-settings.js");
 const RENDER_RS: &str = include_str!("../src/render.rs");
 
 #[test]
@@ -19,6 +20,12 @@ fn imported_islands_are_emitted_as_module_scripts() {
         script.starts_with(r#"<script type="module" src="{}" defer></script>"#),
         "bank.js must be emitted as a module script"
     );
+}
+
+#[test]
+fn rendered_public_assets_are_versioned() {
+    assert!(!RENDER_RS.contains(r#"src="/public/"#));
+    assert!(!RENDER_RS.contains(r#"href="/public/"#));
 }
 
 #[test]
@@ -38,12 +45,6 @@ fn table_island_has_live_state_and_action_contracts() {
         "Re-Buy In",
         "player-tooltip",
         "seat-cards",
-        "card-config-dialog",
-        "card-config-preview",
-        "table-card-size-percent",
-        "table-rank-size-percent",
-        "table-rank-weight-percent",
-        "--viewer-card-scale",
         "wagerOptions",
         "table-stage",
         "showdown-result",
@@ -103,7 +104,7 @@ fn table_css_is_mobile_poker_layout() {
         ".card-config-preview",
         ".table-config-button",
         "--viewer-card-w",
-        ".playing-card:not(.empty-card):hover",
+        ".table-stage .card-zoom-target:not(.empty-card):hover",
         "border-radius:40px",
         ".table-stage",
         ".showdown-result",
@@ -178,6 +179,27 @@ fn shared_card_renderer_has_inner_frame_contract() {
     assert!(CARD_JS.contains("pip-grid-${face.numeric}"));
     assert!(CARD_JS.contains("ace-badge"));
     assert!(CARD_JS.contains("court-piece"));
+}
+
+#[test]
+fn shared_card_settings_preserve_storage_contract() {
+    for literal in [
+        "table-card-size-percent",
+        "table-rank-size-percent",
+        "table-rank-weight-percent",
+        "localStorage",
+        "Card display",
+        "card-config-dialog",
+        "card-config-preview",
+        "--viewer-card-scale",
+        "--viewer-card-w",
+        "--card-rank-weight",
+    ] {
+        assert!(
+            CARD_SETTINGS_JS.contains(literal),
+            "missing card settings contract: {literal}"
+        );
+    }
 }
 
 #[test]

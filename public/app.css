@@ -1,7 +1,7 @@
 /* Shared card-face geometry scales with both card dimensions. */
 .card-frame{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}
 .card-frame .pip-grid{inset:14% 12% 15%}
-:root .card-corner b{font-size:calc(var(--corner-size)*1.2)}
+:root .card-corner b{font-size:calc(var(--corner-size)*1.2*var(--card-rank-percent,1));font-weight:var(--card-rank-weight,700)}
 @media(max-width:640px){.card-frame .pip-grid{inset:14% 12% 15%}}
 :root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57}
 *{box-sizing:border-box}
@@ -52,10 +52,10 @@ button.danger{background:var(--danger);color:white}
 .table-stage .table-center{top:38%;left:50%;width:72%;transform:translate(-50%,-50%)}
 .table-stage .board{align-items:center;gap:.38rem;min-height:7.25rem}
 .table-stage .playing-card,.card-test-grid .playing-card{--card-w:5.2rem;--card-h:7.25rem;--corner-size:.86rem;--corner-gap:.28rem;--pip-size:1.22rem;--art-size:3rem}
-.table-shell .card-corner b{font-size:calc(var(--corner-size)*var(--card-rank-scale));font-weight:var(--card-rank-weight)}
-.table-shell .card-corner i{font-size:calc(var(--corner-size)*.72*var(--card-suit-scale))}
+.table-shell .card-corner b{font-size:calc(var(--corner-size)*1.5*var(--card-rank-percent,1));font-weight:var(--card-rank-weight,700)}
+.table-shell .card-corner i{font-size:calc(var(--corner-size)*.72*var(--card-rank-percent,1))}
 .playing-card{transition:transform .2s cubic-bezier(.2,.8,.2,1.25),box-shadow .2s ease;transform-origin:center}
-.playing-card:not(.empty-card):hover,.playing-card:not(.empty-card):focus-visible{z-index:30;outline:none;transform:scale(1.35)!important;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 12px 28px #000b}
+.table-stage .card-zoom-target:not(.empty-card):hover,.table-stage .card-zoom-target:not(.empty-card):focus-visible{z-index:30;outline:none;transform:scale(1.35)!important;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 12px 28px #000b}
 .empty-card{background:#17362e;color:transparent;border:1px solid #31594c;box-shadow:inset 0 0 0 2px #102820}
 .card-back{background:#193f35;border:1px solid #55776b;box-shadow:inset 0 0 0 3px #102820,inset 0 0 0 5px #31594c,0 3px 8px #0006}
 .card-back i{width:62%;height:72%;border:1px solid #6f8f83;background:repeating-linear-gradient(45deg,#214b40 0 5px,#183a31 5px 10px)}
@@ -174,3 +174,12 @@ button.danger{background:var(--danger);color:white}
   .game-log h2{font-size:.85rem}
   .game-log li{font-size:.68rem}
 }
+.playing-card{--card-w:calc(6.4rem * var(--card-size-scale,1));--card-h:calc(8.9rem * var(--card-size-scale,1))}
+:root .card-corner b{font-size:calc(var(--corner-size)*1.2*var(--card-rank-percent,1));font-weight:var(--card-rank-weight,700)}
+.table-shell .card-corner b{font-size:calc(var(--corner-size)*1.5*var(--card-rank-percent,1));font-weight:var(--card-rank-weight,700)}
+.table-shell .card-corner i{font-size:calc(var(--corner-size)*.72*var(--card-rank-percent,1))}
+.table-stage .card-zoom-target:not(.empty-card):hover,.table-stage .card-zoom-target:not(.empty-card):focus-visible{z-index:30;outline:none;transform:scale(1.35)!important;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 12px 28px #000b}
+.blitz-table:not(.blackjack-table) .playing-card:not(.empty-card):hover,.blitz-table:not(.blackjack-table) .playing-card:not(.empty-card):focus-visible{transform:none!important;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 3px 8px #0006}
+.card-config-preview .playing-card{--card-w:calc(6.4rem * var(--card-size-scale,1));--card-h:calc(8.9rem * var(--card-size-scale,1));margin-left:-.2rem;border-radius:calc(var(--card-w)*.08)}
+.table-stage .card-config-preview .playing-card{--card-w:var(--viewer-card-w);--card-h:var(--viewer-card-h);--corner-size:var(--viewer-corner);--corner-gap:.16rem;--pip-size:var(--viewer-pip);--art-size:var(--viewer-art);margin-left:-.2rem;border-radius:calc(var(--viewer-card-w)*.08)}
+@media(max-width:640px){.playing-card{--card-w:calc(3.6rem * var(--card-size-scale,1));--card-h:calc(5rem * var(--card-size-scale,1))}.card-config-preview{min-height:calc(var(--viewer-card-h-mobile,8.9rem) + .5rem)}.table-stage .card-config-preview .playing-card{--card-w:var(--viewer-card-w-mobile);--card-h:var(--viewer-card-h-mobile)}}

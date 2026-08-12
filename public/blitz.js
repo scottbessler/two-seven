@@ -1,5 +1,6 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
+import { CardSettings } from "/public/card-settings.js";
 import { money, responseError } from "/public/shared.js";
 // Shared renderer contracts: rawRank === "T" ? "10", pip-grid-${numeric}, card-pip-${position}, card-art-${court}.
 
@@ -87,6 +88,7 @@ function App() {
 
   if (!run) {
     return html`<section class="blitz-menu">
+      <${CardSettings} />
       <div class="blitz-stat-grid">
         <span><b>${stats.avg_answer_ms ? seconds(stats.avg_answer_ms) : "—"}</b> avg</span>
         <span><b>${accuracy(stats)}%</b> accuracy</span>
@@ -107,6 +109,7 @@ function App() {
   const progress = Math.max(0, Math.min(100, (remaining / run.round.time_limit_ms) * 100));
 
   return html`<section class="blitz-table">
+    <${CardSettings} />
     <div class="blitz-score">
       <span><b>${run.correct}</b> correct</span>
       <span><b>${money(run.earnings)}</b> won</span>
