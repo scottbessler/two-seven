@@ -70,22 +70,33 @@ const form = document.getElementById("quick-game-form");
 if (form) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const data = new FormData(form);
-    const preset = PRESETS[data.get("preset")];
-    const response = await fetch(preset.endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...preset.body,
-        name: data.get("name"),
-        no_debt: data.get("no_debt") === "on",
-      }),
-    });
-    if (response.ok) {
-      window.location.href = (await response.json()).url;
-      return;
+    const submit = form.querySelector("button[type=submit]");
+    const errorEl = document.getElementById("create-error");
+    if (submit) submit.disabled = true;
+    if (errorEl) errorEl.textContent = "";
+    try {
+      const data = new FormData(form);
+      const preset = PRESETS[data.get("preset")];
+      if (!preset) throw new Error("Unknown game preset");
+      const response = await fetch(preset.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...preset.body,
+          name: data.get("name"),
+          no_debt: data.get("no_debt") === "on",
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error(error?.error || `Unable to create game (HTTP ${response.status})`);
+      }
+      const result = await response.json();
+      if (!result.url) throw new Error("Create game response did not include a destination");
+      window.location.href = result.url;
+    } catch (error) {
+      if (errorEl) errorEl.textContent = error instanceof Error ? error.message : "Unable to create game";
+      if (submit) submit.disabled = false;
     }
-    const error = await response.json().catch(() => null);
-    document.getElementById("create-error").textContent = error?.error || "Unable to create game";
   });
 }

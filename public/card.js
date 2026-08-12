@@ -30,14 +30,14 @@ function compactPipStyle(count, index) {
   return { "--compact-pip-left": lower ? "5%" : "95%", "--compact-pip-top": `${lower ? 100 - positions[sideIndex] : positions[sideIndex]}%` };
 }
 
-export function Card({ value, card, empty = false, hidden = false }) {
+export function Card({ value, card, empty = false, hidden = false, interactive = false }) {
   if (empty) return html`<span class="playing-card empty-card" aria-hidden="true"></span>`;
-  if (hidden) return html`<span class="playing-card card-back" aria-label="Hidden card" tabindex="0"><i></i></span>`;
+  if (hidden) return html`<span class=${`playing-card card-back ${interactive ? "card-zoom-target" : ""}`} aria-label="Hidden card" tabindex=${interactive ? 0 : undefined}><i></i></span>`;
   const face = cardFace(value || card);
   const court = { 1: "A", 11: "J", 12: "Q", 13: "K" }[face.numeric];
   const red = face.suitCode === "h" || face.suitCode === "d";
   const courtPiece = { J: "♘", Q: "♕", K: "♔" }[court];
-  return html`<span class=${`playing-card ${red ? "red" : "black"}`} aria-label=${value || card} tabindex="0">
+  return html`<span class=${`playing-card ${red ? "red" : "black"} ${interactive ? "card-zoom-target" : ""}`} aria-label=${value || card} tabindex=${interactive ? 0 : undefined}>
     <span class="card-corner"><b>${face.rank}</b><i>${face.suit}</i></span>
     <span class="card-frame">
       ${court

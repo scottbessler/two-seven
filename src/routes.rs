@@ -17,6 +17,7 @@ use crate::{
 use axum::{
     Json,
     extract::{Path, State},
+    http::header,
     response::{
         Html, IntoResponse,
         sse::{Event, Sse},
@@ -28,8 +29,16 @@ use serde::Deserialize;
 use std::{convert::Infallible, time::Duration};
 use uuid::Uuid;
 
+const SERVICE_WORKER_JS: &str = include_str!("../public/sw.js");
+
 pub async fn healthcheck() -> &'static str {
     "OK"
+}
+pub async fn service_worker() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript")],
+        SERVICE_WORKER_JS,
+    )
 }
 pub async fn card_test() -> Html<String> {
     Html(render::card_test())
