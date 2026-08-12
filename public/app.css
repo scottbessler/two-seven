@@ -179,6 +179,7 @@ button.danger{background:var(--danger);color:white}
   .table-stage .table-center{top:50%;width:92%}
   .table-stage>.table-status{position:absolute;left:4%;right:4%;bottom:.35rem;z-index:4;margin:0;padding:.15rem .25rem;border-radius:4px;background:#10241fcc;text-align:center}
   .table-stage .board{gap:.16rem;min-height:4.45rem}
+  .table-stage .board .playing-card{--card-w:1.85rem;--card-h:2.6rem;--corner-size:.32rem;--corner-gap:.08rem;--pip-size:.42rem;--art-size:1rem}
   .table-status{transform:none}
   .table-stage .playing-card,.card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-size:.55rem;--corner-gap:.16rem;--pip-size:.76rem;--art-size:1.8rem}
   .table-metrics{left:50%;right:auto;top:auto;bottom:calc(100% + .2rem);flex-direction:row;transform:translateX(-50%)}
