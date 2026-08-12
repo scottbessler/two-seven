@@ -201,10 +201,11 @@ button.danger{background:var(--danger);color:white}
   .table-shell{gap:.2rem}
   .page:has(.table-shell) .site-header{height:2rem}
   .page:has(.table-shell) .brand{font-size:.85rem}
-  .table-stage{height:calc(100dvh - 4.8rem);min-height:13rem;padding-bottom:0}
-  .table-stage .felt{inset:23% 15% 13%;border-width:4px;border-radius:50%}
-  .table-stage .table-center{top:50%;width:72%}
-  .table-stage>.table-status{position:absolute;left:18%;right:18%;bottom:2.9rem;z-index:4;margin:0;padding:.1rem .2rem;border-radius:4px;background:#10241fcc;text-align:center}
+  .table-stage{height:calc(100dvh - 7.1rem);min-height:0;padding-bottom:0}
+  .table-stage .felt{inset:8% 15% 16%;border-width:4px;border-radius:50%}
+  .table-stage .table-center{top:32%;width:72%}
+  .table-stage>.table-status{position:absolute;left:18%;right:18%;bottom:-1.7rem;z-index:4;margin:0;padding:.1rem .2rem;border-radius:4px;background:#10241fcc;text-align:center}
+  .table-stage .table-metrics{left:50%;right:auto;top:auto;bottom:calc(100% + .2rem);flex-direction:row;transform:translateX(-50%)}
   .table-stage .board{gap:.18rem;min-height:3.8rem}
   .table-stage .playing-card{--card-w:2.35rem;--card-h:3.3rem;--corner-size:.4rem;--corner-gap:.12rem;--pip-size:.55rem;--art-size:1.35rem}
   .table-stage .seats .seat{min-width:4.7rem;min-height:2.35rem;padding:.15rem;font-size:.52rem}
@@ -234,9 +235,9 @@ button.danger{background:var(--danger);color:white}
   .table-status{font-size:.55rem;margin:.1rem 0}
   .decision-area{padding:.25rem .15rem}
   .table-shell #table-error{display:none}
-  .actions{grid-template-columns:repeat(4,minmax(0,1fr));gap:.2rem;padding-bottom:calc(.25rem + env(safe-area-inset-bottom))}
+  .actions{grid-template-columns:repeat(7,minmax(0,1fr));gap:.15rem;padding:.2rem .25rem calc(.2rem + env(safe-area-inset-bottom))}
   .actions{position:fixed;left:0;right:0;bottom:0;z-index:10}
-  .actions button{min-height:2.1rem;padding:.2rem .1rem;font-size:.62rem}
+  .actions button{min-height:2rem;padding:.15rem .05rem;font-size:.55rem}
   .game-log{display:none}
   .table-controls{display:none;font-size:.65rem}
 }
