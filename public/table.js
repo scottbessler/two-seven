@@ -75,7 +75,7 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
     <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
     <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     ${player?.street_contribution > 0 && html`<span class="seat-wager">${money(player.street_contribution)}</span>`}
-    ${cards.length > 0 && html`${!viewer && html`<span class="seat-card-count" aria-label="Two hidden cards">2 cards</span>`}<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
+    ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
 }
@@ -277,6 +277,7 @@ function TableApp() {
     events.addEventListener("error", refresh);
     return () => events.close();
   }, []);
+  const mobile = useMobileLayout();
   if (!state) return html`<p class="loading">Loading table…</p>`;
   const hand = state.hand;
   const showdown = hand ? null : state.last_hand;
@@ -290,7 +291,7 @@ function TableApp() {
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
   const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
-  if (useMobileLayout()) return html`<${MobileTable} state=${state} settings=${settings} setSettings=${setSettings} hand=${hand} showdown=${showdown} handEvents=${handEvents} currentName=${currentName} ordered=${ordered} board=${board} openSeats=${openSeats} result=${result} resultPause=${resultPause} refresh=${refresh} tableId=${tableId} />`;
+  if (mobile) return html`<${MobileTable} state=${state} settings=${settings} setSettings=${setSettings} hand=${hand} showdown=${showdown} handEvents=${handEvents} currentName=${currentName} ordered=${ordered} board=${board} openSeats=${openSeats} result=${result} resultPause=${resultPause} refresh=${refresh} tableId=${tableId} />`;
   return html`<div class=${`table-shell ${settings.rankSize > 125 ? "compact-card-centers" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
     <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
