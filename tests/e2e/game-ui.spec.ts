@@ -322,7 +322,15 @@ test("hides your own cards until you reach for them in paranoid mode", async ({ 
   await page.getByRole("button", { name: "Card display settings" }).click();
   const toggle = page.locator('input[name="paranoid"]');
   await expect(toggle).not.toBeChecked();
+  const preview = page.locator(".card-config-preview .playing-card .card-corner b").first();
+  await expect(preview).toBeVisible();
+  // The checkbox must be big enough to see and hit.
+  const box = await toggle.boundingBox();
+  expect(box.width, "the paranoid checkbox must be visible").toBeGreaterThan(12);
+  expect(box.height).toBeGreaterThan(12);
   await toggle.check();
+  // Turning it on shows itself: the dialog's own preview goes face down.
+  await expect(preview).toBeHidden();
   await page.getByRole("button", { name: "Close" }).click();
   await expect(page.locator(".table-shell")).toHaveClass(/paranoid-cards/);
   // Face down: the rank is still in the DOM but concealed.

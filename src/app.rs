@@ -128,17 +128,28 @@ pub fn router(s: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
         .with_state(s)
 }
+/// Only a URL that carries the release version may be cached forever. The
+/// islands import their helpers by bare path (`/public/card.js`), so those
+/// requests arrive without a `?v=` and have to revalidate — otherwise an
+/// installed PWA holds a year-old copy of them across releases.
+fn cache_directive(path: &str, query: Option<&str>, release: bool) -> &'static str {
+    let versioned = query.is_some_and(|query| {
+        query
+            .split('&')
+            .any(|pair| pair.strip_prefix("v=").is_some_and(|v| !v.is_empty()))
+    });
+    if release && path.starts_with("/public/") && versioned {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    }
+}
+
 async fn cache_control(req: Request, next: Next) -> Response {
-    let asset = req.uri().path().starts_with("/public/");
+    let directive = cache_directive(req.uri().path(), req.uri().query(), !cfg!(debug_assertions));
     let mut r = next.run(req).await;
-    r.headers_mut().insert(
-        CACHE_CONTROL,
-        HeaderValue::from_static(if asset && !cfg!(debug_assertions) {
-            "public, max-age=31536000, immutable"
-        } else {
-            "no-cache"
-        }),
-    );
+    r.headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static(directive));
     r
 }
 async fn log_request(State(s): State<AppState>, req: Request, next: Next) -> Response {
@@ -260,6 +271,7 @@ fn asset_version() -> String {
         "public/card.js",
         "public/lobby.js",
         "public/table.js",
+        "public/card-settings.js",
         "public/vendor/htm-preact.js",
         "public/manifest.webmanifest",
         "public/icon.svg",
@@ -275,6 +287,36 @@ fn asset_version() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_versioned_assets_are_cached_forever() {
+        // Entry points render with the release version and never change under it.
+        assert_eq!(
+            cache_directive("/public/table.js", Some("v=abc123"), true),
+            "public, max-age=31536000, immutable"
+        );
+        // A module import arrives bare, so it must revalidate every release.
+        assert_eq!(cache_directive("/public/card.js", None, true), "no-cache");
+        assert_eq!(
+            cache_directive("/public/card.js", Some("v="), true),
+            "no-cache"
+        );
+        assert_eq!(
+            cache_directive("/public/card.js", Some("e2e=1"), true),
+            "no-cache"
+        );
+        // Pages and the service worker always revalidate.
+        assert_eq!(
+            cache_directive("/tables", Some("v=abc123"), true),
+            "no-cache"
+        );
+        assert_eq!(cache_directive("/sw.js", None, true), "no-cache");
+        // Nothing is cached in a debug build.
+        assert_eq!(
+            cache_directive("/public/table.js", Some("v=abc123"), false),
+            "no-cache"
+        );
+    }
 
     #[tokio::test]
     async fn bind_open_port_skips_ports_in_use() {

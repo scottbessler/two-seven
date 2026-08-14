@@ -11,6 +11,23 @@ fn asset(p: &str) -> String {
         VERSION.get().map(String::as_str).unwrap_or("dev")
     )
 }
+/// Islands import their helpers by bare path, which would otherwise be fetched
+/// without the release version and cached across deploys. An import map rewrites
+/// those specifiers to versioned URLs, so a release reaches every module.
+fn import_map() -> String {
+    let entries = [
+        "/public/card.js",
+        "/public/card-settings.js",
+        "/public/shared.js",
+        "/public/vendor/htm-preact.js",
+    ]
+    .iter()
+    .map(|module| format!(r#""{module}":"{}""#, asset(module)))
+    .collect::<Vec<_>>()
+    .join(",");
+    format!(r#"<script type="importmap">{{"imports":{{{entries}}}}}</script>"#)
+}
+
 pub fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -27,12 +44,13 @@ fn layout_with_context(title: &str, body: &str, head: &str, context: Option<&str
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<button class="bank-widget" type="button" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></button></header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<button class="bank-widget" type="button" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></button></header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
         escape(title),
         asset("/public/manifest.webmanifest"),
         asset("/public/icon.svg"),
         asset("/public/apple-touch-icon.svg"),
         asset("/public/app.css"),
+        import_map(),
         head,
         context,
         body,

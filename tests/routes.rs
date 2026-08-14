@@ -116,6 +116,42 @@ async fn card_test_renders_full_deck_with_game_card_faces() {
 }
 
 #[tokio::test]
+async fn pages_map_module_imports_to_versioned_urls() {
+    let t = appx().await;
+    let r = t
+        .router
+        .oneshot(
+            Request::builder()
+                .uri("/card-test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let b = to_bytes(r.into_body(), usize::MAX).await.unwrap();
+    let body = String::from_utf8_lossy(&b);
+    // The map has to precede the first module script or the browser ignores it.
+    let map = body
+        .find(r#"<script type="importmap">"#)
+        .expect("import map");
+    let island = body
+        .find(r#"<script type="module""#)
+        .expect("island script");
+    assert!(map < island, "the import map must come before any module");
+    for module in [
+        "/public/card.js",
+        "/public/card-settings.js",
+        "/public/shared.js",
+        "/public/vendor/htm-preact.js",
+    ] {
+        assert!(
+            body.contains(&format!(r#""{module}":"{module}?v="#)),
+            "{module} must resolve to a versioned URL"
+        );
+    }
+}
+
+#[tokio::test]
 async fn signed_home() {
     let t = appx().await;
     let id = Uuid::new_v4();
