@@ -57,9 +57,11 @@ function seatPosition(order, total) {
 }
 
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
-  const position = seatPosition(order, total);
-  const tooltipBelow = Number.parseFloat(position.top) < 35;
-  const positionLeft = Number.parseFloat(position.left);
+  const desktopPosition = seatPosition(order, total);
+  const mobile = window.matchMedia("(max-width: 640px), (max-height: 500px) and (orientation: landscape)").matches;
+  const position = mobile ? {} : desktopPosition;
+  const tooltipBelow = Number.parseFloat(desktopPosition.top) < 35;
+  const positionLeft = Number.parseFloat(desktopPosition.left);
   const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);

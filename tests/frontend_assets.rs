@@ -116,6 +116,10 @@ fn table_css_is_mobile_poker_layout() {
         ".seat.acting",
         ".seat.folded",
         ".seat-wager",
+        ".table-stage .seats",
+        "grid-template-columns:repeat(2,minmax(0,1fr))",
+        "100dvh",
+        "overscroll-behavior:none",
         ".bank-widget[aria-expanded=true]",
         "position:absolute",
         "label[hidden]{display:none}",
@@ -125,6 +129,8 @@ fn table_css_is_mobile_poker_layout() {
             "missing app.css contract: {literal}"
         );
     }
+    assert!(!APP_CSS.contains(".seats[data-seat-total=\"6\"] .seat[data-seat-order="));
+    assert!(!APP_CSS.contains(".seats[data-seat-total=\"9\"] .seat[data-seat-order="));
 }
 
 #[test]
