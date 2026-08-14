@@ -236,9 +236,9 @@ button.danger{background:var(--danger);color:white}
   .table-shell{min-height:0;overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto minmax(0,1fr) auto;gap:.25rem}
   .table-shell>.tournament-panel{grid-row:1;min-height:1.35rem;padding:.2rem;overflow:hidden}
   .table-stage{grid-row:2;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;height:auto;min-height:0;margin:0;overflow:hidden}
-  .table-stage .seats{grid-column:1;grid-row:1;position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:3rem;align-content:start;gap:.25rem;min-width:0;width:100%;min-height:0;z-index:3;pointer-events:auto}
+  .table-stage .seats{grid-column:1;grid-row:1;position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,3rem) auto;grid-auto-rows:auto;align-content:start;gap:.25rem;min-width:0;width:100%;min-height:0;z-index:3;pointer-events:auto}
   .table-stage .seat,.table-stage .seats .seat{position:relative;grid-column:auto;grid-row:auto;left:auto!important;top:auto!important;min-width:0;min-height:0;width:auto;height:3rem;padding:.2rem;font-size:.62rem;line-height:1.05;transform:none!important;pointer-events:auto}
-  .table-stage .seat.viewer{grid-column:1/-1;grid-row:auto;order:99}
+  .table-stage .seat.viewer{grid-column:1/-1;grid-row:auto;order:99;height:auto;min-height:3rem}
   .table-stage .seat:not(.viewer) .seat-cards{display:none}
   .table-stage .seat:not(.viewer)::after{content:"🂠";align-self:center;color:var(--muted);font-size:.9rem}
   .table-stage .seat .seat-wager{position:static;display:inline-block;margin:.1rem auto 0;padding:.08rem .25rem;transform:none;font-size:.58rem}
@@ -292,9 +292,9 @@ button.danger{background:var(--danger);color:white}
   .table-shell{grid-template-rows:auto minmax(0,1fr) auto auto}
   .table-shell>.tournament-panel{grid-row:1}
   .table-stage{grid-row:2;grid-template-columns:minmax(9rem,32%) minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;column-gap:.35rem}
-  .table-stage .seats{grid-column:1;grid-row:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:2.2rem;align-content:start}
+  .table-stage .seats{grid-column:1;grid-row:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,2.2rem) auto;grid-auto-rows:auto;align-content:start}
   .table-stage .seat,.table-stage .seats .seat{height:2.2rem}
-  .table-stage .seat.viewer{grid-column:1/-1;align-self:end}
+  .table-stage .seat.viewer{grid-column:1/-1;align-self:end;height:auto;min-height:2.2rem}
   .table-stage .felt{grid-column:2;grid-row:1;min-height:5rem}
   .table-stage>.table-status{grid-column:2;grid-row:2}
   .table-stage .table-center{gap:.15rem}
