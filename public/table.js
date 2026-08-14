@@ -294,8 +294,8 @@ function TableApp() {
   if (mobile) return html`<${MobileTable} state=${state} settings=${settings} setSettings=${setSettings} hand=${hand} showdown=${showdown} handEvents=${handEvents} currentName=${currentName} ordered=${ordered} board=${board} openSeats=${openSeats} result=${result} resultPause=${resultPause} refresh=${refresh} tableId=${tableId} />`;
   return html`<div class=${`table-shell ${settings.rankSize > 125 ? "compact-card-centers" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
-    <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
     <section class="table-stage" aria-label="Poker table">
+      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
