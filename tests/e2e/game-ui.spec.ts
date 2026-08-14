@@ -313,6 +313,37 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
 });
 
+test("hides your own cards until you reach for them in paranoid mode", async ({ page }) => {
+  await mountTable(page, tableState);
+  const viewerCard = page.locator(".seat.viewer .seat-cards .playing-card").first();
+  const rank = viewerCard.locator(".card-corner b");
+  await expect(rank).toBeVisible();
+
+  await page.getByRole("button", { name: "Card display settings" }).click();
+  const toggle = page.locator('input[name="paranoid"]');
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.locator(".table-shell")).toHaveClass(/paranoid-cards/);
+  // Face down: the rank is still in the DOM but concealed.
+  await expect(rank).toBeHidden();
+  await expect(page.locator(".seat:not(.viewer) .seat-cards .playing-card").first()).toBeVisible();
+
+  // Hovering the viewer's cards turns them back over.
+  await page.locator(".seat.viewer .seat-cards").hover();
+  await expect(rank).toBeVisible();
+  await page.locator(".brand").hover();
+  await expect(rank).toBeHidden();
+
+  // Touch reveals through focus, which survives until you look away.
+  await viewerCard.focus();
+  await expect(rank).toBeVisible();
+  await page.locator(".brand").focus();
+  await expect(rank).toBeHidden();
+
+  expect(await page.evaluate(() => localStorage.getItem("table-paranoid-cards"))).toBe("on");
+});
+
 test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 702, height: 832 });
   await mountTable(page, tableState);

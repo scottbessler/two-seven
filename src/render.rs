@@ -298,7 +298,7 @@ pub fn table_page(view: &crate::view::TableView) -> String {
 }
 
 fn card_face(rank: &str, suit: &str) -> String {
-    let pip = match suit {
+    let glyph = match suit {
         "h" => "♥",
         "d" => "♦",
         "c" => "♣",
@@ -313,7 +313,7 @@ fn card_face(rank: &str, suit: &str) -> String {
     };
     // Mirrors card.js: the face is rank over suit at one size.
     format!(
-        r#"<span class="playing-card {color}" aria-label="{rank}{suit}"><span class="card-corner"><b>{display}</b><i>{pip}</i></span></span>"#
+        r#"<span class="playing-card {color}" aria-label="{rank}{suit}"><span class="card-corner"><b>{display}</b><i>{glyph}</i></span></span>"#
     )
 }
 

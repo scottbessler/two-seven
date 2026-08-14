@@ -62,6 +62,16 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-stage .card-zoom-target:not(.empty-card):hover,.table-stage .card-zoom-target:not(.empty-card):focus-visible,.blackjack-table .card-zoom-target:not(.empty-card):hover,.blackjack-table .card-zoom-target:not(.empty-card):focus-visible{z-index:30;outline:none;transform:scale(1.35)!important;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 12px 28px #000b}
 .empty-card{background:#17362e;color:transparent;border:1px solid #31594c;box-shadow:inset 0 0 0 2px #102820}
 .card-back{background:#193f35;border:1px solid #55776b;box-shadow:inset 0 0 0 3px #102820,inset 0 0 0 5px #31594c,0 3px 8px #0006}
+/* Paranoid mode: your own cards stay face down until you hover, focus, or hold them. */
+.paranoid-cards .seat.viewer .seat-cards .playing-card{background:#193f35;border:1px solid #55776b;box-shadow:inset 0 0 0 3px #102820,inset 0 0 0 5px #31594c,0 3px 8px #0006}
+.paranoid-cards .seat.viewer .seat-cards .card-corner{visibility:hidden}
+.paranoid-cards .seat.viewer .seat-cards:hover .playing-card,.paranoid-cards .seat.viewer .seat-cards:focus-within .playing-card,.paranoid-cards .seat.viewer .seat-cards:active .playing-card{background:#faf9f2;border:0;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 3px 8px #0006}
+.paranoid-cards .seat.viewer .seat-cards:hover .card-corner,.paranoid-cards .seat.viewer .seat-cards:focus-within .card-corner,.paranoid-cards .seat.viewer .seat-cards:active .card-corner{visibility:visible}
+.paranoid-toggle{grid-template-columns:auto 1fr;align-items:start;gap:.55rem}
+.paranoid-toggle input{width:1.1rem;height:1.1rem;margin-top:.15rem;padding:0;accent-color:var(--accent)}
+.card-config-dialog .paranoid-toggle span{display:grid;justify-content:start;gap:.15rem}
+.paranoid-toggle b{color:var(--ink)}
+.paranoid-toggle small{color:var(--muted);line-height:1.35}
 .card-back i{width:62%;height:72%;border:1px solid #6f8f83;background:repeating-linear-gradient(45deg,#214b40 0 5px,#183a31 5px 10px)}
 .table-stage .seats{position:absolute;inset:0;z-index:3;pointer-events:none}
 .table-stage .seat{min-width:7.4rem;min-height:3.8rem;gap:.12rem;padding:.42rem .55rem;border-radius:7px;pointer-events:auto}

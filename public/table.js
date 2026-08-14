@@ -270,10 +270,10 @@ function TableApp() {
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
   const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
-  return html`<div class=${`table-shell ${settings.rankSize > 125 ? "compact-card-centers" : ""}`}>
+  return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
-      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
+      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}

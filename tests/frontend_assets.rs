@@ -193,6 +193,7 @@ fn shared_card_settings_preserve_storage_contract() {
         "table-card-size-percent",
         "table-rank-size-percent",
         "table-rank-weight-percent",
+        "table-paranoid-cards",
         "localStorage",
         "Card display",
         "card-config-dialog",
