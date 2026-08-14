@@ -76,7 +76,7 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
     </span>
     <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
     <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
-    ${player?.street_contribution > 0 && html`<span class="seat-wager">${money(player.street_contribution)}</span>`}
+    <span class=${`seat-wager ${player?.street_contribution > 0 ? "" : "no-wager"}`}>${money(player?.street_contribution || 0)}</span>
     ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
@@ -121,6 +121,7 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
     ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${money(hand.legal_actions.to_call)}</button>`}
     ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}>${wagerLabel} ${money(option.total)}</button>`)}
     ${actions.has("AllIn") && html`<button class="wager-action all-in-action" onClick=${() => submit("all_in")}>All In</button>`}
+    ${!hand.legal_actions.wager && hand.legal_actions.wagers_capped && html`<span class="capped-note">Betting capped · call or fold</span>`}
   </div>`;
 }
 

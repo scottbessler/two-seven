@@ -105,7 +105,10 @@ impl Hand {
         } else if max > 0 {
             actions.push(Action::Call);
         }
-        let wager = if max > 0 && self.wagers < 4 && !player.must_call {
+        // A street allows a bet plus three raises; the blinds count as the
+        // first wager preflop.
+        let wagers_capped = self.wagers >= 4;
+        let wager = if max > 0 && !wagers_capped && !player.must_call {
             Some(self.wager_bounds(to_call, max))
         } else {
             None
@@ -134,7 +137,7 @@ impl Hand {
                 .is_some_and(|fixed| max <= fixed),
             Stakes::NoLimit { .. } => true,
         };
-        if max > 0 && all_in_allowed && (max <= to_call || (self.wagers < 4 && !player.must_call)) {
+        if max > 0 && all_in_allowed && (max <= to_call || (!wagers_capped && !player.must_call)) {
             actions.push(Action::AllIn);
         }
         Some(LegalActions {
@@ -142,6 +145,7 @@ impl Hand {
             actions,
             to_call,
             wager,
+            wagers_capped,
         })
     }
 

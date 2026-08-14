@@ -356,6 +356,7 @@ mod tests {
             actions: vec![Action::Fold, Action::Call],
             to_call: 10,
             wager: None,
+            wagers_capped: false,
         };
         assert_eq!(rock(&view, &legal), Action::Fold);
         assert_eq!(fish(&view, &legal, 3), Action::Call);
@@ -394,6 +395,7 @@ mod tests {
             ],
             to_call: 200,
             wager: None,
+            wagers_capped: false,
         };
 
         for kind in [

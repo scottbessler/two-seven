@@ -17,7 +17,7 @@ body{margin:0;background:radial-gradient(circle at top,#1d5948,var(--felt));colo
 @media(max-width:640px){.setup-options{grid-template-columns:repeat(2,minmax(0,1fr))}.setup-option span{min-height:7rem}}
 :root .game-log ol{grid-template-columns:1fr}
 @media(max-width:640px){.table-shell .felt{min-height:470px}}
-.table-metrics{display:flex;justify-content:center;gap:.55rem;margin-bottom:.35rem}.table-metrics span{display:grid;min-width:6.5rem;padding:.28rem .6rem;border:1px solid #6caa91;border-radius:6px;background:#10241fcc}.table-metrics small{color:var(--muted);font-size:.62rem;text-transform:uppercase}.table-metrics b{color:var(--accent)}.seat.acting{border-color:var(--accent);box-shadow:0 0 0 3px #d9ad5570,0 8px 20px #0007}.seat.folded{opacity:.58;filter:saturate(.35)}.seat.all-in{border-color:#e8d07b}.seat .seat-meta{display:flex;align-items:center;justify-content:center;gap:.22rem}.seat .seat-role{padding:.08rem .22rem;border:1px solid #6caa91;border-radius:3px;color:var(--ink);font-size:.56rem;font-style:normal;font-weight:800}.seat .acting-role{border-color:var(--accent);background:var(--accent);color:#1a160d}.seat .seat-wager{position:absolute;left:50%;top:calc(100% + .3rem);z-index:3;min-width:3.6rem;padding:.18rem .3rem;border:1px solid #d9ad55;border-radius:6px;background:#172b25;color:#f4d98b;font-size:.7rem;font-weight:800;transform:translateX(-50%);box-shadow:0 3px 8px #0007}.seat .seat-state{position:absolute;left:50%;bottom:calc(100% + .2rem);padding:.12rem .3rem;border-radius:4px;background:#10241f;color:var(--muted);font-size:.62rem;font-weight:800;text-transform:uppercase;transform:translateX(-50%)}.game-log{display:grid;grid-template-columns:8rem 1fr;gap:.8rem;padding:.8rem 0;border-top:1px solid #346252;border-bottom:1px solid #346252}.game-log h2{margin:.1rem 0;font-size:1rem}.game-log ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.3rem .8rem;margin:0;padding:0;list-style:none}.game-log li{display:grid;grid-template-columns:4.5rem 1fr;gap:.45rem;min-width:0;font-size:.76rem}.game-log li span{color:var(--muted)}.game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:600}@media(max-width:640px){.table-metrics span{min-width:5.2rem}.game-log{grid-template-columns:1fr}.game-log ol{grid-template-columns:1fr}.seat .seat-wager{top:calc(100% + .15rem);font-size:.58rem}.seat .seat-state{font-size:.5rem}}
+.table-metrics{display:flex;justify-content:center;gap:.55rem;margin-bottom:.35rem}.table-metrics span{display:grid;min-width:6.5rem;padding:.28rem .6rem;border:1px solid #6caa91;border-radius:6px;background:#10241fcc}.table-metrics small{color:var(--muted);font-size:.62rem;text-transform:uppercase}.table-metrics b{color:var(--accent)}.seat.acting{border-color:var(--accent);box-shadow:0 0 0 3px #d9ad5570,0 8px 20px #0007}.seat.folded{opacity:.58;filter:saturate(.35)}.seat.all-in{border-color:#e8d07b}.seat .seat-meta{display:flex;align-items:center;justify-content:center;gap:.22rem}.seat .seat-role{padding:.08rem .22rem;border:1px solid #6caa91;border-radius:3px;color:var(--ink);font-size:.56rem;font-style:normal;font-weight:800}.seat .acting-role{border-color:var(--accent);background:var(--accent);color:#1a160d}.seat .seat-wager.no-wager{visibility:hidden}.seat .seat-wager{position:absolute;left:50%;top:calc(100% + .3rem);z-index:3;min-width:3.6rem;padding:.18rem .3rem;border:1px solid #d9ad55;border-radius:6px;background:#172b25;color:#f4d98b;font-size:.7rem;font-weight:800;transform:translateX(-50%);box-shadow:0 3px 8px #0007}.seat .seat-state{position:absolute;left:50%;bottom:calc(100% + .2rem);padding:.12rem .3rem;border-radius:4px;background:#10241f;color:var(--muted);font-size:.62rem;font-weight:800;text-transform:uppercase;transform:translateX(-50%)}.game-log{display:grid;grid-template-columns:8rem 1fr;gap:.8rem;padding:.8rem 0;border-top:1px solid #346252;border-bottom:1px solid #346252}.game-log h2{margin:.1rem 0;font-size:1rem}.game-log ol{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.3rem .8rem;margin:0;padding:0;list-style:none}.game-log li{display:grid;grid-template-columns:4.5rem 1fr;gap:.45rem;min-width:0;font-size:.76rem}.game-log li span{color:var(--muted)}.game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:600}@media(max-width:640px){.table-metrics span{min-width:5.2rem}.game-log{grid-template-columns:1fr}.game-log ol{grid-template-columns:1fr}.seat .seat-wager{top:calc(100% + .15rem);font-size:.58rem}.seat .seat-state{font-size:.5rem}}
 h1,h2{color:var(--accent)}
 form{display:grid;gap:.65rem;margin-top:1.5rem}
 label{display:grid;gap:.3rem;color:var(--muted)}label[hidden]{display:none}
@@ -110,6 +110,7 @@ button.danger{background:var(--danger);color:white}
 .actions{position:static;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
 .actions button{min-width:0;min-height:2.7rem;padding:.45rem .3rem;border-radius:6px;white-space:nowrap}
 .actions .primary-action{background:#d9ad55;color:#1a160d}
+.actions .capped-note{display:grid;grid-column:1/-1;place-items:center;color:var(--muted);font-size:.72rem}
 .actions .wager-action{background:#245a49;color:var(--ink)}
 .actions .all-in-action{border-color:#d9ad55}
 .game-log{height:10.5rem;overflow:auto;grid-template-columns:6rem 1fr;padding:.6rem 0}
@@ -187,17 +188,17 @@ button.danger{background:var(--danger);color:white}
 
   /* The felt art is dropped: board and rail read better as plain rows. */
   .table-stage{display:flex;flex-direction:column;flex:1 1 auto;gap:.35rem;height:auto;min-height:0;padding:0;overflow-x:hidden;overflow-y:auto}
+  .table-stage>*{flex:0 0 auto}
   .table-stage .felt{position:static;inset:auto;width:auto;max-width:none;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
   .table-stage .table-center{position:static;width:auto;transform:none}
   .table-metrics{position:static;flex-direction:row;justify-content:center;gap:.35rem;margin:0 0 .3rem;transform:none}
   .table-metrics span{min-width:4.4rem;padding:.15rem .4rem}
   .table-stage .board{gap:.25rem;min-height:0}
-  .table-stage>.table-status{position:static;left:auto;right:auto;bottom:auto;margin-top:auto;padding:0;background:none}
+  .table-stage>.table-status{position:static;left:auto;right:auto;bottom:auto;padding:0;background:none}
   .table-status,.showdown-result{margin:.1rem 0 0;font-size:.68rem;text-align:center;transform:none}
-  .table-stage>.table-status+.seats{margin-top:0}
 
   /* Seats flow as a reflowing grid with the viewer last and full width. */
-  .table-stage .seats{position:static;inset:auto;margin-top:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.3rem;pointer-events:auto}
+  .table-stage .seats{position:static;inset:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.3rem;pointer-events:auto}
   .table-stage .seats .seat{position:relative;left:auto;top:auto;gap:.1rem;min-width:0;min-height:0;padding:.28rem .2rem;font-size:.62rem;transform:none}
   .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;padding:.35rem}
   .seat span{font-size:.6rem}
@@ -223,7 +224,7 @@ button.danger{background:var(--danger);color:white}
   .table-stage .card-config-preview .playing-card{--card-w:var(--viewer-card-w-mobile);--card-h:var(--viewer-card-h-mobile);--corner-gap:.1rem;margin-left:-.2rem}
 
   .decision-area{padding:.35rem .15rem}
-  .actions{grid-template-columns:repeat(4,minmax(0,1fr));gap:.25rem;padding-bottom:0}
+  .actions{grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr));gap:.25rem;padding-bottom:0}
   .actions button{min-height:2.5rem;padding:.35rem .1rem;font-size:.7rem}
   .game-log{height:5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log h2{font-size:.8rem}
@@ -236,10 +237,19 @@ button.danger{background:var(--danger);color:white}
 @media (max-height:520px) and (orientation:landscape){
   .table-shell{gap:.2rem}
   .page:has(.table-shell){gap:.15rem}
-  .table-stage .seats{grid-template-columns:repeat(auto-fit,minmax(4.6rem,1fr));gap:.2rem}
+  /* Width is the plentiful axis: one rail row, viewer twice as wide as the rest. */
+  .table-stage .seats{display:flex;flex-wrap:wrap;align-content:flex-end;justify-content:center;gap:.25rem}
+  .table-stage .seats .seat{flex:1 1 4.6rem}
+  .table-stage .seats .seat.viewer{flex:2 1 9.5rem;padding:.28rem .3rem}
   .table-stage .board .playing-card{--card-w:2.3rem;--card-h:3.2rem}
+  /* Height is scarce: centre the board in what the rail leaves behind. */
+  .table-stage .felt{margin-block:auto}
+  .table-stage>.table-status,.table-stage>.table-status+.seats{margin-top:0}
+  .table-stage .seats{margin-top:auto}
+  .seat.viewer .seat-cards .playing-card{--card-w:calc(var(--viewer-card-w-mobile)*.78);--card-h:calc(var(--viewer-card-h-mobile)*.78)}
+  .table-metrics{margin-bottom:.15rem}
   .game-log{display:none}
-  .actions{grid-template-columns:repeat(7,minmax(0,1fr));gap:.2rem}
+  .actions{gap:.2rem}
   .actions button{min-height:2.1rem;font-size:.6rem}
   .table-controls button{padding:.25rem .5rem;font-size:.65rem}
 }

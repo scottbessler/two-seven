@@ -125,6 +125,10 @@ pub struct LegalActions {
     pub actions: Vec<Action>,
     pub to_call: Cents,
     pub wager: Option<WagerBounds>,
+    /// The street has taken its bet and three raises, so no wager is offered
+    /// even though the player could otherwise afford one.
+    #[serde(default)]
+    pub wagers_capped: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

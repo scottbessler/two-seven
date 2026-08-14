@@ -201,7 +201,9 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(tooltipBox.y + tooltipBox.height, "V20: top-seat tooltip bottom edge must remain visible").toBeLessThanOrEqual(viewport.height);
   await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
-  await expect(page.locator(".seat-wager")).toHaveCount(3);
+  // Every seat keeps a wager slot so it does not resize when a bet lands.
+  await expect(page.locator(".seat-wager")).toHaveCount(6);
+  await expect(page.locator(".seat-wager:not(.no-wager)")).toHaveCount(3);
   await expect(page.locator(".seat.viewer .seat-wager")).toHaveText("$12");
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
@@ -376,6 +378,34 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await expect(page).toHaveScreenshot("showdown-table.png", { fullPage: true });
   await page.locator(".showdown-advance button").click();
   expect(continued).toBe(true);
+});
+
+test("packs the table into a landscape phone without scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 932, height: 430 });
+  await mountTable(page, tableState);
+  await expect(page.locator(".seat.viewer")).toBeVisible();
+  const rail = await page.locator(".table-stage").evaluate((stage) => {
+    const seats = [...stage.querySelectorAll(".seat")];
+    const viewer = stage.querySelector(".seat.viewer").getBoundingClientRect();
+    const others = seats.filter((seat) => !seat.classList.contains("viewer")).map((seat) => seat.getBoundingClientRect());
+    const board = [...stage.querySelectorAll(".board .playing-card, .table-metrics")].map((node) => node.getBoundingClientRect());
+    // Browser-evaluated helpers cannot close over test-scope functions.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return {
+      rows: new Set(seats.map((seat) => Math.round(seat.getBoundingClientRect().top))).size,
+      viewerWidth: viewer.width,
+      otherWidth: Math.max(...others.map((rect) => rect.width)),
+      boardOverlap: seats.some((seat) => board.some((card) => overlaps(seat.getBoundingClientRect(), card))),
+      stageScrolls: stage.scrollHeight > stage.clientHeight,
+    };
+  });
+  expect(rail.rows, "L1: the landscape rail must stay on one row").toBe(1);
+  expect(rail.viewerWidth, "L2: the viewer seat must be about twice its neighbours").toBeGreaterThan(rail.otherWidth * 1.8);
+  expect(rail.boardOverlap, "L3: the rail must not collide with the board").toBe(false);
+  expect(rail.stageScrolls, "L4: a landscape table must fit its stage").toBe(false);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
+  await expect(page).toHaveScreenshot("landscape-table.png", { fullPage: true });
 });
 
 test("uses the short acknowledgement window for a fold result", async ({ page }) => {
