@@ -58,8 +58,6 @@ function seatPosition(order, total) {
 
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
   const desktopPosition = seatPosition(order, total);
-  const mobile = window.matchMedia("(max-width: 640px), (max-height: 500px) and (orientation: landscape)").matches;
-  const position = mobile ? {} : desktopPosition;
   const tooltipBelow = Number.parseFloat(desktopPosition.top) < 35;
   const positionLeft = Number.parseFloat(desktopPosition.left);
   const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
@@ -69,7 +67,7 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
   const winner = showdown?.awards?.some((award) => award.seat === seat.index);
   const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
-  return html`<article class=${classes} style=${position} data-seat-order=${order}>
+  return html`<article class=${classes} style=${desktopPosition} data-seat-order=${order}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
@@ -80,6 +78,27 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
     ${cards.length > 0 && html`${!viewer && html`<span class="seat-card-count" aria-label="Two hidden cards">2 cards</span>`}<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
   </article>`;
+}
+
+function MobileOpponent({ seat, player, events, current, showdown }) {
+  const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
+  const cards = revealed || (player && !player.folded ? [null, null] : []);
+  const role = blindRole(events, seat.index);
+  return html`<article class=${`mobile-opponent ${current ? "acting" : ""} ${player?.folded ? "folded" : ""} ${player?.all_in ? "all-in" : ""}`}>
+    <strong>${seat.display_name || seat.occupant}</strong>
+    <span class="mobile-opponent-stack">${money(player?.stack ?? seat.stack)}</span>
+    <span class="mobile-opponent-meta">${role && html`<i>${role}</i>`}${current && html`<i class="acting-role">ACT</i>`}${player?.folded && html`<i>FOLDED</i>`}${player?.all_in && html`<i>ALL IN</i>`}</span>
+    ${player?.street_contribution > 0 && html`<b class="mobile-opponent-wager">${money(player.street_contribution)}</b>`}
+    ${cards.length > 0 && html`<span class="mobile-opponent-cards">${revealed ? cards.map((card) => html`<${Card} card=${card} interactive=${true} />`) : "2 cards"}</span>`}
+  </article>`;
+}
+
+function MobileViewer({ seat, player, events, current, viewerCards }) {
+  const role = blindRole(events, seat.index);
+  return html`<section class=${`mobile-viewer ${current ? "acting" : ""}`}>
+    <div class="mobile-viewer-info"><strong>${seat.display_name || seat.occupant}</strong><span>${money(player?.stack ?? seat.stack)}</span><span>${role && html`<i>${role}</i>`}${current && html`<i class="acting-role">ACT</i>`}</span></div>
+    <div class="mobile-viewer-cards">${viewerCards.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
+  </section>`;
 }
 
 function wagerOptions(hand) {
@@ -216,6 +235,37 @@ function TableCommand({ state, openSeats, refresh }) {
   return html`<nav class="table-controls"><button type="button" disabled=${disabled} onClick=${submit}>${label}</button></nav>`;
 }
 
+function useMobileLayout() {
+  const query = "(max-width: 640px), (max-height: 500px) and (orientation: landscape)";
+  const [mobile, setMobile] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setMobile(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return mobile;
+}
+
+function MobileTable({ state, settings, setSettings, hand, showdown, handEvents, currentName, ordered, board, openSeats, result, resultPause, refresh, tableId: mobileTableId }) {
+  return html`<div class="mobile-table">
+    <${TournamentPanel} tournament=${state.tournament} />
+    <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
+    <section class="mobile-opponents" aria-label="Opponents">${ordered.filter((seat) => seat.index !== state.viewer_seat).map((seat) => html`<${MobileOpponent} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} showdown=${showdown} />`)}</section>
+    <section class="mobile-community" aria-label="Community cards">
+      <div class="mobile-metrics">${(hand || showdown) && html`<span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>`}${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>
+      <div class="mobile-board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
+      ${!showdown && html`<p class="mobile-status">${hand ? `${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` : "Waiting for players"}</p>`}
+      ${showdown && html`<p class="mobile-status">${result}</p><${ShowdownAdvance} deadline=${state.next_hand_at} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />`}
+    </section>
+    ${state.viewer_seat != null && html`<${MobileViewer} seat=${state.seats.find((seat) => seat.index === state.viewer_seat)} player=${hand?.players?.find((player) => player.seat === state.viewer_seat)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} showdown=${showdown} />`}
+    ${hand?.legal_actions && html`<section class="mobile-action-band"><${Actions} hand=${hand} tableId=${mobileTableId} refresh=${refresh} mobile=${true} /></section>`}
+    ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} mobile=${true} />`}
+    <p id="table-error" class="error" role="alert"></p>
+    <${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} />
+  </div>`;
+}
+
 function TableApp() {
   const [state, setState] = useState(null);
   const [settings, setSettings] = useCardSettings();
@@ -240,6 +290,7 @@ function TableApp() {
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   const result = winnerLines(showdown, state.seats).join(" · ");
   const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
+  if (useMobileLayout()) return html`<${MobileTable} state=${state} settings=${settings} setSettings=${setSettings} hand=${hand} showdown=${showdown} handEvents=${handEvents} currentName=${currentName} ordered=${ordered} board=${board} openSeats=${openSeats} result=${result} resultPause=${resultPause} refresh=${refresh} tableId=${tableId} />`;
   return html`<div class=${`table-shell ${settings.rankSize > 125 ? "compact-card-centers" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
     <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} />
@@ -253,7 +304,6 @@ function TableApp() {
       </div>
       ${!showdown && (hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`)}
       <div class="seats" data-seat-total=${ordered.length}>${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
-      <div class="mobile-viewer-seat">${ordered.filter((seat) => seat.index === state.viewer_seat).map((seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${0} total=${ordered.length} viewer=${true} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
     </section>
     ${hand?.legal_actions && html`<section class="decision-area"><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}
