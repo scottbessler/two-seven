@@ -5,7 +5,7 @@ use crate::{
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
-    money::{MIN_GAME_AMOUNT, valid_game_amount, valid_optional_game_amount},
+    money::{MIN_GAME_AMOUNT, valid_chip_amount, valid_game_amount, valid_optional_chip_amount},
     render,
     session::{AuthUser, MaybeUser},
     table::{
@@ -110,15 +110,15 @@ pub async fn create_tournament(
     Json(input): Json<CreateTournament>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !valid_game_amount(input.buy_in)
-        || input.starting_chips <= 0
+        || !valid_chip_amount(input.starting_chips)
         || input.seat_count < 2
         || input.levels.is_empty()
         || input.payout_percentages.is_empty()
         || input.levels.iter().any(|level| {
-            !valid_game_amount(level.small_blind)
-                || !valid_game_amount(level.big_blind)
+            !valid_chip_amount(level.small_blind)
+                || !valid_chip_amount(level.big_blind)
                 || level.big_blind < level.small_blind
-                || !valid_optional_game_amount(level.ante)
+                || !valid_optional_chip_amount(level.ante)
                 || level.hands == 0
         })
         || input

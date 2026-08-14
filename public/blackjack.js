@@ -1,10 +1,12 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings } from "/public/card-settings.js";
-import { cents, money, responseError } from "/public/shared.js";
-// Shared renderer contract: card-pip-${position}.
+import { money, responseError } from "/public/shared.js";
+// Shared renderer contract: card-corner rank over suit.
 
 const root = document.getElementById("blackjack-app");
+// Mirrors BLACKJACK_BETS in src/blackjack.rs; the server rejects anything else.
+const BETS = [500, 2_000, 10_000, 20_000];
 
 function Hand({ title, cards, score, hidden }) {
   return html`<section class="blackjack-hand">
@@ -20,6 +22,7 @@ function App() {
   const [game, setGame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [bet, setBet] = useState(BETS[1]);
 
   useEffect(() => {
     fetch("/blackjack/resume")
@@ -30,7 +33,6 @@ function App() {
 
   const start = async (event) => {
     event.preventDefault();
-    const bet = cents(new FormData(event.currentTarget).get("bet"));
     setBusy(true);
     setError("");
     const response = await fetch("/blackjack/start", {
@@ -65,7 +67,7 @@ function App() {
   return html`<section class="blitz-table blackjack-table">
     <${CardSettings} interactive=${true} />
     <form id="blackjack-form" onSubmit=${start}>
-      <label>Bet ($)<input name="bet" type="number" min="1" max="10000" step="0.01" value="25.00" /></label>
+      <fieldset class="bet-choices"><legend>Bet</legend>${BETS.map((amount) => html`<label class="bet-choice"><input type="radio" name="bet" value=${amount} checked=${amount === bet} disabled=${busy || game?.status === "Playing"} onChange=${() => setBet(amount)} /><span>${money(amount)}</span></label>`)}</fieldset>
     </form>
     ${game && html`<div class="blitz-score">
       <span><b>${money(game.bet)}</b> bet</span>
@@ -83,7 +85,7 @@ function App() {
         ${game.can_double && html`<button type="button" disabled=${busy} onClick=${() => act("double")}>Double</button>`}
         ${game.can_split && html`<button type="button" disabled=${busy} onClick=${() => act("split")}>Split</button>`}
         ${game.can_insure && html`<button type="button" disabled=${busy} onClick=${() => act("insurance")}>Insurance</button>`}
-      ` : html`<button form="blackjack-form" disabled=${busy}>Deal</button>`}
+      ` : html`<button form="blackjack-form" disabled=${busy}>Deal ${money(bet)}</button>`}
     </div>
     ${error && html`<p class="error">${error}</p>`}
   </section>`;

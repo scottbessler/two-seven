@@ -110,10 +110,71 @@ async function mountTable(page, state) {
   await page.evaluate(() => import(`/public/table.js?e2e=${Date.now()}`));
 }
 
-test("offers six concise game presets", async ({ page }) => {
+test("builds a game one question at a time", async ({ page }) => {
+  const posted = [];
+  await Promise.all(["**/tables", "**/tournaments"].map((path) => page.route(path, async (route) => {
+    posted.push({ path, body: route.request().postDataJSON() });
+    await route.fulfill({ json: { id: "made", url: "/tables/made" } });
+  })));
   await page.goto("/tables/new");
-  await expect(page.locator(".setup-option")).toHaveCount(6);
+  await expect(page.locator("#game-setup")).toBeVisible();
+  // Only the current question is on screen.
+  await expect(page.locator(".setup-step:not([hidden])")).toHaveCount(1);
+  await expect(page.locator(".setup-step:not([hidden])")).toContainText("What are we playing?");
   await expect(page).toHaveScreenshot("game-setup.png", { fullPage: true });
+
+  await page.locator('.setup-option[value="cash"]').click();
+  await expect(page.locator(".setup-step:not([hidden])")).toContainText("Which betting rules?");
+  await page.locator('.setup-option[value="limit"]').click();
+  await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
+  await page.locator('.setup-option[value="50000"]').click();
+  await expect(page.locator("#setup-summary")).toHaveText("$500 cash game · $5/$10 limit · 6 seats");
+
+  // Back returns to the previous question with the choice still marked.
+  await page.locator(".setup-back").click();
+  await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
+  await expect(page.locator('.setup-option[value="50000"]')).toHaveAttribute("aria-pressed", "true");
+  await page.locator('.setup-option[value="200000"]').click();
+  await expect(page.locator("#setup-summary")).toHaveText("$2,000 cash game · $20/$40 limit · 6 seats");
+  await page.fill('input[name="name"]', "Friday night");
+  await page.locator(".setup-create").click();
+  await expect.poll(() => posted.length).toBe(1);
+  expect(posted[0].path).toBe("**/tables");
+  expect(posted[0].body).toEqual({
+    name: "Friday night",
+    no_debt: false,
+    stakes: { Limit: { small_bet: 2_000, big_bet: 4_000 } },
+    max_seats: 6,
+    buy_in: 200_000,
+  });
+});
+
+test("sizes a tournament from the ten-thousand chip ladder", async ({ page }) => {
+  const posted = [];
+  await page.route("**/tournaments", async (route) => {
+    posted.push(route.request().postDataJSON());
+    await route.fulfill({ json: { id: "made", url: "/tables/made" } });
+  });
+  await page.goto("/tables/new");
+  await page.locator('.setup-option[value="tournament"]').click();
+  // Tournaments skip the betting question: they are always no-limit.
+  await expect(page.locator(".setup-step:not([hidden])")).toContainText("How many players?");
+  await page.locator('.setup-option[value="9"]').click();
+  await page.locator('.setup-option[value="20000"]').click();
+  await expect(page.locator("#setup-summary")).toHaveText("$200 tournament · 9 players · 10,000 chips · top 3 paid");
+  await page.fill('input[name="name"]', "Sunday deep");
+  await page.locator(".setup-create").click();
+  await expect.poll(() => posted.length).toBe(1);
+  const body = posted[0];
+  expect(body.buy_in).toBe(20_000);
+  expect(body.seat_count).toBe(9);
+  expect(body.starting_chips, "always 10,000 chips").toBe(1_000_000);
+  expect(body.payout_percentages).toEqual([50, 30, 20]);
+  expect(body.levels).toHaveLength(15);
+  expect(body.levels[0]).toEqual({ small_blind: 10_000, big_blind: 20_000, ante: 0, hands: 18 });
+  expect(body.levels.at(-1)).toEqual({ small_blind: 800_000, big_blind: 1_600_000, ante: 0, hands: 18 });
+  // A level lasts twice as many hands as there are players.
+  expect(body.levels.every((level) => level.hands === 18)).toBe(true);
 });
 
 test("shows live hand cues and event log", async ({ page }) => {
@@ -230,13 +291,23 @@ test("shows live hand cues and event log", async ({ page }) => {
   });
   expect(metricOverlaps, "V17: table metrics must not overlap player cards").toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  // The shell is locked to the viewport at every size, so the page never scrolls.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight), "V23: the table must not scroll the page").toBe(true);
   expect(await page.locator(".table-shell").innerText()).not.toMatch(/\$-?\d+\.\d{2}/);
   if ((page.viewportSize()?.width || 0) > 640) {
     const geometry = await page.locator(".table-stage").evaluate((stage) => ({
       stageHeight: stage.getBoundingClientRect().height,
+      viewport: document.documentElement.clientHeight,
       radius: getComputedStyle(stage.querySelector(".felt")).borderRadius,
+      statusOverlap: [...stage.parentElement.querySelectorAll(".seat")].some((seat) => {
+        const status = stage.parentElement.querySelector(".table-status")?.getBoundingClientRect();
+        if (!status) return false;
+        const rect = seat.getBoundingClientRect();
+        return rect.left < status.right && rect.right > status.left && rect.top < status.bottom && rect.bottom > status.top;
+      }),
     }));
-    expect(geometry.stageHeight).toBeLessThan(550);
+    expect(geometry.stageHeight).toBeLessThanOrEqual(geometry.viewport);
+    expect(geometry.statusOverlap, "V24: seats must not cover the table status").toBe(false);
     expect(geometry.radius).not.toContain("%");
   }
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
@@ -336,25 +407,24 @@ test("reflows viewer cards at maximum display settings", async ({ page }) => {
     const tableCenter = stage.querySelector(".table-center").getBoundingClientRect();
     const card = stage.querySelector(".seat.viewer .playing-card");
     const corners = [...card.querySelectorAll(".card-corner b, .card-corner i")].map((node) => node.getBoundingClientRect());
-    const centerContent = [...card.querySelectorAll(".pip-grid i, .card-art")].map((node) => node.getBoundingClientRect());
+    const cardBox = card.getBoundingClientRect();
     // Browser-evaluated helpers cannot close over test-scope functions.
     // oxlint-disable-next-line unicorn/consistent-function-scoping
     const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     return {
       centerOverlap: overlaps(viewerCards, tableCenter),
       wagerOverlap: viewerWager ? overlaps(viewerWager, tableCenter) : false,
-      faceOverlap: corners.some((corner) => centerContent.some((content) => overlaps(corner, content))),
-      pipOverlap: centerContent.some((pip, index) => centerContent.slice(index + 1).some((other) => overlaps(pip, other))),
+      faceOverlap: corners.some((corner, index) => corners.slice(index + 1).some((other) => overlaps(corner, other))),
+      faceEscapesCard: corners.some((corner) => corner.top < cardBox.top || corner.bottom > cardBox.bottom || corner.left < cardBox.left || corner.right > cardBox.right),
       viewerCards: { top: viewerCards.top, bottom: viewerCards.bottom },
       tableCenter: { top: tableCenter.top, bottom: tableCenter.bottom },
       corners: corners.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
-      centerContent: centerContent.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
     };
   });
   expect(geometry.centerOverlap, `V21: max-size viewer cards must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
   expect(geometry.wagerOverlap, `V21: max-size viewer wager must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
-  expect(geometry.faceOverlap, `V21: max-size ranks must clear pips and center art ${JSON.stringify(geometry)}`).toBe(false);
-  expect(geometry.pipOverlap, `V21: reflowed pips must remain distinct ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.faceOverlap, `V21: max-size rank and suit must not collide ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.faceEscapesCard, `V21: max-size rank and suit must stay on the card ${JSON.stringify(geometry)}`).toBe(false);
   await expect(page).toHaveScreenshot("max-card-table.png", { fullPage: true });
 });
 

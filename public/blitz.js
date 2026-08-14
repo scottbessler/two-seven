@@ -2,7 +2,7 @@ import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js"
 import { Card } from "/public/card.js";
 import { CardSettings } from "/public/card-settings.js";
 import { money, responseError } from "/public/shared.js";
-// Shared renderer contracts: rawRank === "T" ? "10", pip-grid-${numeric}, card-pip-${position}, card-art-${court}.
+// Shared renderer contracts: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("blitz-app");
 

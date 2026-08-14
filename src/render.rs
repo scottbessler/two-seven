@@ -92,14 +92,92 @@ pub fn tournament_create() -> String {
 }
 
 fn game_create() -> String {
-    layout(
-        "Start a game",
+    // One question per step; lobby.js walks the steps and assembles the config.
+    let step = |name: &str, legend: &str, options: &str| {
+        format!(
+            r#"<fieldset class="setup-step" data-step="{name}" hidden><legend>{legend}</legend><div class="setup-options">{options}</div></fieldset>"#
+        )
+    };
+    let option = |name: &str, value: &str, title: &str, detail: &str| {
+        format!(
+            r#"<button class="setup-option" type="button" data-choice="{name}" value="{value}"><b>{title}</b><small>{detail}</small></button>"#
+        )
+    };
+    let format_step = step(
+        "format",
+        "What are we playing?",
         &format!(
-            r#"<section class="setup-shell"><h1>Start a game</h1><form id="quick-game-form"><label>Game name<input name="name" required placeholder="Friday night"></label><fieldset class="setup-options"><legend>Setup</legend><label class="setup-option"><input type="radio" name="preset" value="cash-friendly" checked><span><b>Friendly cash</b><small>$1/$2 no-limit · $50–$200 · 6 seats</small></span></label><label class="setup-option"><input type="radio" name="preset" value="cash-standard"><span><b>Standard cash</b><small>$5/$10 no-limit · $250–$1,000 · 6 seats</small></span></label><label class="setup-option"><input type="radio" name="preset" value="cash-limit"><span><b>Limit cash</b><small>$10/$20 blinds · $20/$40 limit · 6 seats</small></span></label><label class="setup-option"><input type="radio" name="preset" value="tournament-quick"><span><b>Quick sit-and-go</b><small>$10 entry · 4 players · winner takes all</small></span></label><label class="setup-option"><input type="radio" name="preset" value="tournament-classic"><span><b>Classic sit-and-go</b><small>$50 entry · 6 players · top 2 paid</small></span></label><label class="setup-option"><input type="radio" name="preset" value="tournament-deep"><span><b>Deep-stack tournament</b><small>$200 entry · 9 players · top 3 paid</small></span></label></fieldset><label class="setup-debt"><input type="checkbox" name="no_debt"> Require available balance</label><button type="submit">Create game</button></form><p id="create-error" class="error" role="alert"></p><script type="module" src="{}" defer></script></section>"#,
-            asset("/public/lobby.js")
+            "{}{}",
+            option(
+                "format",
+                "cash",
+                "Cash game",
+                "Buy in, play any number of hands, cash out whenever"
+            ),
+            option(
+                "format",
+                "tournament",
+                "Tournament",
+                "One entry, 10,000 chips, play until someone has them all"
+            )
         ),
-        "",
-    )
+    );
+    let betting_step = step(
+        "betting",
+        "Which betting rules?",
+        &format!(
+            "{}{}",
+            option(
+                "betting",
+                "no-limit",
+                "No-limit",
+                "Bet anything you have in front of you"
+            ),
+            option(
+                "betting",
+                "limit",
+                "Limit",
+                "Fixed bet sizes, a bet and three raises per street"
+            )
+        ),
+    );
+    let players_step = step(
+        "players",
+        "How many players?",
+        &format!(
+            "{}{}{}",
+            option(
+                "players",
+                "4",
+                "4 players",
+                "Winner takes the whole prize pool"
+            ),
+            option("players", "6", "6 players", "Top 2 paid"),
+            option("players", "9", "9 players", "Top 3 paid")
+        ),
+    );
+    let buy_in_step = step(
+        "buyIn",
+        "How much to buy in?",
+        &format!(
+            "{}{}{}{}",
+            option("buyIn", "20000", "$200", "$1/$2 blinds · $2/$4 limit"),
+            option("buyIn", "50000", "$500", "$2/$4 blinds · $5/$10 limit"),
+            option("buyIn", "100000", "$1,000", "$5/$10 blinds · $10/$20 limit"),
+            option(
+                "buyIn",
+                "200000",
+                "$2,000",
+                "$10/$20 blinds · $20/$40 limit"
+            )
+        ),
+    );
+    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name the game</legend><p class="setup-summary" id="setup-summary"></p><label>Game name<input name="name" required maxlength="48" placeholder="Friday night"></label><label class="setup-debt"><input type="checkbox" name="no_debt"> Require available balance</label><button class="setup-create" type="submit">Create game</button></fieldset>"#;
+    let body = format!(
+        r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form"><header><h2 id="setup-title">Start a game</h2><a class="setup-close" href="/tables" aria-label="Cancel">×</a></header>{format_step}{betting_step}{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
+        lobby = asset("/public/lobby.js")
+    );
+    layout("Start a game", &body, "")
 }
 pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
     let difficulties = crate::blitz::BlitzDifficulty::ALL
@@ -139,7 +217,7 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
 pub fn blackjack() -> String {
     layout(
         "Blackjack",
-        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-menu"><form id="blackjack-form"><label>Bet ($)<input name="bet" type="number" min="1" max="10000" step="0.01" value="25.00"></label><button>Deal</button></form></section></div></section>"#,
+        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-menu"><form id="blackjack-form"><fieldset class="bet-choices"><legend>Bet</legend><label class="bet-choice"><input type="radio" name="bet" value="500"><span>$5</span></label><label class="bet-choice"><input type="radio" name="bet" value="2000" checked><span>$20</span></label><label class="bet-choice"><input type="radio" name="bet" value="10000"><span>$100</span></label><label class="bet-choice"><input type="radio" name="bet" value="20000"><span>$200</span></label></fieldset><button>Deal $20</button></form></section></div></section>"#,
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/blackjack.js")
@@ -228,114 +306,15 @@ fn card_face(rank: &str, suit: &str) -> String {
         _ => "",
     };
     let display = if rank == "T" { "10" } else { rank };
-    let value = match rank {
-        "A" => 1,
-        "K" => 13,
-        "Q" => 12,
-        "J" => 11,
-        "T" => 10,
-        _ => rank.parse::<usize>().unwrap_or(0),
-    };
     let color = if suit == "h" || suit == "d" {
         "red"
     } else {
         "black"
     };
-    let center = match value {
-        1 => format!(
-            r#"<span class="card-art card-art-A"><span class="ace-badge"><i>{}</i></span></span>"#,
-            pip
-        ),
-        11..=13 => {
-            let piece = match value {
-                11 => "♘",
-                12 => "♕",
-                _ => "♔",
-            };
-            format!(
-                r#"<span class="card-art card-art-{}"><span class="court-piece">{}</span><i>{}</i></span>"#,
-                display, piece, pip
-            )
-        }
-        _ => format!(
-            r#"<span class="pip-grid pip-grid-{}">{}</span>"#,
-            value,
-            pip_positions(value)
-                .iter()
-                .map(|position| format!(r#"<i class="card-pip-{}">{}</i>"#, position, pip))
-                .collect::<String>()
-        ),
-    };
+    // Mirrors card.js: the face is rank over suit at one size.
     format!(
-        r#"<span class="playing-card {}" aria-label="{}{}"><span class="card-corner"><b>{}</b><i>{}</i></span><span class="card-frame">{}</span><span class="card-corner card-corner-bottom"><b>{}</b><i>{}</i></span></span>"#,
-        color, rank, suit, display, pip, center, display, pip
+        r#"<span class="playing-card {color}" aria-label="{rank}{suit}"><span class="card-corner"><b>{display}</b><i>{pip}</i></span></span>"#
     )
-}
-
-fn pip_positions(value: usize) -> &'static [&'static str] {
-    match value {
-        2 => &["top-center", "bottom-center"],
-        3 => &["top-center", "middle-center", "bottom-center"],
-        4 => &["top-left", "top-right", "bottom-left", "bottom-right"],
-        5 => &[
-            "top-left",
-            "top-right",
-            "middle-center",
-            "bottom-left",
-            "bottom-right",
-        ],
-        6 => &[
-            "top-left",
-            "top-right",
-            "middle-left",
-            "middle-right",
-            "bottom-left",
-            "bottom-right",
-        ],
-        7 => &[
-            "top-left",
-            "top-right",
-            "middle-left",
-            "middle-right",
-            "bottom-left",
-            "bottom-right",
-            "upper-center",
-        ],
-        8 => &[
-            "top-left",
-            "top-right",
-            "middle-left",
-            "middle-right",
-            "bottom-left",
-            "bottom-right",
-            "upper-center",
-            "lower-center",
-        ],
-        9 => &[
-            "top-left",
-            "top-right",
-            "upper-left",
-            "upper-right",
-            "middle-center",
-            "lower-left",
-            "lower-right",
-            "bottom-left",
-            "bottom-right",
-        ],
-        10 => &[
-            "top-left",
-            "top-right",
-            "upper-left",
-            "upper-right",
-            "middle-left",
-            "middle-right",
-            "lower-left",
-            "lower-right",
-            "bottom-left",
-            "bottom-right",
-        ],
-        _ => &[],
-    }
 }
 
 fn suit_name(suit: &str) -> &'static str {

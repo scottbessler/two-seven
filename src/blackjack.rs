@@ -12,6 +12,9 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+/// The only stakes a blackjack hand may be dealt for.
+pub const BLACKJACK_BETS: [Cents; 4] = [500, 2_000, 10_000, 20_000];
+
 #[derive(Clone, Debug, Serialize)]
 pub struct BlackjackView {
     pub id: Uuid,
@@ -166,9 +169,9 @@ impl BlackjackStore {
         bet: Cents,
         id: Uuid,
     ) -> Result<BlackjackView, BlackjackError> {
-        if !valid_game_amount(bet) {
+        if !BLACKJACK_BETS.contains(&bet) {
             return Err(BlackjackError::IllegalAction(
-                "bet must be between $1 and $10,000",
+                "bet must be $5, $20, $100, or $200",
             ));
         }
         let mut guard = self.inner.lock().await;
@@ -739,7 +742,7 @@ mod tests {
         let user = Uuid::new_v4();
         let id = Uuid::new_v4();
         let store = BlackjackStore::load(&root).await.unwrap();
-        store.start(user, 100, id).await.unwrap();
+        store.start(user, BLACKJACK_BETS[0], id).await.unwrap();
         store.persist().await.unwrap();
 
         let restored = BlackjackStore::load(&root).await.unwrap();

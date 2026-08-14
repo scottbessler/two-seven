@@ -60,9 +60,7 @@ fn table_island_has_live_state_and_action_contracts() {
         "table-error",
         "responseError",
         "rawRank === \"T\" ? \"10\"",
-        "pip-grid-${value}",
-        "card-pip-${position}",
-        "card-art-${court}",
+        "card-corner rank over suit",
         "response.ok",
         "hand.legal_actions.to_call",
         "state.tournament.started",
@@ -92,8 +90,6 @@ fn table_css_is_mobile_poker_layout() {
         ".felt",
         ".playing-card",
         ".card-corner",
-        ".pip-grid",
-        ".card-art",
         ".seats",
         "@media(max-width:640px)",
         ".actions",
@@ -149,9 +145,7 @@ fn hand_blitz_island_has_mode_contracts() {
         "20s",
         "12s",
         "rawRank === \"T\" ? \"10\"",
-        "pip-grid-${numeric}",
-        "card-pip-${position}",
-        "card-art-${court}",
+        "card-corner rank over suit",
         "Correct:",
         "Play again",
     ] {
@@ -174,11 +168,23 @@ fn hand_blitz_island_has_mode_contracts() {
 }
 
 #[test]
-fn shared_card_renderer_has_inner_frame_contract() {
-    assert!(CARD_JS.contains("card-frame"));
-    assert!(CARD_JS.contains("pip-grid-${face.numeric}"));
-    assert!(CARD_JS.contains("ace-badge"));
-    assert!(CARD_JS.contains("court-piece"));
+fn shared_card_renderer_draws_rank_over_suit_only() {
+    assert!(CARD_JS.contains("card-corner"));
+    assert!(CARD_JS.contains("<b>${face.rank}</b><i>${face.suit}</i>"));
+    assert!(CARD_JS.contains("card-back"));
+    assert!(CARD_JS.contains("empty-card"));
+    for dropped in [
+        "pip-grid",
+        "card-art",
+        "court-piece",
+        "ace-badge",
+        "card-frame",
+    ] {
+        assert!(
+            !CARD_JS.contains(dropped),
+            "the card face no longer renders {dropped}"
+        );
+    }
 }
 
 #[test]
@@ -214,7 +220,8 @@ fn blackjack_island_has_game_contracts() {
         "can_hit",
         "can_stand",
         "Dealer",
-        "card-pip-${position}",
+        "card-corner rank over suit",
+        "bet-choices",
         "game.can_hit && html",
         "game.can_double && html",
         "actions blackjack-actions",
@@ -243,21 +250,31 @@ fn shared_island_helpers_have_contracts() {
 }
 
 #[test]
-fn setup_uses_six_bounded_presets() {
-    for preset in [
-        "cash-friendly",
-        "cash-standard",
-        "cash-limit",
-        "tournament-quick",
-        "tournament-classic",
-        "tournament-deep",
+fn setup_walks_a_stepped_game_dialog() {
+    for literal in [
+        "format",
+        "betting",
+        "players",
+        "buyIn",
+        "confirm",
+        "endpoint: \"/tables\"",
+        "endpoint: \"/tournaments\"",
+        "starting_chips: TOURNAMENT_CHIPS",
+        "payout_percentages: PAYOUTS[seats]",
+        "players * 2",
+        "showModal()",
     ] {
-        assert!(LOBBY_JS.contains(preset), "missing setup preset: {preset}");
+        assert!(
+            LOBBY_JS.contains(literal),
+            "missing setup contract: {literal}"
+        );
     }
-    assert!(LOBBY_JS.contains("buy_in: 200_000"));
-    assert!(LOBBY_JS.contains("buy_in: 20_000"));
-    assert!(LOBBY_JS.contains("endpoint: \"/tables\""));
-    assert!(LOBBY_JS.contains("endpoint: \"/tournaments\""));
+    // Buy-in tiers and the stakes each one implies.
+    for tier in ["20_000", "50_000", "100_000", "200_000"] {
+        assert!(LOBBY_JS.contains(tier), "missing buy-in tier: {tier}");
+    }
+    assert!(LOBBY_JS.contains("TOURNAMENT_CHIPS = 1_000_000"));
+    assert_eq!(LOBBY_JS.matches("  [").count(), 15, "T10,000 has 15 levels");
     assert!(TABLE_JS.contains("money(state.buy_in)"));
     assert!(TABLE_JS.contains("body: \"{}\""));
     assert!(!TABLE_JS.contains("JSON.stringify({ seat })"));

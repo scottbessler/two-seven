@@ -13,6 +13,18 @@ pub fn valid_optional_game_amount(value: Cents) -> bool {
     value == 0 || valid_game_amount(value)
 }
 
+/// Tournament chips are play money rather than an entry price, so a late blind
+/// level climbs well past what anyone may buy in for.
+pub const MAX_CHIP_AMOUNT: Cents = 100_000_000;
+
+pub fn valid_chip_amount(value: Cents) -> bool {
+    (MIN_GAME_AMOUNT..=MAX_CHIP_AMOUNT).contains(&value)
+}
+
+pub fn valid_optional_chip_amount(value: Cents) -> bool {
+    value == 0 || valid_chip_amount(value)
+}
+
 pub fn format_cents(value: Cents) -> String {
     let sign = if value < 0 { "-" } else { "" };
     let abs = value.unsigned_abs();
@@ -54,5 +66,15 @@ mod tests {
         assert!(!valid_game_amount(1_000_001));
         assert!(valid_optional_game_amount(0));
         assert!(!valid_optional_game_amount(50));
+    }
+
+    #[test]
+    fn tournament_chips_climb_past_the_cash_ceiling() {
+        // The T10,000 ladder tops out at a 16,000-chip big blind.
+        assert!(!valid_game_amount(1_600_000));
+        assert!(valid_chip_amount(1_600_000));
+        assert!(!valid_chip_amount(99));
+        assert!(!valid_chip_amount(MAX_CHIP_AMOUNT + 1));
+        assert!(valid_optional_chip_amount(0));
     }
 }

@@ -106,10 +106,13 @@ async fn card_test_renders_full_deck_with_game_card_faces() {
     let b = to_bytes(r.into_body(), usize::MAX).await.unwrap();
     let body = String::from_utf8_lossy(&b);
     assert_eq!(body.matches("playing-card").count(), 52);
-    assert!(body.contains("card-art-A"));
-    assert!(body.contains("pip-grid-10"));
-    assert!(body.contains("card-art-K"));
-    assert!(body.contains(">10<"));
+    // The face is rank over suit only, matching card.js.
+    assert_eq!(body.matches("card-corner").count(), 52);
+    assert!(body.contains("<b>10</b><i>\u{2660}</i>"));
+    assert!(body.contains("<b>A</b><i>\u{2665}</i>"));
+    for dropped in ["card-art", "pip-grid", "court-piece", "card-frame"] {
+        assert!(!body.contains(dropped), "card faces still render {dropped}");
+    }
 }
 
 #[tokio::test]
@@ -143,7 +146,7 @@ async fn signed_home() {
 }
 
 #[tokio::test]
-async fn game_setup_offers_six_presets() {
+async fn game_setup_walks_a_stepped_dialog() {
     let t = appx().await;
     let response = t
         .router
@@ -158,8 +161,49 @@ async fn game_setup_offers_six_presets() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let html = String::from_utf8_lossy(&body);
-    assert_eq!(html.matches("class=\"setup-option\"").count(), 6);
+    // A stepped dialog: format, betting or players, buy-in, then confirm.
+    assert_eq!(html.matches("class=\"setup-step\"").count(), 4);
+    assert_eq!(html.matches("data-choice=\"buyIn\"").count(), 4);
+    assert!(html.contains("data-choice=\"format\""));
+    assert!(html.contains("data-choice=\"betting\""));
+    assert!(html.contains("data-choice=\"players\""));
     assert!(html.contains("quick-game-form"));
+    assert!(html.contains("id=\"game-setup\""));
+}
+
+#[tokio::test]
+async fn tournament_accepts_the_full_ten_thousand_chip_ladder() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "ladder".into(),
+            display_name: "Ladder".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    // The T10,000 structure climbs to a 16,000-chip big blind, well past the
+    // cash-game entry ceiling, and a level lasts six players' worth of hands.
+    let body = r#"{"name":"Ladder","buy_in":50000,"seat_count":6,"starting_chips":1000000,"levels":[{"small_blind":10000,"big_blind":20000,"ante":0,"hands":12},{"small_blind":20000,"big_blind":40000,"ante":0,"hands":12},{"small_blind":30000,"big_blind":60000,"ante":0,"hands":12},{"small_blind":40000,"big_blind":80000,"ante":0,"hands":12},{"small_blind":50000,"big_blind":100000,"ante":0,"hands":12},{"small_blind":60000,"big_blind":120000,"ante":0,"hands":12},{"small_blind":80000,"big_blind":160000,"ante":0,"hands":12},{"small_blind":100000,"big_blind":200000,"ante":0,"hands":12},{"small_blind":150000,"big_blind":300000,"ante":0,"hands":12},{"small_blind":200000,"big_blind":400000,"ante":0,"hands":12},{"small_blind":300000,"big_blind":600000,"ante":0,"hands":12},{"small_blind":400000,"big_blind":800000,"ante":0,"hands":12},{"small_blind":500000,"big_blind":1000000,"ante":0,"hands":12},{"small_blind":600000,"big_blind":1200000,"ante":0,"hands":12},{"small_blind":800000,"big_blind":1600000,"ante":0,"hands":12}],"payout_percentages":[65,35]}"#;
+    let create = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tournaments")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -215,7 +259,7 @@ async fn game_entries_enforce_one_dollar_floor_and_ten_thousand_dollar_ceiling()
         .unwrap();
     assert_eq!(huge_tournament.status(), StatusCode::BAD_REQUEST);
 
-    for bet in [99, 1_000_001] {
+    for bet in [99, 2_500, 1_000_001] {
         let blackjack = t
             .router
             .clone()
@@ -389,7 +433,7 @@ async fn blackjack_start_charges_bet_and_stand_finishes_game() {
                 .uri("/blackjack/start")
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"bet":2500}"#))
+                .body(Body::from(r#"{"bet":2000}"#))
                 .unwrap(),
         )
         .await
@@ -422,7 +466,7 @@ async fn blackjack_start_charges_bet_and_stand_finishes_game() {
     }
     let account = t.bank.account(AccountOwner::User(id)).await.unwrap();
     assert!(account.entries.iter().any(|entry| {
-        matches!(entry.kind, LedgerKind::BlackjackBet { .. }) && entry.delta == -2500
+        matches!(entry.kind, LedgerKind::BlackjackBet { .. }) && entry.delta == -2000
     }));
     assert_eq!(
         account.entries.iter().map(|entry| entry.delta).sum::<i64>(),
@@ -841,7 +885,7 @@ async fn blackjack_rejected_actions_leave_ledger_untouched() {
                 .uri("/blackjack/start")
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"bet":100}"#))
+                .body(Body::from(r#"{"bet":500}"#))
                 .unwrap(),
         )
         .await
@@ -915,7 +959,7 @@ async fn blackjack_start_rejects_live_game_and_resume_returns_it() {
                     .uri("/blackjack/start")
                     .header(header::COOKIE, &cookie_value)
                     .header(header::CONTENT_TYPE, "application/json")
-                    .body(Body::from(r#"{"bet":100}"#))
+                    .body(Body::from(r#"{"bet":500}"#))
                     .unwrap(),
             )
             .await
@@ -954,7 +998,7 @@ async fn blackjack_start_rejects_live_game_and_resume_returns_it() {
                 .uri("/blackjack/start")
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"bet":100}"#))
+                .body(Body::from(r#"{"bet":500}"#))
                 .unwrap(),
         )
         .await
