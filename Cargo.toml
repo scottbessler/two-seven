@@ -2,6 +2,8 @@
 name = "two-seven"
 version = "0.1.0"
 edition = "2024"
+# `cargo run` is ambiguous once bot_bench exists; the e2e web server needs this.
+default-run = "two-seven"
 
 [dependencies]
 anyhow = "1.0.100"

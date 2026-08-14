@@ -53,13 +53,15 @@ function seatPosition(order, total) {
     x = halfWidth - distance;
     y = halfHeight;
   }
-  return { left: `${50 + x}%`, top: `${50 + y}%`, transform: "translate(-50%, -50%)" };
+  // Rail coordinates ride on custom properties so the mobile grid layout can
+  // ignore them without fighting inline styles.
+  return { "--seat-left": `${50 + x}%`, "--seat-top": `${50 + y}%` };
 }
 
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
   const position = seatPosition(order, total);
-  const tooltipBelow = Number.parseFloat(position.top) < 35;
-  const positionLeft = Number.parseFloat(position.left);
+  const tooltipBelow = Number.parseFloat(position["--seat-top"]) < 35;
+  const positionLeft = Number.parseFloat(position["--seat-left"]);
   const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
@@ -97,7 +99,9 @@ function wagerOptions(hand) {
   for (const candidate of candidates) {
     const rounded = Math.round(candidate.amount / 100) * 100;
     const amount = Math.max(wager.min, Math.min(wager.max, rounded));
-    if (amount > 0 && !unique.has(amount)) unique.set(amount, { amount, reason: candidate.reason });
+    // `amount` is the chips this action adds; the button shows the street
+    // total it raises to, so it never reads the same as the call beside it.
+    if (amount > 0 && !unique.has(amount)) unique.set(amount, { amount, total: contribution + amount, reason: candidate.reason });
   }
   return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
 }
@@ -110,11 +114,12 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
     else document.getElementById("table-error").textContent = await responseError(response);
   };
   const wagerKind = actions.has("Bet") ? "bet" : "raise";
+  const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   return html`<div class="actions" aria-label="Actions">
     ${actions.has("Fold") && html`<button class="danger" onClick=${() => submit("fold")}>Fold</button>`}
     ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
     ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${money(hand.legal_actions.to_call)}</button>`}
-    ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${option.reason} onClick=${() => submit(wagerKind, option.amount)}>${money(option.amount)}</button>`)}
+    ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}>${wagerLabel} ${money(option.total)}</button>`)}
     ${actions.has("AllIn") && html`<button class="wager-action all-in-action" onClick=${() => submit("all_in")}>All In</button>`}
   </div>`;
 }
@@ -211,7 +216,33 @@ function TableCommand({ state, openSeats, refresh }) {
     if (response.ok) refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
   };
-  return html`<nav class="table-controls"><button type="button" disabled=${disabled} onClick=${submit}>${label}</button></nav>`;
+  return html`<button class="table-command" type="button" disabled=${disabled} onClick=${submit}>${label}</button>`;
+}
+
+const seatBotDialog = () => document.getElementById("seat-bot");
+
+function SeatBot({ state, openSeats, refresh }) {
+  if (openSeats.length === 0 || state.tournament?.started) return null;
+  const submit = async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) });
+    if (response.ok) {
+      seatBotDialog()?.close();
+      refresh();
+    } else document.getElementById("table-error").textContent = await responseError(response);
+  };
+  return html`<span class="seat-bot">
+    <button type="button" onClick=${() => seatBotDialog()?.showModal()}>Seat a bot</button>
+    <dialog id="seat-bot" class="seat-bot-dialog">
+      <form onSubmit=${submit}>
+        <header><h2>Seat a bot</h2><button type="button" title="Cancel" aria-label="Cancel" onClick=${() => seatBotDialog()?.close()}>×</button></header>
+        <label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label>
+        <label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label>
+        <button type="submit">Seat bot</button>
+      </form>
+    </dialog>
+  </span>`;
 }
 
 function TableApp() {
@@ -255,8 +286,7 @@ function TableApp() {
     ${hand?.legal_actions && html`<section class="decision-area"><${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} /></section>`}
     ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}
     <p id="table-error" class="error" role="alert"></p>
-    ${(!state.tournament || !state.tournament.started) && state.seats.some((seat) => seat.occupant === "empty") && html`<section class="card bot-card"><h2>Seat a bot</h2><form onSubmit=${async (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) }); if (response.ok) refresh(); else document.getElementById("table-error").textContent = await responseError(response); }}><label>Seat<select name="seat">${state.seats.filter((seat) => seat.occupant === "empty").map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label><label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label><button>Seat bot</button></form></section>`}
-    <${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} />
+    <nav class="table-controls"><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;
 }
 

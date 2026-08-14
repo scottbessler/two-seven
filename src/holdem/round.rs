@@ -131,7 +131,7 @@ impl Hand {
             Stakes::Limit { .. } => self
                 .wager_bounds(to_call, max)
                 .fixed
-                .is_some_and(|fixed| max <= to_call + fixed),
+                .is_some_and(|fixed| max <= fixed),
             Stakes::NoLimit { .. } => true,
         };
         if max > 0 && all_in_allowed && (max <= to_call || (self.wagers < 4 && !player.must_call)) {
@@ -148,13 +148,14 @@ impl Hand {
     fn wager_bounds(&self, to_call: Cents, max: Cents) -> WagerBounds {
         match self.stakes {
             Stakes::Limit { small_bet, big_bet } => {
-                let fixed = if self.street <= super::Street::Flop {
+                let bet = if self.street <= super::Street::Flop {
                     small_bet
                 } else {
                     big_bet
                 };
-                let short = max < to_call + fixed;
-                let amount = if short { max } else { fixed };
+                // A limit wager puts in the call plus one fixed bet; a stack
+                // too short for that raises all-in for whatever remains.
+                let amount = (to_call + bet).min(max);
                 WagerBounds {
                     min: amount,
                     max: amount,
@@ -545,15 +546,90 @@ mod tests {
             2,
         );
         assert_eq!(h.current_player, Some(0));
-        h.apply_action(Action::Raise { amount: 2 }).unwrap();
+        // Seat 0 faces the big blind of 2, so a raise is the call plus one
+        // small bet and it lifts the bet everyone else must match.
+        h.apply_action(Action::Raise { amount: 4 }).unwrap();
+        assert_eq!(h.last_bet, 4);
         assert!(
             h.legal_actions()
                 .unwrap()
                 .actions
                 .iter()
-                .any(|a| matches!(a, Action::Raise { amount: 2 }))
+                .any(|a| matches!(a, Action::Raise { amount: 5 })),
+            "the small blind owes 3 and re-raises for 2 more"
         );
-        assert!(h.apply_action(Action::Raise { amount: 5 }).is_err());
+        assert!(h.apply_action(Action::Raise { amount: 2 }).is_err());
+    }
+
+    #[test]
+    fn limit_raise_over_a_call_is_offered_and_raises_the_bet() {
+        // Regression: the fixed limit wager ignored the outstanding call, so
+        // "raising" only matched the big blind and the table never reopened.
+        let mut hand = Hand::new(
+            Stakes::Limit {
+                small_bet: 2_000,
+                big_bet: 4_000,
+            },
+            &[100_000, 100_000, 100_000],
+            0,
+            7,
+        );
+        let legal = hand.legal_actions().unwrap();
+        assert_eq!(legal.to_call, 2_000);
+        let bounds = legal.wager.expect("a limit raise must be offered");
+        assert_eq!(
+            bounds.fixed,
+            Some(4_000),
+            "a raise must cost more than the call: {legal:?}"
+        );
+        hand.apply_action(Action::Raise { amount: 4_000 }).unwrap();
+        assert_eq!(hand.last_bet, 4_000);
+        assert_eq!(hand.wagers, 2, "a limit raise must count against the cap");
+    }
+
+    #[test]
+    fn limit_raise_postflop_uses_the_street_bet_size() {
+        let mut hand = Hand::new(
+            Stakes::Limit {
+                small_bet: 2,
+                big_bet: 4,
+            },
+            &[100, 100],
+            0,
+            5,
+        );
+        hand.apply_action(Action::Call).unwrap();
+        hand.apply_action(Action::Check).unwrap();
+        assert_eq!(hand.street, Street::Flop);
+        // Opening bet on an unraised street is just the small bet.
+        assert_eq!(hand.legal_actions().unwrap().wager.unwrap().fixed, Some(2));
+        hand.apply_action(Action::Bet { amount: 2 }).unwrap();
+        // Facing that bet, a raise is the call of 2 plus another small bet.
+        assert_eq!(hand.legal_actions().unwrap().wager.unwrap().fixed, Some(4));
+    }
+
+    #[test]
+    fn limit_short_stack_raises_all_in_for_its_remaining_chips() {
+        let mut hand = Hand::new(
+            Stakes::Limit {
+                small_bet: 2,
+                big_bet: 4,
+            },
+            &[100, 100, 100],
+            0,
+            9,
+        );
+        // Seat 0 acts first with only 3 chips behind against the blind of 2.
+        let index = hand.player_index(0);
+        hand.players[index].stack = 3;
+        let legal = hand.legal_actions().unwrap();
+        assert_eq!(legal.to_call, 2);
+        assert_eq!(
+            legal.wager.unwrap().fixed,
+            Some(3),
+            "a stack short of a full raise may only shove"
+        );
+        assert!(legal.actions.contains(&Action::AllIn));
     }
 
     #[test]

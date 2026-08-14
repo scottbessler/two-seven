@@ -143,18 +143,26 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(Math.abs(previewBox.width - liveBox.width)).toBeLessThan(1);
   expect(Math.abs(previewBox.height - liveBox.height)).toBeLessThan(1);
   await expect(page.locator(".card-config-dialog")).toHaveScreenshot("card-config-dialog.png");
+  // Card geometry lands in a deferred effect, so wait on the variable itself
+  // rather than the slider readout it renders alongside.
+  const cardWidthVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"));
   await sizeSlider.fill("50");
+  await expect.poll(cardWidthVariable).toBe("2.7rem");
   const initialCardBox = await viewerCard.boundingBox();
   await sizeSlider.fill("100");
   await expect(page.locator(".card-config-dialog output").first()).toHaveText("100%");
+  await expect.poll(cardWidthVariable).toBe("5.4rem");
   const enlargedCardBox = await viewerCard.boundingBox();
   expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.8);
   expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
+  const rankWeightVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--card-rank-weight"));
   await rankSlider.fill("50");
   await weightSlider.fill("50");
+  await expect.poll(rankWeightVariable).toBe("450");
   const initialRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
   await rankSlider.fill("100");
   await weightSlider.fill("100");
+  await expect.poll(rankWeightVariable).toBe("900");
   const tunedRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
   expect(tunedRank.size).toBeGreaterThan(initialRank.size);
   expect(tunedRank.suitSize).toBeGreaterThan(initialRank.suitSize);
@@ -176,7 +184,8 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".empty-seat")).toHaveCount(0);
   await expect(page.locator(".board .empty-card")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
-  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "$24", "$36", "$38", "$76", "All In"]);
+  // Wager buttons name the street total they raise to, so they never read the same as the call.
+  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In"]);
   await page.locator(".seat.viewer .player-info").hover();
   await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
   const topSeatIndex = await page.locator(".seat").evaluateAll((seats) => seats
@@ -261,7 +270,7 @@ test("keeps the table log footprint stable as events accumulate", async ({ page 
 
 test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, tableState);
-  await expect(page.locator(".table-controls button")).toHaveText(["Leave"]);
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
   await expect(page.getByRole("button", { name: "Sit out" })).toHaveCount(0);
 
   let joinBody;
@@ -278,8 +287,15 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
       : seat),
   };
   await mountTable(page, unseated);
-  await expect(page.locator(".table-controls button")).toHaveText(["Buy In $200"]);
-  await page.locator(".table-controls button").click();
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
+  // Seating a bot is a single control beside the lifecycle command.
+  await expect(page.locator(".seat-bot-dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: "Seat a bot" }).click();
+  await expect(page.locator(".seat-bot-dialog")).toBeVisible();
+  await expect(page.locator('.seat-bot-dialog select[name="seat"] option')).toHaveText(["Seat 2"]);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.locator(".seat-bot-dialog")).not.toBeVisible();
+  await page.locator(".table-controls .table-command").click();
   expect(joinBody).toEqual({});
 
   let rebuyBody;
@@ -295,13 +311,13 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
       : seat),
   };
   await mountTable(page, busted);
-  await expect(page.locator(".table-controls button")).toHaveText(["Re-Buy In $200"]);
-  await page.locator(".table-controls button").click();
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200"]);
+  await page.locator(".table-controls .table-command").click();
   expect(rebuyBody).toEqual({});
 
   await mountTable(page, { ...tableState, viewer_leaving: true });
-  await expect(page.locator(".table-controls button")).toHaveText(["Leaving..."]);
-  await expect(page.locator(".table-controls button")).toBeDisabled();
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Leaving..."]);
+  await expect(page.locator(".table-controls .table-command")).toBeDisabled();
 });
 
 test("reflows viewer cards at maximum display settings", async ({ page }) => {
@@ -310,6 +326,7 @@ test("reflows viewer cards at maximum display settings", async ({ page }) => {
   await page.locator('input[name="card-scale"]').fill("200");
   await page.locator('input[name="rank-scale"]').fill("200");
   await page.locator('input[name="rank-weight"]').fill("200");
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"))).toBe("10.8rem");
   await page.getByRole("button", { name: "Close" }).click();
   const geometry = await page.locator(".table-stage").evaluate((stage) => {
     const viewerCards = stage.querySelector(".seat.viewer .seat-cards").getBoundingClientRect();
