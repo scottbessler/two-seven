@@ -123,7 +123,7 @@ function wagerOptions(hand) {
   return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
 }
 
-function Actions({ hand, tableId: actionTableId, refresh }) {
+function Actions({ hand, tableId: actionTableId, refresh, mobile = false }) {
   const actions = new Set((hand?.legal_actions?.actions || []).map(actionName));
   const submit = async (kind, amount) => {
     const response = await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount }) });
@@ -131,7 +131,7 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
     else document.getElementById("table-error").textContent = await responseError(response);
   };
   const wagerKind = actions.has("Bet") ? "bet" : "raise";
-  return html`<div class="actions" aria-label="Actions">
+  return html`<div class=${mobile ? "mobile-actions" : "actions"} aria-label="Actions">
     ${actions.has("Fold") && html`<button class="danger" onClick=${() => submit("fold")}>Fold</button>`}
     ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
     ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${money(hand.legal_actions.to_call)}</button>`}
@@ -175,9 +175,9 @@ function winnerLines(summary, seats) {
   });
 }
 
-function TableLog({ events, seats, summary }) {
+function TableLog({ events, seats, summary, mobile = false }) {
   const results = winnerLines(summary, seats);
-  return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
+  return html`<section class=${mobile ? "mobile-log" : "game-log"} aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
 function ShowdownAdvance({ deadline, duration, canContinue, refresh }) {
