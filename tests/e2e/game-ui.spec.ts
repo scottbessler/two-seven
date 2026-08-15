@@ -268,7 +268,11 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".seat.viewer .seat-wager")).toHaveText("$12");
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
-  expect(viewerWager.y + viewerWager.height, "V16: viewer wager must sit above viewer cards").toBeLessThanOrEqual(viewerCards.y + 1);
+  const wagerBehindCards = viewerWager.x < viewerCards.x + viewerCards.width
+    && viewerWager.x + viewerWager.width > viewerCards.x
+    && viewerWager.y < viewerCards.y + viewerCards.height
+    && viewerWager.y + viewerWager.height > viewerCards.y;
+  expect(wagerBehindCards, "V16: viewer cards must not cover the viewer wager").toBe(false);
   const tableStatus = await page.locator(".table-status").boundingBox();
   const wagerOverlapsStatus = viewerWager.x < tableStatus.x + tableStatus.width && viewerWager.x + viewerWager.width > tableStatus.x && viewerWager.y < tableStatus.y + tableStatus.height && viewerWager.y + viewerWager.height > tableStatus.y;
   expect(wagerOverlapsStatus, "V16: viewer wager must not cover table status").toBe(false);
@@ -408,6 +412,50 @@ test("keeps seats clear of the board in a short desktop window", async ({ page }
     ).toBe(true);
     /* oxlint-enable no-await-in-loop */
   }
+});
+
+test("keeps your own cards off the board at every size", async ({ page }) => {
+  const headsUp = {
+    ...tableState,
+    viewer_seat: 2,
+    seats: tableState.seats.map((seat, index) =>
+      index === 1 || index === 2 ? seat : { ...seat, occupant: "empty", display_name: null }),
+  };
+  // Your hole cards hang up toward the board, and the size slider makes them
+  // bigger, so both ends of the range have to clear it.
+  for (const height of [900, 1000, 1400]) {
+    /* oxlint-disable no-await-in-loop */
+    for (const size of ["50", "100", "200"]) {
+      await page.setViewportSize({ width: 1000, height });
+      await page.goto("/card-test");
+      await page.evaluate((value) => localStorage.setItem("table-card-size-percent", value), size);
+      await mountTable(page, headsUp);
+      await page.locator(".seat.viewer .seat-cards").waitFor();
+      const geometry = await page.locator(".table-stage").evaluate((stage) => {
+        // Browser-evaluated helpers cannot close over test-scope functions.
+        // oxlint-disable-next-line unicorn/consistent-function-scoping
+        const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        // The middle of the table is what must stay clear: the board and the pot.
+        const centre = [...stage.querySelectorAll(".board .playing-card, .table-metrics")]
+          .map((node) => node.getBoundingClientRect());
+        const box = stage.getBoundingClientRect();
+        const cards = stage.querySelector(".seat.viewer .seat-cards").getBoundingClientRect();
+        const wager = stage.querySelector(".seat.viewer .seat-wager:not(.no-wager)")?.getBoundingClientRect();
+        return {
+          onCentre: centre.some((node) => overlaps(cards, node)),
+          escapes: cards.top < box.top - 1 || cards.bottom > box.bottom + 1,
+          width: Math.round(cards.width),
+          wagerOnCentre: wager ? centre.some((node) => overlaps(wager, node)) : false,
+        };
+      });
+      expect(geometry.onCentre, `D4: your cards must clear the board at ${height}px, ${size}%`).toBe(false);
+      expect(geometry.escapes, `D5: your cards must stay on the stage at ${height}px, ${size}%`).toBe(false);
+      expect(geometry.width, `D6: your cards must stay legible at ${height}px, ${size}%`).toBeGreaterThan(40);
+      expect(geometry.wagerOnCentre, `D7: your wager must clear the board at ${height}px, ${size}%`).toBe(false);
+    }
+    /* oxlint-enable no-await-in-loop */
+  }
+  await page.evaluate(() => localStorage.removeItem("table-card-size-percent"));
 });
 
 test("keeps the table log footprint stable as events accumulate", async ({ page }) => {

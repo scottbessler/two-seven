@@ -99,7 +99,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-shell>*{flex:0 0 auto}
 .tournament-panel{display:flex;align-items:center;justify-content:center;gap:1rem;color:var(--muted);font-size:.8rem}
 .tournament-panel b{color:var(--accent)}
-.table-stage{position:relative;flex:1 1 auto;width:100%;min-height:0;margin:0 auto}
+.table-stage{position:relative;flex:1 1 auto;width:100%;min-height:0;margin:0 auto;--viewer-card-w-fit:min(var(--viewer-card-w),max(2.9rem,calc(17.1vh - 100px)));--viewer-card-h-fit:min(var(--viewer-card-h),max(4rem,calc(24vh - 140px)))}
 .table-stage .felt{position:absolute;inset:15% 6% 13%;width:auto;min-height:0;max-width:none;margin:0;border-width:7px;border-radius:40px}
 .table-stage .table-center{top:50%;left:50%;width:72%;transform:translate(-50%,-50%)}
 .table-stage .board{align-items:center;gap:.38rem;min-height:7.25rem}
@@ -148,14 +148,14 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .seat-cards.revealed .playing-card{--card-w:min(3.2rem,7.5vh);--card-h:min(4.5rem,10.5vh);--corner-gap:.16rem}
 .seat-cards .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .seat-cards .playing-card:last-child{transform:rotate(3deg)}
-.seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w);--card-h:var(--viewer-card-h);--corner-gap:.16rem}
+.seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.16rem}
 .seat .playing-card.red,.seat .playing-card.red span,.seat .playing-card.red b{color:#d5291f!important}
 .seat .playing-card.black,.seat .playing-card.black span,.seat .playing-card.black b{color:#20231f!important}
 .seat.cards-above .seat-cards,.seat.viewer .seat-cards{top:auto;bottom:calc(100% - .15rem)}
 .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{z-index:30;transform:translateX(-50%) scale(1.35)}
 .seat.viewer .seat-cards:hover .playing-card:first-child,.seat.viewer .seat-cards:focus-within .playing-card:first-child{transform:rotate(-3deg)!important}
 .seat.viewer .seat-cards:hover .playing-card:last-child,.seat.viewer .seat-cards:focus-within .playing-card:last-child{transform:rotate(3deg)!important}
-.seat.viewer .seat-wager{left:50%;bottom:calc(100% + var(--viewer-card-h) + .25rem);z-index:31;transform:translateX(-50%)}
+.seat.viewer .seat-wager{left:auto;right:calc(100% + .4rem);top:50%;bottom:auto;z-index:31;transform:translateY(-50%)}
 .seat .state-role{border-color:#527d6c;color:var(--muted)}
 .seat .seat-wager{top:auto;bottom:calc(100% + .35rem);font-size:.68rem}
 .seat .seat-state{bottom:auto;top:calc(100% + 3.1rem)}
@@ -212,8 +212,8 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .card-config-dialog header{display:flex;align-items:center;justify-content:space-between}
 .card-config-dialog h2{margin:0;font-size:1.05rem}
 .card-config-dialog header button{width:2rem;height:2rem;padding:0;background:transparent;color:var(--muted);font-size:1.3rem}
-.card-config-preview{display:flex;justify-content:center;min-height:calc(var(--viewer-card-h) + .5rem);padding:.25rem 0}
-.table-stage .card-config-preview .playing-card{--card-w:var(--viewer-card-w);--card-h:var(--viewer-card-h);--corner-gap:.16rem;margin-left:-.2rem;border-radius:calc(var(--viewer-card-w)*.08)}
+.card-config-preview{display:flex;justify-content:center;min-height:calc(var(--viewer-card-h-fit) + .5rem);padding:.25rem 0}
+.table-stage .card-config-preview .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.16rem;margin-left:-.2rem;border-radius:calc(var(--viewer-card-w-fit)*.08)}
 .card-config-preview .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .card-config-preview .playing-card:last-child{transform:rotate(3deg)}
 .card-config-dialog label span{display:flex;justify-content:space-between;gap:1rem}
@@ -246,7 +246,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 }
 /* Phone-sized viewports run the table as a PWA shell: one frame that never
    scrolls, a plain board row, and a player rail that reflows into a grid. */
-@media (max-width:640px),(max-height:820px){
+@media (max-width:640px),(max-height:880px){
   html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
   .page:has(.table-shell){display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.35rem + env(safe-area-inset-top)) calc(.45rem + env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) calc(.45rem + env(safe-area-inset-left))}
