@@ -19,6 +19,7 @@ pub enum AccountOwner {
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum LedgerKind {
+    ReUp,
     BuyIn { table: Uuid },
     CashOut { table: Uuid },
     TournamentBuyIn { tournament: Uuid },
@@ -42,6 +43,8 @@ pub struct LedgerEntry {
 pub struct Account {
     pub owner: AccountOwner,
     pub balance: Cents,
+    #[serde(default)]
+    pub loan_count: u64,
     pub entries: Vec<LedgerEntry>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -55,9 +58,22 @@ pub struct BankStore {
     dir: PathBuf,
 }
 impl BankStore {
+    pub const RE_UP_AMOUNT: Cents = 100_000;
+    pub const RE_UP_THRESHOLD: Cents = 10_000;
+
     pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
         let dir = root.as_ref().join("bank");
         tokio::fs::create_dir_all(&dir).await?;
+        let marker = dir.join("bank-v2-non-debt.marker");
+        if tokio::fs::try_exists(&marker).await? == false {
+            let mut entries = tokio::fs::read_dir(&dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                if entry.path().extension().and_then(|x| x.to_str()) == Some("json") {
+                    let _ = tokio::fs::remove_file(entry.path()).await;
+                }
+            }
+            tokio::fs::write(&marker, b"legacy accounts wiped for non-debt bank\n").await?;
+        }
         let mut accounts = HashMap::new();
         let mut entries = tokio::fs::read_dir(&dir).await?;
         while let Some(entry) = entries.next_entry().await? {
@@ -82,6 +98,7 @@ impl BankStore {
                 Account {
                     owner: owner.clone(),
                     balance: 0,
+                    loan_count: 0,
                     entries: Vec::new(),
                     created_at: now,
                     updated_at: now,
@@ -107,6 +124,7 @@ impl BankStore {
                 Account {
                     owner: owner.clone(),
                     balance: 0,
+                    loan_count: 0,
                     entries: Vec::new(),
                     created_at: now,
                     updated_at: now,
@@ -114,6 +132,9 @@ impl BankStore {
             );
         }
         let account = guard.accounts.get_mut(&owner).expect("account");
+        if account.balance + delta < 0 {
+            return Err(anyhow::anyhow!("insufficient funds"));
+        }
         account.balance += delta;
         account.updated_at = Utc::now();
         account.entries.push(LedgerEntry {
@@ -133,7 +154,7 @@ impl BankStore {
         owner: AccountOwner,
         table: Uuid,
         amount: Cents,
-        no_debt: bool,
+        _no_debt: bool,
     ) -> Result<Account, anyhow::Error> {
         if !valid_game_amount(amount) {
             return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
@@ -146,28 +167,66 @@ impl BankStore {
                 Account {
                     owner: owner.clone(),
                     balance: 0,
+                    loan_count: 0,
                     entries: Vec::new(),
                     created_at: now,
                     updated_at: now,
                 },
             );
         }
-        if no_debt
-            && (guard.accounts[&owner].balance <= 0 || amount > guard.accounts[&owner].balance)
-        {
-            return Err(anyhow::anyhow!("insufficient funds for no-debt table"));
+        if matches!(owner, AccountOwner::Bot(_)) {
+            while guard.accounts[&owner].balance < amount {
+                Self::append_locked(
+                    guard.accounts.get_mut(&owner).expect("account"),
+                    LedgerKind::ReUp,
+                    Self::RE_UP_AMOUNT,
+                    "re-up loan".into(),
+                    true,
+                );
+            }
+        }
+        if amount > guard.accounts[&owner].balance {
+            return Err(anyhow::anyhow!("insufficient funds"));
         }
         let account = guard.accounts.get_mut(&owner).expect("account");
-        account.balance -= amount;
-        account.updated_at = Utc::now();
-        account.entries.push(LedgerEntry {
-            id: Uuid::new_v4(),
-            at: account.updated_at,
-            kind: LedgerKind::BuyIn { table },
-            delta: -amount,
-            balance_after: account.balance,
-            memo: "table buy-in".into(),
-        });
+        Self::append_locked(
+            account,
+            LedgerKind::BuyIn { table },
+            -amount,
+            "table buy-in".into(),
+            false,
+        );
+        let result = account.clone();
+        self.persist(&result).await?;
+        Ok(result)
+    }
+    pub async fn re_up(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
+        let mut guard = self.inner.lock().await;
+        if !guard.accounts.contains_key(&owner) {
+            let now = Utc::now();
+            guard.accounts.insert(
+                owner.clone(),
+                Account {
+                    owner: owner.clone(),
+                    balance: 0,
+                    loan_count: 0,
+                    entries: Vec::new(),
+                    created_at: now,
+                    updated_at: now,
+                },
+            );
+        }
+        if guard.accounts[&owner].balance >= Self::RE_UP_THRESHOLD {
+            return Err(anyhow::anyhow!("re-up is only available below $100"));
+        }
+        let account = guard.accounts.get_mut(&owner).expect("account");
+        Self::append_locked(
+            account,
+            LedgerKind::ReUp,
+            Self::RE_UP_AMOUNT,
+            "re-up loan".into(),
+            true,
+        );
         let result = account.clone();
         self.persist(&result).await?;
         Ok(result)
@@ -265,6 +324,27 @@ impl BankStore {
         tokio::fs::rename(tmp, path).await?;
         Ok(())
     }
+    fn append_locked(
+        account: &mut Account,
+        kind: LedgerKind,
+        delta: Cents,
+        memo: String,
+        loan: bool,
+    ) {
+        account.balance += delta;
+        account.updated_at = Utc::now();
+        if loan {
+            account.loan_count += 1;
+        }
+        account.entries.push(LedgerEntry {
+            id: Uuid::new_v4(),
+            at: account.updated_at,
+            kind,
+            delta,
+            balance_after: account.balance,
+            memo,
+        });
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -293,7 +373,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn game_entry_cap_is_per_transaction_not_cumulative_debt() {
+    async fn game_entries_never_create_debt() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
         let owner = AccountOwner::User(Uuid::new_v4());
         assert!(
@@ -301,13 +381,58 @@ mod tests {
                 .await
                 .is_err()
         );
-        bank.buy_in(owner.clone(), Uuid::new_v4(), 1_000_000, false)
+        assert!(
+            bank.buy_in(owner.clone(), Uuid::new_v4(), 100, false)
+                .await
+                .is_err()
+        );
+        bank.re_up(owner.clone()).await.unwrap();
+        bank.buy_in(owner.clone(), Uuid::new_v4(), 100_000, false)
             .await
             .unwrap();
-        bank.buy_in(owner.clone(), Uuid::new_v4(), 1_000_000, false)
+        assert_eq!(bank.account(owner).await.unwrap().balance, 0);
+    }
+
+    #[tokio::test]
+    async fn re_up_requires_low_balance_and_tracks_shame() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        let account = bank.re_up(owner.clone()).await.unwrap();
+        assert_eq!(account.balance, BankStore::RE_UP_AMOUNT);
+        assert_eq!(account.loan_count, 1);
+        assert!(bank.re_up(owner).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn bot_buy_ins_auto_re_up_without_debt() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::Bot(BotKind::Fish);
+        let account = bank
+            .buy_in(owner, Uuid::new_v4(), 100, false)
             .await
             .unwrap();
-        assert_eq!(bank.account(owner).await.unwrap().balance, -2_000_000);
+        assert_eq!(account.balance, BankStore::RE_UP_AMOUNT - 100);
+        assert_eq!(account.loan_count, 1);
+    }
+
+    #[tokio::test]
+    async fn legacy_accounts_are_wiped_once() {
+        let dir = tempfile_dir();
+        let bank_dir = dir.join("bank");
+        tokio::fs::create_dir_all(&bank_dir).await.unwrap();
+        tokio::fs::write(
+            bank_dir.join("user-00000000-0000-0000-0000-000000000000.json"),
+            br#"{"legacy":true}"#,
+        )
+        .await
+        .unwrap();
+        let bank = BankStore::load(&dir).await.unwrap();
+        let owner = AccountOwner::User(Uuid::nil());
+        assert_eq!(bank.account(owner.clone()).await.unwrap().balance, 0);
+        assert!(bank_dir.join("bank-v2-non-debt.marker").exists());
+        drop(bank);
+        let loaded = BankStore::load(&dir).await.unwrap();
+        assert!(loaded.account(owner).await.unwrap().entries.is_empty());
     }
 
     #[tokio::test]
@@ -345,7 +470,7 @@ mod tests {
 mod no_debt_tests {
     use super::*;
     #[tokio::test]
-    async fn no_debt_requires_positive_balance_and_covers_buy_in() {
+    async fn buy_in_requires_balance_even_when_no_debt_flag_is_false() {
         let bank = BankStore::load(
             std::env::temp_dir().join(format!("two-seven-no-debt-{}", Uuid::new_v4())),
         )
@@ -353,7 +478,7 @@ mod no_debt_tests {
         .unwrap();
         let owner = AccountOwner::User(Uuid::new_v4());
         assert!(
-            bank.buy_in(owner.clone(), Uuid::new_v4(), 1, true)
+            bank.buy_in(owner.clone(), Uuid::new_v4(), 1, false)
                 .await
                 .is_err()
         );

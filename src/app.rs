@@ -107,7 +107,10 @@ pub fn router(s: AppState) -> Router {
             axum::routing::post(routes::rebuy_table),
         )
         .route("/tables/{id}/bot", axum::routing::post(routes::bot_table))
-        .route("/api/bank", get(routes::bank_state))
+        .route(
+            "/api/bank",
+            get(routes::bank_state).post(routes::bank_re_up),
+        )
         .route(
             "/auth/register/begin",
             axum::routing::post(auth::register_begin),

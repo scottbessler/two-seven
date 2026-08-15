@@ -18,11 +18,11 @@ Goals
 - Real multiplayer Hold'em: several humans at one table, live updates, no page reloads.
 - Bots with visibly different playing styles and difficulty levels, so a table is
   always playable solo.
-- Cash tables in three flavours: **limit**, **no-limit**, and **"no-debt"**
-  variants of either (see §4 Bank).
+- Cash tables in two flavours: **limit** and **no-limit** (see §4 Bank).
 - Tournaments (single table first).
-- A persistent **bank**: every player (and every bot type) has an account. Buying
-  in may push a normal account negative (debt); no-debt tables refuse that.
+- A persistent **bank**: every player (and every bot type) has an account.
+  Accounts never go negative; users may re-up $1,000 only while below $100, and
+  loan count is shown as a badge of shame.
 - Variant-agnostic plumbing: tables/bank/bots/tournaments should not assume
   Hold'em, so Omaha / 2-7 triple draw can be added later.
 
@@ -63,21 +63,22 @@ Environment variables: `PORT` (8080), `DATA_PATH` (`data`), `RP_ID`,
 ## 4. Bank
 
 ```
-Account { owner: AccountOwner, balance: Cents, entries: Vec<LedgerEntry>, created_at, updated_at }
+Account { owner: AccountOwner, balance: Cents, loan_count: u64, entries: Vec<LedgerEntry>, created_at, updated_at }
 AccountOwner = User(Uuid) | Bot(BotKind)     // one shared account per bot kind
 LedgerEntry  { id, at, kind, delta: Cents, balance_after: Cents, memo }
-LedgerKind   = BuyIn{table} | CashOut{table} | TournamentBuyIn{tournament}
+LedgerKind   = ReUp | BuyIn{table} | CashOut{table} | TournamentBuyIn{tournament}
              | TournamentPrize{tournament} | Adjustment
 ```
 
 Rules
 
 - A new user's account starts at **$0**. Bot accounts are created lazily, also at $0.
-- A normal buy-in may take the balance negative — that is the "going into debt"
-  path and it is the default; each gameplay buy-in, entry, or wager ≤ $10,000.
-- **No-debt tables** (`no_debt: true`, available for both limit and no-limit):
-  a player may only sit down if their balance is `> 0`, and the buy-in must be
-  `<= balance`. Rebuys at the table obey the same rule.
+- Every debit must leave the account balance ≥ $0; each gameplay buy-in, entry,
+  or wager ≤ $10,000.
+- A signed-in user may re-up $1,000 when their balance is < $100. Each re-up
+  appends a `ReUp` ledger entry and increments `loan_count`.
+- Bot buy-ins auto re-up as needed so cash tables remain fillable.
+- Legacy bank account JSON is wiped once on the non-debt bank migration.
 - Cash-out returns the seat's remaining stack to the account.
 - The bank is the settlement layer: chips only enter play through a `BuyIn` and
   only leave through a `CashOut`/prize, so `sum(balances) + sum(chips in play)`
@@ -85,9 +86,9 @@ Rules
 - Every account's `balance` must equal the sum of its ledger deltas (§V2).
 
 UI: the header shows the signed-in user's balance next to their username, with a
-coin icon; hovering/tapping it opens a small panel with the current balance and
-the most recent ledger deltas. Seat labels at a table show the seat owner's bank
-balance the same way (bots included).
+coin icon; hovering/tapping it opens a small panel with the current balance, loan
+count badge, re-up action, and the most recent ledger deltas. Seat labels at a
+table show the seat owner's bank balance the same way (bots included).
 
 ## 5. Hold'em rules implemented
 
@@ -255,7 +256,8 @@ Mark each milestone done here as it lands.
   nor any undealt card; bots consume the same projection.
 - **V4** Pot distribution pays out exactly the pot: the sum of awards equals the
   sum of contributions, for any all-in/side-pot configuration.
-- **V5** No-debt tables never allow an account below zero.
+- **V5** Bank accounts never go below zero; user re-up is only allowed below
+  $100 and increments `loan_count`.
 - **V6** Every reachable hand state has at least one legal action for the player
   on turn, and the engine rejects any action not in that set.
 - **V7** The shared card face renders all 52 cards with bold corner ranks,
@@ -265,7 +267,7 @@ Mark each milestone done here as it lands.
   wrapping all 13 cards within its visible width; no suit row scrolls horizontally.
 - **V9** ∀ positive configured stake, blind, ante, buy-in, entry fee, or wager ≥ 100 cents.
 - **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 1,000,000 cents;
-  cumulative account debt remains unbounded.
+  cumulative `loan_count` remains unbounded.
 - **V11** `TableView` exposes redacted action events + per-seat hand state; UI shows
   current actor, dealer, blinds, street wager, folded/all-in state, and recent log.
 - **V12** Every cash table has one fixed buy-in; human joins, bot seats, and rebuys

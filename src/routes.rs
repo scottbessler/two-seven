@@ -1173,3 +1173,15 @@ pub async fn bank_state(
         .map(Json)
         .map_err(AppError::internal)
 }
+
+pub async fn bank_re_up(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(_input): Json<EmptyRequest>,
+) -> Result<Json<crate::bank::Account>, AppError> {
+    s.bank
+        .re_up(AccountOwner::User(user))
+        .await
+        .map(Json)
+        .map_err(|_| AppError::bad_request("re-up is only available below $100"))
+}

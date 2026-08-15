@@ -330,6 +330,7 @@ async fn hand_blitz_start_charges_buy_in_and_correct_answer_pays() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, id);
+    t.bank.re_up(AccountOwner::User(id)).await.unwrap();
     let initial_entries = t
         .bank
         .account(AccountOwner::User(id))
@@ -460,6 +461,7 @@ async fn blackjack_start_charges_bet_and_stand_finishes_game() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, id);
+    t.bank.re_up(AccountOwner::User(id)).await.unwrap();
     let start = t
         .router
         .clone()
@@ -530,6 +532,9 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     }
     let cookie_a = cookie(&t.key, alice);
     let cookie_b = cookie(&t.key, bob);
+    for user in [alice, bob] {
+        t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    }
     let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_a).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Test","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"max_seats":2,"buy_in":10000}"#)).unwrap()).await.unwrap();
     assert_eq!(create.status(), StatusCode::OK);
     let body = to_bytes(create.into_body(), usize::MAX).await.unwrap();
@@ -726,8 +731,8 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         .unwrap();
     let account: serde_json::Value =
         serde_json::from_slice(&to_bytes(account.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(account["balance"], -100);
-    assert_eq!(account["entries"].as_array().unwrap().len(), 2);
+    assert_eq!(account["balance"], 99_900);
+    assert_eq!(account["entries"].as_array().unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -746,6 +751,7 @@ async fn tournament_registration_uses_configured_buy_in_and_first_open_seat() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tournaments").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Sit and Go","buy_in":5000,"seat_count":2,"starting_chips":20000,"levels":[{"small_blind":100,"big_blind":200,"ante":0,"hands":10}],"payout_percentages":[100]}"#)).unwrap()).await.unwrap();
     assert_eq!(create.status(), StatusCode::OK);
     let id: Uuid = serde_json::from_slice::<serde_json::Value>(
@@ -793,12 +799,12 @@ async fn tournament_registration_uses_configured_buy_in_and_first_open_seat() {
             .await
             .unwrap()
             .balance,
-        -5_000
+        95_000
     );
 }
 
 #[tokio::test]
-async fn no_debt_cash_bot_rebuy_is_rejected() {
+async fn cash_bot_buy_in_auto_re_ups_without_debt() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -850,9 +856,14 @@ async fn no_debt_cash_bot_rebuy_is_rejected() {
         )
         .await
         .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("insufficient funds"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let account = t
+        .bank
+        .account(AccountOwner::Bot(two_seven::table::BotKind::Fish))
+        .await
+        .unwrap();
+    assert_eq!(account.balance, 90_000);
+    assert_eq!(account.loan_count, 1);
 }
 
 #[tokio::test]
@@ -912,6 +923,7 @@ async fn blackjack_rejected_actions_leave_ledger_untouched() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let response = t
         .router
         .clone()
@@ -984,6 +996,7 @@ async fn blackjack_start_rejects_live_game_and_resume_returns_it() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let mut live = None;
     for _ in 0..20 {
         let response = t

@@ -44,7 +44,7 @@ fn layout_with_context(title: &str, body: &str, head: &str, context: Option<&str
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<button class="bank-widget" type="button" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></button></header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<div class="bank-widget" role="button" tabindex="0" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></div></header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
         escape(title),
         asset("/public/manifest.webmanifest"),
         asset("/public/icon.svg"),
@@ -81,7 +81,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Start a game</a></p><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
                 escape(&name)
             ),
             "",
@@ -190,7 +190,7 @@ fn game_create() -> String {
             )
         ),
     );
-    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name the game</legend><p class="setup-summary" id="setup-summary"></p><label>Game name<input name="name" required maxlength="48" placeholder="Friday night"></label><label class="setup-debt"><input type="checkbox" name="no_debt"> Require available balance</label><button class="setup-create" type="submit">Create game</button></fieldset>"#;
+    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name the game</legend><p class="setup-summary" id="setup-summary"></p><label>Game name<input name="name" required maxlength="48" placeholder="Friday night"></label><button class="setup-create" type="submit">Create game</button></fieldset>"#;
     let body = format!(
         r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form"><header><h2 id="setup-title">Start a game</h2><a class="setup-close" href="/tables" aria-label="Cancel">×</a></header>{format_step}{betting_step}{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
         lobby = asset("/public/lobby.js")
