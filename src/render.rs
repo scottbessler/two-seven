@@ -371,20 +371,15 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
         let is_yours = table.your_seat.is_some();
         let tournament = if let Some(tournament) = &table.tournament {
             format!(
-                "Tournament · buy-in {} · {} · {}",
+                "Tournament · buy-in {} · {} · {}/{} seats",
                 format_cents(tournament.buy_in),
-                if tournament.finished {
-                    "finished"
-                } else if tournament.registered == tournament.seat_count {
+                if tournament.registered == tournament.seat_count {
                     "running"
                 } else {
                     "registering"
                 },
-                if tournament.paid_out {
-                    "paid out".to_string()
-                } else {
-                    format!("{}/{} seats", tournament.registered, tournament.seat_count)
-                }
+                tournament.registered,
+                tournament.seat_count
             )
         } else {
             format!(

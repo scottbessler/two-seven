@@ -65,7 +65,7 @@ impl BankStore {
         let dir = root.as_ref().join("bank");
         tokio::fs::create_dir_all(&dir).await?;
         let marker = dir.join("bank-v2-non-debt.marker");
-        if tokio::fs::try_exists(&marker).await? == false {
+        if !tokio::fs::try_exists(&marker).await? {
             let mut entries = tokio::fs::read_dir(&dir).await?;
             while let Some(entry) = entries.next_entry().await? {
                 if entry.path().extension().and_then(|x| x.to_str()) == Some("json") {

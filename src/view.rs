@@ -80,8 +80,6 @@ pub struct LobbyTournamentView {
     pub buy_in: Cents,
     pub registered: usize,
     pub seat_count: usize,
-    pub finished: bool,
-    pub paid_out: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

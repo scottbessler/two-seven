@@ -23,6 +23,7 @@ struct T {
     key: Key,
     users: Arc<UserStore>,
     bank: BankStore,
+    tables: two_seven::store::TableStore,
 }
 async fn appx() -> T {
     let dir = std::env::temp_dir().join(format!(
@@ -36,6 +37,7 @@ async fn appx() -> T {
     let bank = two_seven::bank::BankStore::load(&dir).await.unwrap();
     let blitz = two_seven::blitz::BlitzStore::load(&dir).await.unwrap();
     let tables = two_seven::store::TableStore::load(&dir).await.unwrap();
+    let table_store = tables.clone();
     let key = Key::generate();
     let state = app::AppState {
         users: users.clone(),
@@ -54,6 +56,7 @@ async fn appx() -> T {
         key,
         users,
         bank,
+        tables: table_store,
     }
 }
 fn cookie(key: &Key, id: Uuid) -> String {
@@ -205,6 +208,80 @@ async fn game_setup_walks_a_stepped_dialog() {
     assert!(html.contains("data-choice=\"players\""));
     assert!(html.contains("quick-game-form"));
     assert!(html.contains("id=\"game-setup\""));
+}
+
+#[tokio::test]
+async fn the_lobby_drops_a_finished_tournament() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "lobby".into(),
+            display_name: "Lobby".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let create = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tournaments")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"name":"Last night","buy_in":50000,"seat_count":2,"starting_chips":1000000,"levels":[{"small_blind":10000,"big_blind":20000,"ante":0,"hands":4}],"payout_percentages":[100]}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
+
+    let lobby = |router: Router, cookie_value: String| async move {
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/tables")
+                    .header(header::COOKIE, cookie_value)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+            .into_owned()
+    };
+    assert!(
+        lobby(t.router.clone(), cookie_value.clone())
+            .await
+            .contains("Last night")
+    );
+
+    t.tables
+        .update(id, |table| {
+            if let two_seven::table::TableMode::Tournament(state) = &mut table.mode {
+                state.finished = true;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+    assert!(
+        !lobby(t.router.clone(), cookie_value)
+            .await
+            .contains("Last night"),
+        "a finished tournament must drop out of the lobby"
+    );
 }
 
 #[tokio::test]

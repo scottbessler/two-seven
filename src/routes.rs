@@ -511,13 +511,15 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
     for id in state.tables.ids().await {
         if let Some(table) = state.tables.get(id).await {
             let table = table.lock().await;
+            // A finished tournament has nothing left to join or watch.
+            if matches!(&table.mode, TableMode::Tournament(state) if state.finished) {
+                continue;
+            }
             let tournament = match &table.mode {
                 TableMode::Tournament(state) => Some(LobbyTournamentView {
                     buy_in: state.config.buy_in,
                     registered: state.registered,
                     seat_count: state.config.seat_count,
-                    finished: state.finished,
-                    paid_out: state.paid_out,
                 }),
                 TableMode::Cash { .. } => None,
             };
