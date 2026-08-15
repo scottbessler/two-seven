@@ -184,6 +184,8 @@ function ShowdownAdvance({ deadline, duration, canContinue, refresh }) {
   }}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
 }
 
+const forfeitDialog = () => document.getElementById("forfeit-entry");
+
 function TableCommand({ state, openSeats, refresh }) {
   const viewer = state.viewer_seat == null
     ? null
@@ -217,6 +219,22 @@ function TableCommand({ state, openSeats, refresh }) {
     if (response.ok) refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
   };
+  // Walking out of a tournament is not a cash-out: the entry is gone, so ask first.
+  if (state.tournament && endpoint === `/tables/${tableId}/leave`) {
+    return html`<span class="table-command-confirm">
+      <button class="table-command" type="button" onClick=${() => forfeitDialog()?.showModal()}>${label}</button>
+      <dialog id="forfeit-entry" class="confirm-dialog">
+        <form method="dialog">
+          <header><h2>Leave the tournament?</h2></header>
+          <p>You forfeit your entry. The ${money(state.buy_in)} buy-in stays in the prize pool, your chips leave the table, and you finish in your current place.</p>
+          <footer>
+            <button type="submit" value="stay">Keep playing</button>
+            <button class="danger" type="button" onClick=${() => { forfeitDialog()?.close(); submit(); }}>Forfeit and leave</button>
+          </footer>
+        </form>
+      </dialog>
+    </span>`;
+  }
   return html`<button class="table-command" type="button" disabled=${disabled} onClick=${submit}>${label}</button>`;
 }
 

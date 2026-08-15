@@ -380,6 +380,42 @@ test("keeps the table log footprint stable as events accumulate", async ({ page 
   expect(dense.scrolls, "V22: excess table events must scroll inside the fixed log").toBe(true);
 });
 
+test("makes leaving a tournament a deliberate forfeit", async ({ page }) => {
+  let left = 0;
+  await page.route("**/tables/mock/leave", async (route) => {
+    left += 1;
+    await route.fulfill({ json: { ok: true } });
+  });
+
+  // A cash table pays you out, so leaving stays one click.
+  await mountTable(page, tableState);
+  await page.locator(".table-controls .table-command").click();
+  await expect.poll(() => left).toBe(1);
+  await expect(page.locator(".confirm-dialog")).toHaveCount(0);
+
+  const tournament = {
+    ...tableState,
+    buy_in: 50_000,
+    tournament: { level: 1, small_blind: 100, big_blind: 200, ante: 0, hands_at_level: 3, hands_per_level: 12, started: true, finished: false, registered: 6, seat_count: 6 },
+  };
+  await mountTable(page, tournament);
+  await page.locator(".table-controls .table-command").click();
+  const confirm = page.locator(".confirm-dialog");
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toContainText("You forfeit your entry");
+  await expect(confirm).toContainText("$500 buy-in stays in the prize pool");
+
+  // Backing out leaves the seat alone.
+  await page.getByRole("button", { name: "Keep playing" }).click();
+  await expect(confirm).not.toBeVisible();
+  expect(left, "declining must not leave the table").toBe(1);
+
+  await page.locator(".table-controls .table-command").click();
+  await page.getByRole("button", { name: "Forfeit and leave" }).click();
+  await expect(confirm).not.toBeVisible();
+  await expect.poll(() => left).toBe(2);
+});
+
 test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);

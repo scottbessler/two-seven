@@ -141,12 +141,19 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-controls .seat-bot{display:contents}
 .table-controls button{white-space:nowrap}
 .seat-bot-dialog button[type=submit]{background:var(--accent);color:#1a160d}
+.table-controls .table-command-confirm{display:contents}
+.confirm-dialog form{gap:.9rem;margin:0;padding:1rem;text-align:left}
+.confirm-dialog h2{margin:0;font-size:1.05rem}
+.confirm-dialog p{margin:0;color:var(--muted);line-height:1.45}
+.confirm-dialog footer{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.5rem}
+.confirm-dialog footer button{background:#10241f;color:var(--muted)}
+.confirm-dialog footer button.danger{background:var(--danger);color:#fff}
 .seat-bot-dialog form{gap:.8rem;margin:0;padding:1rem}
 .seat-bot-dialog header{display:flex;align-items:center;justify-content:space-between}
 .seat-bot-dialog h2{margin:0;font-size:1.05rem}
 .seat-bot-dialog header button{width:2rem;height:2rem;padding:0;background:transparent;color:var(--muted);font-size:1.3rem}
-.card-config-dialog,.seat-bot-dialog{width:min(28rem,calc(100vw - 2rem));padding:0;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--ink);box-shadow:0 18px 60px #000c}
-.card-config-dialog::backdrop,.seat-bot-dialog::backdrop{background:#06100dcc}
+.card-config-dialog,.seat-bot-dialog,.confirm-dialog{width:min(28rem,calc(100vw - 2rem));padding:0;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--ink);box-shadow:0 18px 60px #000c}
+.card-config-dialog::backdrop,.seat-bot-dialog::backdrop,.confirm-dialog::backdrop{background:#06100dcc}
 .card-config-dialog form{gap:1rem;margin:0;padding:1rem}
 .card-config-dialog header{display:flex;align-items:center;justify-content:space-between}
 .card-config-dialog h2{margin:0;font-size:1.05rem}
