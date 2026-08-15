@@ -365,6 +365,51 @@ test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page 
   expect(tooltipBox.y + tooltipBox.height, "V20: narrow top-rail tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
 });
 
+test("keeps seats clear of the board in a short desktop window", async ({ page }) => {
+  // Everyone's cards face up is the worst case for collisions.
+  const showdownFour = {
+    ...showdownState,
+    viewer_seat: null,
+    seats: showdownState.seats.map((seat, index) =>
+      index < 4 ? seat : { ...seat, occupant: "empty", display_name: null }),
+    last_hand: {
+      ...showdownState.last_hand,
+      revealed_hole_cards: [[0, ["Kh", "Qh"]], [1, ["Ac", "Ad"]], [2, ["7h", "Td"]], [3, ["2c", "4s"]]],
+    },
+  };
+  // Each pass resizes and re-mounts, so these have to run in order.
+  // oxlint-disable-next-line no-await-in-loop
+  for (const height of [700, 900, 1200]) {
+    /* oxlint-disable no-await-in-loop */
+    await page.setViewportSize({ width: 1000, height });
+    await mountTable(page, showdownFour);
+    await expect(page.locator(".seat")).toHaveCount(4);
+    const geometry = await page.locator(".table-stage").evaluate((stage) => {
+      // Browser-evaluated helpers cannot close over test-scope functions.
+      // oxlint-disable-next-line unicorn/consistent-function-scoping
+      const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const middle = [...stage.querySelectorAll(".board .playing-card, .table-metrics, .showdown-result")]
+        .map((node) => node.getBoundingClientRect());
+      const rail = [...stage.querySelectorAll(".seat, .seat-cards")];
+      const box = stage.getBoundingClientRect();
+      return {
+        onBoard: rail.filter((node) => middle.some((card) => overlaps(node.getBoundingClientRect(), card))).length,
+        escaping: rail.filter((node) => {
+          const rect = node.getBoundingClientRect();
+          return rect.bottom > box.bottom + 1 || rect.top < box.top - 1;
+        }).length,
+      };
+    });
+    expect(geometry.onBoard, `D1: seats must clear the board at ${height}px`).toBe(0);
+    expect(geometry.escaping, `D2: no seat may hang off the stage at ${height}px`).toBe(0);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight),
+      `D3: the table must fit a ${height}px window`,
+    ).toBe(true);
+    /* oxlint-enable no-await-in-loop */
+  }
+});
+
 test("keeps the table log footprint stable as events accumulate", async ({ page }) => {
   await mountTable(page, tableState);
   const log = page.locator(".game-log");
@@ -556,6 +601,8 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
 test("runs an all-in board out one street at a time", async ({ page }) => {
   const allIn = {
     ...showdownState,
+    // Seat 1 has already been paid the $400 pot, the way a settled hand leaves it.
+    seats: showdownState.seats.map((seat) => (seat.index === 1 ? { ...seat, stack: 62_400 } : seat)),
     result_pause_seconds: 21,
     next_hand_at: new Date(Date.now() + 21_000).toISOString(),
     last_hand: {
@@ -582,6 +629,9 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   // The reveal is not optional: there is nothing to press until it finishes.
   await expect(page.locator(".showdown-advance button")).toHaveCount(0);
   await expect(page.locator(".showdown-advance.spectator")).toBeVisible();
+  // Nor may a balance settle early; Mina takes $400 only once the river lands.
+  const mina = page.locator(".seat", { hasText: "Mina" }).locator(".seat-stack");
+  await expect(mina).toHaveText("$224");
 
   // Each street lands five seconds apart, and the leader is called out.
   await page.clock.install();
@@ -601,8 +651,9 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   await expect(result).toContainText("Mina wins $400");
   await expect(page.locator(".seat.winner")).toHaveCount(1);
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
-  // Once the last card is down, the acknowledgement returns.
+  // Once the last card is down, the acknowledgement and the pot both land.
   await expect(page.locator(".showdown-advance button")).toHaveCount(1);
+  await expect(mina).toHaveText("$624");
 });
 
 test("uses the short acknowledgement window for a fold result", async ({ page }) => {

@@ -71,7 +71,11 @@ function seatPosition(order, total) {
 
 function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown, leading, settled }) {
   const position = seatPosition(order, total);
-  const tooltipBelow = Number.parseFloat(position["--seat-top"]) < 35;
+  const seatTop = Number.parseFloat(position["--seat-top"]);
+  const tooltipBelow = seatTop < 35;
+  // Cards hang toward the middle of the table; hanging outward would push a
+  // bottom seat's hand off the stage entirely.
+  const cardsAbove = seatTop > 55;
   const positionLeft = Number.parseFloat(position["--seat-left"]);
   const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
   const label = seat.display_name || seat.occupant;
@@ -79,14 +83,20 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
   // While a board is still running out, nobody has won anything yet.
-  const winner = settled && showdown?.awards?.some((award) => award.seat === seat.index);
-  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
+  const awarded = showdown?.awards
+    ?.filter((award) => award.seat === seat.index)
+    .reduce((sum, award) => sum + award.amount, 0) || 0;
+  // Stacks settle when the hand does. Until the last card is down they read as
+  // they did before the pot moved, or the balance gives the result away.
+  const stack = (player?.stack ?? seat.stack) - (settled ? 0 : awarded);
+  const winner = settled && awarded > 0;
+  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", cardsAbove && "cards-above", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position} data-seat-order=${order}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
-      <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
+      <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
-    <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
+    <span class="seat-stack">${money(stack)}</span>
     <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     <span class=${`seat-wager ${player?.street_contribution > 0 ? "" : "no-wager"}`}>${money(player?.street_contribution || 0)}</span>
     ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
