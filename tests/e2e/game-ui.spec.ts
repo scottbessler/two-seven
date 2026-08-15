@@ -479,6 +479,35 @@ test("makes leaving a tournament a deliberate forfeit", async ({ page }) => {
   await expect.poll(() => left).toBe(2);
 });
 
+test("offers a seat at a table the house has filled", async ({ page }) => {
+  // Every seat taken by the house, nobody sitting down.
+  const houseTable = {
+    ...tableState,
+    viewer_seat: null,
+    hand: null,
+    can_deal: true,
+    seats: tableState.seats.map((seat, index) => Object.assign({}, seat, {
+      occupant: `Bot ${index}`,
+      bot: true,
+      display_name: `Bot ${index}`,
+    })),
+  };
+  await mountTable(page, houseTable);
+  // A full table of house players is still a table you can join.
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
+  // And it waits to be asked before it plays.
+  await expect(page.getByRole("button", { name: "Deal a hand" })).toBeVisible();
+
+  // A table full of people has no room, and offers nothing.
+  const packed = {
+    ...houseTable,
+    can_deal: false,
+    seats: houseTable.seats.map((seat) => Object.assign({}, seat, { occupant: "human", bot: false })),
+  };
+  await mountTable(page, packed);
+  await expect(page.locator(".table-controls .table-command")).toHaveCount(0);
+});
+
 test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);

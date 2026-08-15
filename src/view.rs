@@ -13,6 +13,8 @@ pub struct SeatView {
     pub index: usize,
     pub stack: Cents,
     pub occupant: String,
+    /// True when the house is sitting here, which a person may take over.
+    pub bot: bool,
     pub display_name: Option<String>,
     pub sitting_out: bool,
     pub hole_cards: Option<Vec<Card>>,
@@ -139,6 +141,7 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             index: player.seat,
             stack: player.stack,
             occupant: format!("seat {}", player.seat),
+            bot: false,
             display_name: None,
             sitting_out: false,
             hole_cards: viewer
@@ -296,6 +299,7 @@ fn seat_view(
                 crate::table::Bot::new(kind, seat).name().to_string()
             }
         },
+        bot: seat.occupant.as_bot().is_some(),
         display_name: display_name.cloned(),
         sitting_out: seat.sitting_out,
         hole_cards: None,

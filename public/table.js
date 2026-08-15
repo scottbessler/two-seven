@@ -226,6 +226,10 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
 const forfeitDialog = () => document.getElementById("forfeit-entry");
 
 function TableCommand({ state, openSeats, refresh }) {
+  // A table full of house players still has room: you take one of their seats.
+  const seatsForYou = state.tournament
+    ? openSeats
+    : [...openSeats, ...state.seats.filter((seat) => seat.bot)];
   const viewer = state.viewer_seat == null
     ? null
     : state.seats.find((seat) => seat.index === state.viewer_seat);
@@ -241,7 +245,7 @@ function TableCommand({ state, openSeats, refresh }) {
   } else if (viewer) {
     label = "Leave";
     endpoint = `/tables/${tableId}/leave`;
-  } else if (openSeats.length > 0 && (!state.tournament || (!state.tournament.started && !state.tournament.finished))) {
+  } else if (seatsForYou.length > 0 && (!state.tournament || (!state.tournament.started && !state.tournament.finished))) {
     label = `Buy In ${money(state.buy_in)}`;
     endpoint = state.tournament
       ? `/tournaments/${tableId}/register`
