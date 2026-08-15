@@ -51,6 +51,16 @@ impl TableStore {
         let _ = self.changed.send(id);
         Ok(id)
     }
+    /// Forget a table entirely, file and all.
+    pub async fn remove(&self, id: Uuid) -> Result<(), anyhow::Error> {
+        self.tables.lock().await.remove(&id);
+        let path = self.dir.join(format!("{id}.json"));
+        if tokio::fs::try_exists(&path).await? {
+            tokio::fs::remove_file(path).await?;
+        }
+        let _ = self.changed.send(id);
+        Ok(())
+    }
     pub async fn update<F>(&self, id: Uuid, f: F) -> Result<(), anyhow::Error>
     where
         F: FnOnce(&mut Table) -> Result<(), anyhow::Error>,

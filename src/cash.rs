@@ -147,7 +147,11 @@ pub fn house_bot(table: &Table, tier: usize, seat: usize) -> Option<Bot> {
                     .any(|seat| seat.occupant.as_bot() == Some(*bot))
             })
     };
-    free(kind).or_else(|| order.iter().copied().find_map(free))
+    // Five regulars per kind but six seats, so an all-shark table has to take
+    // somebody else for the last chair rather than sit a seat short forever.
+    free(kind)
+        .or_else(|| order.iter().copied().find_map(free))
+        .or_else(|| BotKind::ALL.into_iter().find_map(free))
 }
 
 /// The first empty seat, or a bot's seat when a human needs one and the table
@@ -213,6 +217,26 @@ mod tests {
                 >= 3,
             "the cheapest table is mostly fish: {cheapest:?}"
         );
+    }
+
+    #[test]
+    fn every_tier_can_fill_all_six_seats() {
+        // The dearest tables want only sharks, and there are five of them.
+        for tier in 0..TIERS.len() {
+            let mut table = table(tier);
+            for seat in 0..SEATS {
+                let bot = house_bot(&table, tier, seat)
+                    .unwrap_or_else(|| panic!("tier {tier} seat {seat} found nobody"));
+                table.seats[seat].occupant = SeatOccupant::bot(bot);
+            }
+            assert!(
+                table
+                    .seats
+                    .iter()
+                    .all(|seat| seat.occupant.as_bot().is_some()),
+                "tier {tier} should fill"
+            );
+        }
     }
 
     #[test]

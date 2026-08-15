@@ -200,6 +200,7 @@ pub async fn run() -> Result<()> {
         key: load_key(),
         passkey_disabled: env_flag("PASSKEY_DISABLED"),
     };
+    driver::retire_custom_cash_tables(&state).await?;
     driver::ensure_cash_ladder(&state).await?;
     driver::spawn(state.clone());
     let app = router(state);

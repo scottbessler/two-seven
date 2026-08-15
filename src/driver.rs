@@ -114,6 +114,47 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
     Ok(())
 }
 
+/// Cash tables built by hand before the ladder existed have nowhere to belong,
+/// so they are paid out and retired at startup. Tournaments are still made by
+/// players and are left alone.
+pub async fn retire_custom_cash_tables(state: &AppState) -> Result<(), anyhow::Error> {
+    for id in state.tables.ids().await {
+        let Some(table) = state.tables.get(id).await else {
+            continue;
+        };
+        let stacks = {
+            let table = table.lock().await;
+            if table.cash_tier.is_some()
+                || !matches!(table.mode, crate::table::TableMode::Cash { .. })
+            {
+                continue;
+            }
+            table
+                .seats
+                .iter()
+                .filter(|seat| seat.stack > 0)
+                .map(|seat| (seat.occupant.clone(), seat.stack))
+                .collect::<Vec<_>>()
+        };
+        // Nobody loses chips to the clear-out.
+        for (occupant, stack) in stacks {
+            let owner = match occupant {
+                SeatOccupant::Human { user_id } => AccountOwner::User(user_id),
+                SeatOccupant::Bot { kind, seat } => {
+                    AccountOwner::Bot(crate::table::Bot::new(kind, seat))
+                }
+                SeatOccupant::Empty => continue,
+            };
+            if let Err(error) = state.bank.cash_out(owner, id, stack).await {
+                tracing::warn!(%id, %error, "cashing out a retired table failed");
+            }
+        }
+        state.tables.remove(id).await?;
+        tracing::info!(%id, "retired a custom cash table");
+    }
+    Ok(())
+}
+
 /// The standing cash tables always exist. Called once at startup; the tick
 /// keeps their seats full from there.
 pub async fn ensure_cash_ladder(state: &AppState) -> Result<(), anyhow::Error> {

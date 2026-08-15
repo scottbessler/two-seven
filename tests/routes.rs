@@ -256,6 +256,88 @@ async fn game_setup_walks_a_stepped_dialog() {
 }
 
 #[tokio::test]
+async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "sorter".into(),
+            display_name: "Sorter".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let cookie_value = cookie(&t.key, user);
+
+    // A table from before the ladder, with a player still sitting on chips.
+    let legacy = seat_table(&t, "Old custom game", 6, 10_000, false).await;
+    t.tables
+        .update(legacy, |table| {
+            table.seats[0].occupant = two_seven::table::SeatOccupant::Human { user_id: user };
+            table.seats[0].stack = 10_000;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let before = t
+        .bank
+        .account(AccountOwner::User(user))
+        .await
+        .unwrap()
+        .balance;
+
+    two_seven::driver::retire_custom_cash_tables(&t.state)
+        .await
+        .unwrap();
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    assert!(
+        t.tables.get(legacy).await.is_none(),
+        "the old table is gone"
+    );
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance,
+        before + 10_000,
+        "chips on a retired table come back"
+    );
+    assert_eq!(t.tables.ids().await.len(), two_seven::cash::TIERS.len());
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/tables")
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    assert!(!html.contains("Old custom game"));
+    // Every rung appears, cheapest first.
+    let mut last = 0;
+    for tier in two_seven::cash::TIERS {
+        let at = html
+            .find(&two_seven::cash::name(tier))
+            .unwrap_or_else(|| panic!("{} should be listed", two_seven::cash::name(tier)));
+        assert!(at > last, "tables run cheapest first");
+        last = at;
+    }
+}
+
+#[tokio::test]
 async fn the_house_plays_its_way_onto_the_leaderboard() {
     let t = appx().await;
     two_seven::driver::ensure_cash_ladder(&t.state)

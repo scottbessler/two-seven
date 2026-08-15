@@ -543,6 +543,13 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
             });
         }
     }
+    // Cheapest first, so the ladder reads as a ladder.
+    tables.sort_by(|left, right| {
+        left.buy_in
+            .cmp(&right.buy_in)
+            .then_with(|| left.name.cmp(&right.name))
+            .then(left.id.cmp(&right.id))
+    });
     tables
 }
 pub async fn table_page(
