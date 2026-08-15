@@ -599,9 +599,21 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
       : seat),
   };
   await mountTable(page, busted);
-  await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200"]);
-  await page.locator(".table-controls .table-command").click();
+  // Busted, you may buy in again -- or walk away. Rebuying must never be the
+  // only way out of a seat.
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200", "Leave"]);
+  await page.locator(".table-controls .table-command").first().click();
   expect(rebuyBody).toEqual({});
+
+  // Busted mid-hand you cannot rebuy yet, but leaving is still on offer.
+  const bustedMidHand = {
+    ...tableState,
+    seats: tableState.seats.map((seat) => (seat.index === tableState.viewer_seat
+      ? Object.assign({}, seat, { stack: 0 })
+      : seat)),
+  };
+  await mountTable(page, bustedMidHand);
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
 
   await mountTable(page, { ...tableState, viewer_leaving: true });
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leaving..."]);

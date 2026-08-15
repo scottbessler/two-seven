@@ -234,34 +234,7 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
 
 const forfeitDialog = () => document.getElementById("forfeit-entry");
 
-function TableCommand({ state, openSeats, refresh }) {
-  // A table full of house players still has room: you take one of their seats.
-  const seatsForYou = state.tournament
-    ? openSeats
-    : [...openSeats, ...state.seats.filter((seat) => seat.bot)];
-  const viewer = state.viewer_seat == null
-    ? null
-    : state.seats.find((seat) => seat.index === state.viewer_seat);
-  let label;
-  let endpoint;
-  let disabled = false;
-  if (state.viewer_leaving) {
-    label = "Leaving...";
-    disabled = true;
-  } else if (viewer && !state.tournament && viewer.stack <= 0 && !state.hand) {
-    label = `Re-Buy In ${money(state.buy_in)}`;
-    endpoint = `/tables/${tableId}/rebuy`;
-  } else if (viewer) {
-    label = "Leave";
-    endpoint = `/tables/${tableId}/leave`;
-  } else if (seatsForYou.length > 0 && (!state.tournament || (!state.tournament.started && !state.tournament.finished))) {
-    label = `Buy In ${money(state.buy_in)}`;
-    endpoint = state.tournament
-      ? `/tournaments/${tableId}/register`
-      : `/tables/${tableId}/join`;
-  } else {
-    return null;
-  }
+function TableCommand({ label, endpoint, disabled, forfeits, buyIn, refresh }) {
   const submit = async () => {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -272,13 +245,13 @@ function TableCommand({ state, openSeats, refresh }) {
     else document.getElementById("table-error").textContent = await responseError(response);
   };
   // Walking out of a tournament is not a cash-out: the entry is gone, so ask first.
-  if (state.tournament && endpoint === `/tables/${tableId}/leave`) {
+  if (forfeits) {
     return html`<span class="table-command-confirm">
       <button class="table-command" type="button" onClick=${() => forfeitDialog()?.showModal()}>${label}</button>
       <dialog id="forfeit-entry" class="confirm-dialog">
         <form method="dialog">
           <header><h2>Leave the tournament?</h2></header>
-          <p>You forfeit your entry. The ${money(state.buy_in)} buy-in stays in the prize pool, your chips leave the table, and you finish in your current place.</p>
+          <p>You forfeit your entry. The ${money(buyIn)} buy-in stays in the prize pool, your chips leave the table, and you finish in your current place.</p>
           <footer>
             <button type="submit" value="stay">Keep playing</button>
             <button class="danger" type="button" onClick=${() => { forfeitDialog()?.close(); submit(); }}>Forfeit and leave</button>
@@ -288,6 +261,38 @@ function TableCommand({ state, openSeats, refresh }) {
     </span>`;
   }
   return html`<button class="table-command" type="button" disabled=${disabled} onClick=${submit}>${label}</button>`;
+}
+
+/// What the viewer can do about their seat. Busted at a cash table you get two
+/// choices, because rebuying must never be the only way out.
+function TableCommands({ state, openSeats, refresh }) {
+  // A table full of house players still has room: you take one of their seats.
+  const seatsForYou = state.tournament
+    ? openSeats
+    : [...openSeats, ...state.seats.filter((seat) => seat.bot)];
+  const viewer = state.viewer_seat == null
+    ? null
+    : state.seats.find((seat) => seat.index === state.viewer_seat);
+  const leave = {
+    label: "Leave",
+    endpoint: `/tables/${tableId}/leave`,
+    forfeits: Boolean(state.tournament),
+  };
+  const commands = [];
+  if (state.viewer_leaving) {
+    commands.push({ label: "Leaving...", disabled: true });
+  } else if (viewer) {
+    if (!state.tournament && viewer.stack <= 0 && !state.hand) {
+      commands.push({ label: `Re-Buy In ${money(state.buy_in)}`, endpoint: `/tables/${tableId}/rebuy` });
+    }
+    commands.push(leave);
+  } else if (seatsForYou.length > 0 && (!state.tournament || (!state.tournament.started && !state.tournament.finished))) {
+    commands.push({
+      label: `Buy In ${money(state.buy_in)}`,
+      endpoint: state.tournament ? `/tournaments/${tableId}/register` : `/tables/${tableId}/join`,
+    });
+  }
+  return commands.map((command) => html`<${TableCommand} ...${command} buyIn=${state.buy_in} refresh=${refresh} />`);
 }
 
 const seatBotDialog = () => document.getElementById("seat-bot");
@@ -377,7 +382,7 @@ function TableApp() {
           : null}</section>
     <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />
     <p id="table-error" class="error" role="alert"></p>
-    <nav class="table-controls"><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
+    <nav class="table-controls"><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;
 }
 
