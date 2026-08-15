@@ -31,11 +31,12 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
         if state.tables.get(id).await.is_none() {
             continue;
         }
+        let mut recorded = Vec::new();
         if let Err(error) = state
             .tables
             .update(id, |table| {
                 if table.hand.as_ref().is_some_and(|hand| hand.complete) {
-                    settle_finished_hand(table);
+                    recorded.extend(settle_finished_hand(table));
                 }
                 if table.hand.is_none() {
                     if table.next_action_at.is_none_or(|at| at <= now) {
@@ -76,7 +77,7 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                     .map_err(|error| anyhow::anyhow!(error))?;
                 table.next_action_at = None;
                 if hand.complete {
-                    settle_finished_hand(table);
+                    recorded.extend(settle_finished_hand(table));
                 }
                 Ok(())
             })
@@ -84,6 +85,11 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
         {
             tracing::warn!(%id, %error, "table driver update failed");
             continue;
+        }
+        for record in &recorded {
+            if let Err(error) = state.history.append(id, record).await {
+                tracing::warn!(%id, %error, "hand history append failed");
+            }
         }
         if let Err(error) = settle_pending_departures(state, id).await {
             tracing::warn!(%id, %error, "pending departure settlement failed");
@@ -355,12 +361,14 @@ mod tests {
         let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
             blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
+            history,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -425,6 +433,7 @@ mod tests {
             blackjack: crate::blackjack::BlackjackStore::load(&root).await.unwrap(),
             blitz: blitz.clone(),
             tables,
+            history: crate::history::HistoryStore::load(&root).await.unwrap(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -453,12 +462,14 @@ mod tests {
         let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
             blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
+            history,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -538,12 +549,14 @@ mod tests {
         let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
             blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
+            history,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -597,12 +610,14 @@ mod tests {
         let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
             blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
+            history,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -724,12 +739,14 @@ mod tests {
         let blitz = BlitzStore::load(&root).await.unwrap();
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
             blackjack: crate::blackjack::BlackjackStore::new(),
             blitz,
             tables: tables.clone(),
+            history,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,

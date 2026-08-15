@@ -38,6 +38,7 @@ async fn appx() -> T {
     let blitz = two_seven::blitz::BlitzStore::load(&dir).await.unwrap();
     let tables = two_seven::store::TableStore::load(&dir).await.unwrap();
     let table_store = tables.clone();
+    let history = two_seven::history::HistoryStore::load(&dir).await.unwrap();
     let key = Key::generate();
     let state = app::AppState {
         users: users.clone(),
@@ -47,6 +48,7 @@ async fn appx() -> T {
             .unwrap(),
         blitz,
         tables,
+        history,
         webauthn: Arc::new(app::build_webauthn().unwrap()),
         key: key.clone(),
         passkey_disabled: true,
@@ -208,6 +210,141 @@ async fn game_setup_walks_a_stepped_dialog() {
     assert!(html.contains("data-choice=\"players\""));
     assert!(html.contains("quick-game-form"));
     assert!(html.contains("id=\"game-setup\""));
+}
+
+#[tokio::test]
+async fn every_finished_hand_lands_in_the_table_history() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "historian".into(),
+            display_name: "Historian".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let create = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tables")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"name":"Logged","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"max_seats":2,"buy_in":10000}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
+
+    // Nothing has been played, so the log is empty but the page still renders.
+    let empty = history_json(&t, id, &cookie_value).await;
+    assert_eq!(empty["total"].as_u64(), Some(0));
+    assert_eq!(empty["hands"].as_array().unwrap().len(), 0);
+
+    for path in ["join", "bot"] {
+        let payload = if path == "bot" {
+            r#"{"seat":1,"kind":"rock"}"#
+        } else {
+            "{}"
+        };
+        let response = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/tables/{id}/{path}"))
+                    .header(header::COOKIE, &cookie_value)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path} should succeed");
+    }
+
+    // Folding ends the hand, which is the moment history is written.
+    let fold = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/action"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"kind":"fold"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(fold.status(), StatusCode::OK);
+
+    let logged = history_json(&t, id, &cookie_value).await;
+    assert_eq!(logged["total"].as_u64(), Some(1));
+    let hand = &logged["hands"][0];
+    assert_eq!(hand["hand_no"].as_u64(), Some(1));
+    // The record keeps every hole card, including the hand that folded, which
+    // the live table view redacts.
+    let seats = hand["seats"].as_array().unwrap();
+    assert_eq!(seats.len(), 2);
+    for seat in seats {
+        assert_eq!(seat["hole_cards"].as_array().unwrap().len(), 2);
+        assert!(seat["occupant"].as_str().unwrap().contains(':'));
+    }
+    assert!(!hand["summary"]["events"].as_array().unwrap().is_empty());
+
+    // The page names the table and lists the hand.
+    let page = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/history"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(page.status(), StatusCode::OK);
+    let page = to_bytes(page.into_body(), usize::MAX).await.unwrap();
+    let page = String::from_utf8_lossy(&page);
+    assert!(page.contains("Logged"));
+    assert!(page.contains("Hand 1"));
+    assert!(page.contains("hand-record"));
+}
+
+async fn history_json(t: &T, id: Uuid, cookie_value: &str) -> serde_json::Value {
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/history"))
+                .header(header::COOKIE, cookie_value)
+                .header(header::ACCEPT, "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
 #[tokio::test]

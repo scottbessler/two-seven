@@ -8,6 +8,7 @@ pub mod cards;
 pub mod driver;
 pub mod error;
 pub mod eval;
+pub mod history;
 pub mod holdem;
 pub mod money;
 pub mod render;

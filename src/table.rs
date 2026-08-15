@@ -95,8 +95,8 @@ impl FromStr for BotKind {
 #[cfg(test)]
 mod bot_kind_tests {
     use super::{
-        BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS, SHOWDOWN_PAUSE_SECONDS, Stakes,
-        Table, TableMode, result_pause_seconds,
+        BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS, SHOWDOWN_PAUSE_SECONDS,
+        SeatOccupant, Stakes, Table, TableMode, next_button, result_pause_seconds,
     };
     use crate::holdem::HandSummary;
     use std::{collections::BTreeMap, str::FromStr};
@@ -151,6 +151,40 @@ mod bot_kind_tests {
             result_pause_seconds(Some(&summary(showdown, vec![3, 4, 5]))),
             SHOWDOWN_PAUSE_SECONDS + 3 * RUNOUT_STEP_SECONDS
         );
+    }
+
+    #[test]
+    fn the_button_skips_seats_that_are_out_of_the_hand() {
+        let mut table = Table::new(
+            "elimination".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            4,
+            20_000,
+        );
+        for (index, seat) in table.seats.iter_mut().enumerate() {
+            seat.occupant = SeatOccupant::Bot {
+                kind: BotKind::Rock,
+            };
+            // Seats 1 and 2 are busted; only 0 and 3 still have chips.
+            seat.stack = if index == 1 || index == 2 { 0 } else { 20_000 };
+        }
+        table.button = 0;
+        assert_eq!(
+            next_button(&table),
+            3,
+            "the button must land on a seat that is dealt in"
+        );
+        table.button = 3;
+        assert_eq!(next_button(&table), 0, "and wrap past the busted seats");
+
+        // A sitting-out seat is skipped the same way.
+        table.seats[0].sitting_out = true;
+        table.button = 3;
+        assert_eq!(next_button(&table), 3);
     }
 
     #[test]
@@ -222,6 +256,16 @@ pub enum SeatOccupant {
     Bot { kind: BotKind },
 }
 
+impl fmt::Display for SeatOccupant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => f.write_str("empty"),
+            Self::Human { user_id } => write!(f, "human:{user_id}"),
+            Self::Bot { kind } => write!(f, "bot:{kind}"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Seat {
     pub occupant: SeatOccupant,
@@ -251,10 +295,41 @@ pub struct Table {
     pub next_action_at: Option<DateTime<Utc>>,
 }
 
+/// A finished hand, kept whole for later inspection: who sat where, what they
+/// held whether or not they showed it, and everything that happened.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HandRecord {
+    pub table: Uuid,
+    pub hand_no: u64,
+    pub at: DateTime<Utc>,
+    pub stakes: Stakes,
+    pub button: usize,
+    pub seats: Vec<HandRecordSeat>,
+    pub summary: HandSummary,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HandRecordSeat {
+    pub seat: usize,
+    pub occupant: String,
+    /// Every hole card, including folded hands, which the live view redacts.
+    pub hole_cards: Vec<crate::cards::Card>,
+    pub stack_before: Cents,
+    pub stack_after: Cents,
+}
+
 pub const SHOWDOWN_PAUSE_SECONDS: i64 = 6;
 pub const FOLD_RESULT_PAUSE_SECONDS: i64 = 3;
 /// An all-in board runs out one street at a time so the table can watch it.
 pub const RUNOUT_STEP_SECONDS: i64 = 5;
+
+/// How long the board takes to run out after a hand ends. Nobody may skip it:
+/// the point of the reveal is that the table watches the cards land.
+pub fn runout_seconds(summary: Option<&HandSummary>) -> i64 {
+    summary.map_or(0, |summary| {
+        summary.runout.len() as i64 * RUNOUT_STEP_SECONDS
+    })
+}
 
 pub fn result_pause_seconds(summary: Option<&HandSummary>) -> i64 {
     let Some(summary) = summary else {
@@ -304,6 +379,23 @@ impl Table {
     }
 }
 
+/// Whether a seat takes part in the next hand.
+fn deals_in(seat: &Seat) -> bool {
+    !seat.sitting_out && seat.stack > 0 && !matches!(seat.occupant, SeatOccupant::Empty)
+}
+
+/// The next seat the button belongs on. It has to skip empty and busted seats:
+/// a hand is dealt only to the seats that deal in, and a button pointing at one
+/// of the others collapses onto the lowest live seat, which is how the same
+/// players end up in the blinds hand after hand.
+fn next_button(table: &Table) -> usize {
+    let seats = table.seats.len();
+    (1..=seats)
+        .map(|step| (table.button + step) % seats)
+        .find(|candidate| table.seats.get(*candidate).is_some_and(deals_in))
+        .unwrap_or((table.button + 1) % seats)
+}
+
 pub fn maybe_start_hand(table: &mut Table) {
     if let TableMode::Tournament(state) = &table.mode
         && !state.started
@@ -314,28 +406,14 @@ pub fn maybe_start_hand(table: &mut Table) {
     if let TableMode::Tournament(state) = &mut table.mode {
         state.started = true;
     }
-    if table.hand.is_some()
-        || table
-            .seats
-            .iter()
-            .filter(|seat| {
-                !seat.sitting_out && seat.stack > 0 && !matches!(seat.occupant, SeatOccupant::Empty)
-            })
-            .count()
-            < 2
-    {
+    if table.hand.is_some() || table.seats.iter().filter(|seat| deals_in(seat)).count() < 2 {
         return;
     }
     let stacks: Vec<(usize, Cents)> = table
         .seats
         .iter()
         .enumerate()
-        .filter_map(|(seat, value)| {
-            (!value.sitting_out
-                && value.stack > 0
-                && !matches!(value.occupant, SeatOccupant::Empty))
-            .then_some((seat, value.stack))
-        })
+        .filter_map(|(seat, value)| deals_in(value).then_some((seat, value.stack)))
         .collect();
     table.hand_no += 1;
     let ante = match &table.mode {
@@ -356,13 +434,12 @@ pub fn maybe_start_hand(table: &mut Table) {
     table.next_action_at = None;
 }
 
-pub fn settle_finished_hand(table: &mut Table) {
-    let Some(hand) = table.hand.take() else {
-        return;
-    };
+/// Settle a completed hand and hand back its record for the history log.
+pub fn settle_finished_hand(table: &mut Table) -> Option<HandRecord> {
+    let hand = table.hand.take()?;
     if !hand.complete {
         table.hand = Some(hand);
-        return;
+        return None;
     }
     for player in &hand.players {
         if let Some(seat) = table.seats.get_mut(player.seat) {
@@ -415,9 +492,41 @@ pub fn settle_finished_hand(table: &mut Table) {
             state.finished = true;
         }
     }
-    table.button = (table.button + 1) % table.seats.len();
-    table.last_hand = hand.summary;
+    table.button = next_button(table);
+    let summary = hand.summary?;
+    let record = HandRecord {
+        table: table.id,
+        hand_no: table.hand_no,
+        at: Utc::now(),
+        stakes: table.stakes,
+        button: hand.button,
+        seats: hand
+            .players
+            .iter()
+            .map(|player| {
+                let awarded: Cents = summary
+                    .awards
+                    .iter()
+                    .filter(|award| award.seat == player.seat)
+                    .map(|award| award.amount)
+                    .sum();
+                HandRecordSeat {
+                    seat: player.seat,
+                    occupant: table
+                        .seats
+                        .get(player.seat)
+                        .map_or_else(|| "empty".into(), |seat| seat.occupant.to_string()),
+                    hole_cards: player.hole_cards.clone(),
+                    stack_before: player.stack + player.contribution - awarded,
+                    stack_after: player.stack,
+                }
+            })
+            .collect(),
+        summary: summary.clone(),
+    };
+    table.last_hand = Some(summary);
     table.next_action_at = Some(
         Utc::now() + chrono::Duration::seconds(result_pause_seconds(table.last_hand.as_ref())),
     );
+    Some(record)
 }

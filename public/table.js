@@ -195,6 +195,7 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
   const seconds = Math.ceil(remaining / 1000);
   const width = `${(remaining / duration) * 100}%`;
   const label = `Next hand in ${seconds}s`;
+  // A board still running out is not skippable, so offer no button to press.
   if (!canContinue) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}</b></div>`;
   return html`<div class="showdown-advance"><button type="button" aria-label=${`Continue now. ${label}`} onClick=${async () => {
     const response = await fetch(`/tables/${tableId}/continue`, { method: "POST" });
@@ -327,11 +328,11 @@ function TableApp() {
     </section>
     ${!showdown && (hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`)}
     ${(hand?.legal_actions || showdown) && html`<section class="decision-area">${showdown
-      ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />`
+      ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : html`<${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} />`}</section>`}
     ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />`}
     <p id="table-error" class="error" role="alert"></p>
-    <nav class="table-controls"><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
+    <nav class="table-controls"><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;
 }
 

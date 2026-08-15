@@ -579,6 +579,9 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   // Nothing may give the ending away while the board is still coming.
   await expect(page.locator(".seat.winner")).toHaveCount(0);
   await expect(page.locator(".game-log")).not.toContainText("wins");
+  // The reveal is not optional: there is nothing to press until it finishes.
+  await expect(page.locator(".showdown-advance button")).toHaveCount(0);
+  await expect(page.locator(".showdown-advance.spectator")).toBeVisible();
 
   // Each street lands five seconds apart, and the leader is called out.
   await page.clock.install();
@@ -598,6 +601,8 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   await expect(result).toContainText("Mina wins $400");
   await expect(page.locator(".seat.winner")).toHaveCount(1);
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
+  // Once the last card is down, the acknowledgement returns.
+  await expect(page.locator(".showdown-advance button")).toHaveCount(1);
 });
 
 test("uses the short acknowledgement window for a fold result", async ({ page }) => {

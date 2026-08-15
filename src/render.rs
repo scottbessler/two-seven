@@ -315,6 +315,151 @@ pub fn table_page(view: &crate::view::TableView) -> String {
     )
 }
 
+/// The debugging view of a table's past hands, newest first.
+pub fn table_history(
+    id: Uuid,
+    name: &str,
+    total: usize,
+    hands: &[crate::table::HandRecord],
+    names: &std::collections::HashMap<usize, String>,
+) -> String {
+    // Two bots of the same kind are otherwise indistinguishable, so every
+    // label carries its seat.
+    let seat_label = |seat: usize, occupant: &str| -> String {
+        let who = names.get(&seat).cloned().unwrap_or_else(|| {
+            occupant
+                .strip_prefix("bot:")
+                .map_or_else(|| "empty".to_string(), str::to_string)
+        });
+        format!("{seat} · {who}")
+    };
+    let rows = hands
+        .iter()
+        .rev()
+        .map(|hand| {
+            let seats = hand
+                .seats
+                .iter()
+                .map(|seat| {
+                    let awarded: crate::money::Cents = hand
+                        .summary
+                        .awards
+                        .iter()
+                        .filter(|award| award.seat == seat.seat)
+                        .map(|award| award.amount)
+                        .sum();
+                    let result = hand
+                        .summary
+                        .results
+                        .iter()
+                        .find(|result| result.seat == seat.seat)
+                        .and_then(|result| result.hand.as_ref())
+                        .map_or_else(String::new, |ranked| escape(&ranked.label));
+                    format!(
+                        r#"<tr{}><td>{}{}</td><td class="cards">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>"#,
+                        if awarded > 0 { r#" class="won""# } else { "" },
+                        escape(&seat_label(seat.seat, &seat.occupant)),
+                        if hand.button == seat.seat { " (D)" } else { "" },
+                        cards_html(&seat.hole_cards),
+                        format_cents(seat.stack_before),
+                        format_cents(seat.stack_after),
+                        if awarded > 0 {
+                            format_cents(awarded)
+                        } else {
+                            "—".into()
+                        },
+                        result
+                    )
+                })
+                .collect::<String>();
+            let actions = hand
+                .summary
+                .events
+                .iter()
+                .map(|event| {
+                    format!(
+                        "<li><span>{:?}</span><b>{}</b></li>",
+                        event.street,
+                        escape(&event_line(event, &hand.seats, &seat_label))
+                    )
+                })
+                .collect::<String>();
+            format!(
+                r#"<details class="hand-record"><summary><b>Hand {}</b><span>{}</span><span class="cards">{}</span><span>{}</span></summary><table><thead><tr><th>Seat</th><th>Hole</th><th>Before</th><th>After</th><th>Won</th><th>Hand</th></tr></thead><tbody>{}</tbody></table><ol class="hand-actions">{}</ol></details>"#,
+                hand.hand_no,
+                hand.at.format("%Y-%m-%d %H:%M:%S UTC"),
+                cards_html(&hand.summary.board),
+                escape(&hand.stakes.to_string()),
+                seats,
+                actions
+            )
+        })
+        .collect::<String>();
+    let body = format!(
+        r#"<section class="history-shell"><header class="history-top"><div><h1>{}</h1><p>{} hand{} recorded · showing the most recent {}</p></div><nav><a href="/tables/{}">Back to table</a> · <a href="/tables/{}/history?format=json">Raw JSON</a></nav></header>{}</section>"#,
+        escape(name),
+        total,
+        if total == 1 { "" } else { "s" },
+        hands.len(),
+        id,
+        id,
+        if rows.is_empty() {
+            "<p class=\"loading\">No hands played yet.</p>".to_string()
+        } else {
+            rows
+        }
+    );
+    layout(&format!("{name} history"), &body, "")
+}
+
+fn cards_html(cards: &[crate::cards::Card]) -> String {
+    cards
+        .iter()
+        .map(|card| {
+            let text = card.to_string();
+            let red = text.ends_with('h') || text.ends_with('d');
+            format!(
+                r#"<i class="{}">{}</i>"#,
+                if red { "card-red" } else { "card-black" },
+                escape(&card_text(&text))
+            )
+        })
+        .collect()
+}
+
+fn card_text(value: &str) -> String {
+    let (rank, suit) = value.split_at(value.len() - 1);
+    let rank = if rank == "T" { "10" } else { rank };
+    let suit = match suit {
+        "h" => "♥",
+        "d" => "♦",
+        "c" => "♣",
+        "s" => "♠",
+        other => other,
+    };
+    format!("{rank}{suit}")
+}
+
+fn event_line(
+    event: &crate::holdem::HandEvent,
+    seats: &[crate::table::HandRecordSeat],
+    seat_label: &impl Fn(usize, &str) -> String,
+) -> String {
+    let who = event.seat.map_or_else(String::new, |seat| {
+        let occupant = seats
+            .iter()
+            .find(|entry| entry.seat == seat)
+            .map_or("", |entry| entry.occupant.as_str());
+        seat_label(seat, occupant)
+    });
+    let amount = if event.amount > 0 {
+        format!(" {}", format_cents(event.amount))
+    } else {
+        String::new()
+    };
+    format!("{who} {:?}{amount}", event.kind)
+}
+
 fn card_face(rank: &str, suit: &str) -> String {
     let glyph = match suit {
         "h" => "♥",

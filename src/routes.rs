@@ -627,6 +627,53 @@ async fn seat_banks(
     }
     banks
 }
+#[derive(Deserialize)]
+pub struct HistoryQuery {
+    pub format: Option<String>,
+}
+
+/// The table's hand history. Answers JSON when asked for it, so a debugging
+/// session can read the raw records without scraping the page.
+pub async fn table_history(
+    AuthUser(_user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    axum::extract::Query(query): axum::extract::Query<HistoryQuery>,
+    headers: axum::http::HeaderMap,
+) -> Result<axum::response::Response, AppError> {
+    let table = s
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| AppError::not_found("table not found"))?;
+    let (name, hand_no) = {
+        let table = table.lock().await;
+        (table.name.clone(), table.hand_no)
+    };
+    let hands = s.history.recent(id, crate::history::HISTORY_PAGE).await;
+    let total = s.history.count(id).await;
+    let wants_json = query.format.as_deref() == Some("json")
+        || headers
+            .get(header::ACCEPT)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|accept| accept.contains("application/json"));
+    if wants_json {
+        return Ok(Json(serde_json::json!({
+            "table": id,
+            "name": name,
+            "hand_no": hand_no,
+            "total": total,
+            "hands": hands,
+        }))
+        .into_response());
+    }
+    let names = {
+        let table = table.lock().await;
+        seat_names(&s, &table).await
+    };
+    Ok(Html(render::table_history(id, &name, total, &hands, &names)).into_response())
+}
+
 pub async fn table_state(
     MaybeUser(user): MaybeUser,
     State(s): State<AppState>,
@@ -800,10 +847,11 @@ pub async fn leave_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
+    let mut recorded = Vec::new();
     let (seat, stack, tournament, live_hand) = {
         let mut t = table.lock().await;
         if t.hand.as_ref().is_some_and(|hand| hand.complete) {
-            settle_finished_hand(&mut t);
+            recorded.extend(settle_finished_hand(&mut t));
         }
         let (seat, stack) = t
             .seats
@@ -828,7 +876,7 @@ pub async fn leave_table(
                     hand.fold_seat(seat).map_err(|e| anyhow::anyhow!(e))?;
                 }
                 if t.hand.as_ref().is_some_and(|hand| hand.complete) {
-                    settle_finished_hand(t);
+                    recorded.extend(settle_finished_hand(t));
                 }
                 let seat = t
                     .seats
@@ -840,6 +888,7 @@ pub async fn leave_table(
             })
             .await
             .map_err(AppError::internal)?;
+        record_hands(&s, id, &recorded).await;
         crate::driver::settle_pending_departures(&s, id)
             .await
             .map_err(AppError::internal)?;
@@ -867,6 +916,7 @@ pub async fn leave_table(
         })
         .await
         .map_err(AppError::internal)?;
+    record_hands(&s, id, &recorded).await;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -875,12 +925,22 @@ pub struct ActionRequest {
     pub kind: String,
     pub amount: Option<i64>,
 }
+/// Append whatever hands a request settled to the table's history.
+async fn record_hands(s: &AppState, id: Uuid, records: &[crate::table::HandRecord]) {
+    for record in records {
+        if let Err(error) = s.history.append(id, record).await {
+            tracing::warn!(%id, %error, "hand history append failed");
+        }
+    }
+}
+
 pub async fn action(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Path(id): Path<Uuid>,
     Json(input): Json<ActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let mut recorded = Vec::new();
     s.tables
         .update(id, |t| {
             let seat = t
@@ -918,7 +978,7 @@ pub async fn action(
                 .map_err(|error| anyhow::anyhow!("user action rejected: {error}"))?;
             let complete = hand.complete;
             if complete {
-                settle_finished_hand(t);
+                recorded.extend(settle_finished_hand(t));
             }
             Ok(())
         })
@@ -937,6 +997,7 @@ pub async fn action(
                 AppError::internal(message)
             }
         })?;
+    record_hands(&s, id, &recorded).await;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -956,7 +1017,18 @@ pub async fn continue_table(
             if table.hand.is_some() || table.last_hand.is_none() {
                 return Err(anyhow::anyhow!("no showdown to continue"));
             }
-            table.next_action_at = Some(Utc::now());
+            // The runout occupies the first stretch of the pause and cannot be
+            // cut short; only the time to read the result may be skipped.
+            let runout =
+                chrono::Duration::seconds(crate::table::runout_seconds(table.last_hand.as_ref()));
+            let pause = chrono::Duration::seconds(crate::table::result_pause_seconds(
+                table.last_hand.as_ref(),
+            ));
+            let earliest = table
+                .next_action_at
+                .map(|at| at - pause + runout)
+                .unwrap_or_else(Utc::now);
+            table.next_action_at = Some(earliest.max(Utc::now()));
             Ok(())
         })
         .await

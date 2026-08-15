@@ -1,6 +1,6 @@
 use crate::{
-    auth, bank::BankStore, blackjack::BlackjackStore, blitz::BlitzStore, driver, render, routes,
-    session::MaybeUser, store::TableStore, users::UserStore,
+    auth, bank::BankStore, blackjack::BlackjackStore, blitz::BlitzStore, driver,
+    history::HistoryStore, render, routes, session::MaybeUser, store::TableStore, users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -27,6 +27,7 @@ pub struct AppState {
     pub blackjack: BlackjackStore,
     pub blitz: BlitzStore,
     pub tables: TableStore,
+    pub history: HistoryStore,
     pub webauthn: Arc<Webauthn>,
     pub key: Key,
     pub passkey_disabled: bool,
@@ -91,6 +92,7 @@ pub fn router(s: AppState) -> Router {
         )
         .route("/tables/{id}", get(routes::table_page))
         .route("/tables/{id}/state", get(routes::table_state))
+        .route("/tables/{id}/history", get(routes::table_history))
         .route("/tables/{id}/events", get(routes::table_events))
         .route("/tables/{id}/join", axum::routing::post(routes::join_table))
         .route(
@@ -184,12 +186,14 @@ pub async fn run() -> Result<()> {
     let blackjack = BlackjackStore::load(&data).await?;
     let blitz = BlitzStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
+    let history = HistoryStore::load(&data).await?;
     let state = AppState {
         users,
         bank,
         blackjack,
         blitz,
         tables,
+        history,
         webauthn: Arc::new(build_webauthn()?),
         key: load_key(),
         passkey_disabled: env_flag("PASSKEY_DISABLED"),
