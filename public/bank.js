@@ -2,6 +2,15 @@ import { wholeDollarMoney as money } from "/public/shared.js";
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
+// Signing out asks first: the trigger only opens the dialog, and the form is
+// submitted by the confirming button inside it.
+const signOut = document.querySelector(".sign-out");
+if (signOut) {
+  const dialog = signOut.querySelector("#sign-out");
+  signOut.querySelector(".sign-out-trigger")?.addEventListener("click", () => dialog?.showModal());
+  signOut.querySelector(".sign-out-cancel")?.addEventListener("click", () => dialog?.close());
+}
+
 const balance = document.getElementById("bank-balance");
 const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");

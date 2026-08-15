@@ -28,6 +28,19 @@ fn import_map() -> String {
     format!(r#"<script type="importmap">{{"imports":{{{entries}}}}}</script>"#)
 }
 
+/// Signing out is a quiet, out-of-the-way control with a confirmation behind
+/// it: it is easy to hit by accident and there is no undo.
+fn sign_out() -> &'static str {
+    concat!(
+        r#"<form class="sign-out" method="post" action="/auth/logout">"#,
+        r#"<button class="sign-out-trigger" type="button">Sign out</button>"#,
+        r#"<dialog id="sign-out" class="confirm-dialog"><div><header><h2>Sign out?</h2></header>"#,
+        r#"<p>You will have to sign in again. Any table you are sitting at keeps your seat.</p>"#,
+        r#"<footer><button class="sign-out-cancel" type="button">Stay signed in</button>"#,
+        r#"<button class="danger" type="submit">Sign out</button></footer></div></dialog></form>"#
+    )
+}
+
 pub fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -81,8 +94,9 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form><form method="post" action="/auth/logout"><button>Sign out</button></form></section>"#,
-                escape(&name)
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
+                escape(&name),
+                sign_out()
             ),
             "",
         ),
@@ -93,9 +107,10 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String 
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Start a game</a></p><form method=\"post\" action=\"/auth/logout\"><button>Sign out</button></form></section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
             escape(name),
-            lobby_table_list(tables, true)
+            lobby_table_list(tables, true),
+            sign_out()
         ),
         "",
     )

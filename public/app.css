@@ -178,6 +178,11 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-controls button{white-space:nowrap}
 .seat-bot-dialog button[type=submit]{background:var(--accent);color:#1a160d}
 .table-controls .table-command-confirm{display:contents}
+/* Sign out sits apart from the things you came here to do. */
+.sign-out{margin-top:1.5rem;justify-items:start}
+.sign-out-trigger{padding:.3rem .55rem;border:0;background:none;color:var(--muted);font-size:.8rem;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.sign-out-trigger:hover,.sign-out-trigger:focus-visible{color:var(--ink)}
+.confirm-dialog>div{display:grid;gap:.9rem;padding:1rem;text-align:left}
 .confirm-dialog form{gap:.9rem;margin:0;padding:1rem;text-align:left}
 .confirm-dialog h2{margin:0;font-size:1.05rem}
 .confirm-dialog p{margin:0;color:var(--muted);line-height:1.45}

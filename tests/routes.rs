@@ -213,6 +213,60 @@ async fn game_setup_walks_a_stepped_dialog() {
 }
 
 #[tokio::test]
+async fn signing_out_is_quiet_and_asks_first() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "leaver".into(),
+            display_name: "Leaver".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    // The signed-in home is the only page that offers a way out.
+    for path in ["/"] {
+        let response = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(path)
+                    .header(header::COOKIE, &cookie_value)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let html = String::from_utf8_lossy(&body);
+        // The trigger only opens a dialog; the form is submitted from inside it.
+        assert!(html.contains("sign-out-trigger"), "{path} needs a trigger");
+        assert!(
+            html.contains(r#"<button class="sign-out-trigger" type="button">"#),
+            "{path}: the trigger must not submit the form"
+        );
+        assert!(
+            html.contains(r#"<dialog id="sign-out" class="confirm-dialog">"#),
+            "{path} needs a confirmation"
+        );
+        assert!(
+            html.contains(r#"<button class="danger" type="submit">Sign out</button>"#),
+            "{path}: only the confirming button submits"
+        );
+        assert_eq!(
+            html.matches(r#"action="/auth/logout""#).count(),
+            1,
+            "{path}: one way out is enough"
+        );
+    }
+}
+
+#[tokio::test]
 async fn every_finished_hand_lands_in_the_table_history() {
     let t = appx().await;
     let user = Uuid::new_v4();
