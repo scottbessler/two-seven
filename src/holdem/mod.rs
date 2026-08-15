@@ -100,6 +100,26 @@ pub struct HandSummary {
     pub runout_from: usize,
     #[serde(default)]
     pub runout: Vec<RunoutStep>,
+    /// What each seat had in front of them once the last chip was in, before
+    /// any pot was pushed. The only honest number to show while a board runs
+    /// out; a live seat's stack has already been settled and may have been
+    /// topped up or trimmed since.
+    #[serde(default)]
+    pub stacks_before_awards: BTreeMap<usize, Cents>,
+    /// Who is ahead as the hands are turned over, before the runout starts.
+    #[serde(default)]
+    pub reveal_leaders: Vec<usize>,
+}
+
+/// A rough order for two cards with no board out: a pair beats anything else,
+/// then the higher card, then the lower. Equity is more than this, but it says
+/// who would win if the deck stopped here.
+fn hole_strength(cards: &[Card]) -> (u8, u8, u8) {
+    let mut ranks: Vec<u8> = cards.iter().map(|card| card.rank as u8).collect();
+    ranks.sort_unstable_by(|left, right| right.cmp(left));
+    let high = ranks.first().copied().unwrap_or(0);
+    let low = ranks.get(1).copied().unwrap_or(0);
+    (u8::from(high == low && high > 0), high, low)
 }
 
 /// One street of an all-in runout: the board as it stands, and who is ahead.
@@ -487,7 +507,21 @@ impl Hand {
             });
         }
         let runout_from = self.runout_from.unwrap_or(self.board.len());
+        let stacks_before_awards = self
+            .players
+            .iter()
+            .map(|player| {
+                let won: Cents = awards
+                    .iter()
+                    .filter(|award| award.seat == player.seat)
+                    .map(|award| award.amount)
+                    .sum();
+                (player.seat, player.stack - won)
+            })
+            .collect();
         self.summary = Some(HandSummary {
+            reveal_leaders: self.leaders_at_reveal(runout_from),
+            stacks_before_awards,
             board: self.board.clone(),
             runout: self.runout_steps(runout_from),
             runout_from,
@@ -521,6 +555,28 @@ impl Hand {
                 cards,
                 leaders: self.leaders_on(&self.board[..cards]),
             })
+            .collect()
+    }
+
+    /// Who is ahead the moment the cards go on their backs, before any of the
+    /// runout lands. With no board yet that is a matter of hole cards alone.
+    fn leaders_at_reveal(&self, from: usize) -> Vec<usize> {
+        if from >= 3 {
+            return self.leaders_on(&self.board[..from]);
+        }
+        let ranked: Vec<(usize, (u8, u8, u8))> = self
+            .players
+            .iter()
+            .filter(|player| !player.folded)
+            .map(|player| (player.seat, hole_strength(&player.hole_cards)))
+            .collect();
+        let Some(best) = ranked.iter().map(|(_, rank)| *rank).max() else {
+            return Vec::new();
+        };
+        ranked
+            .into_iter()
+            .filter(|(_, rank)| *rank == best)
+            .map(|(seat, _)| seat)
             .collect()
     }
 

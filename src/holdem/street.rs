@@ -146,6 +146,21 @@ impl Hand {
             // A fold win shows no runout: there is nothing left to watch.
             runout_from: self.board.len(),
             runout: Vec::new(),
+            reveal_leaders: Vec::new(),
+            stacks_before_awards: self
+                .players
+                .iter()
+                .map(|player| {
+                    (
+                        player.seat,
+                        if player.seat == winner {
+                            player.stack - amount
+                        } else {
+                            player.stack
+                        },
+                    )
+                })
+                .collect(),
         });
         self.complete = true;
         self.street = Street::Complete;
@@ -236,6 +251,51 @@ mod tests {
             assert_eq!(hand.street, Street::Complete);
             assert_eq!(hand.summary.as_ref().unwrap().awards.len(), 1);
         }
+    }
+
+    #[test]
+    fn a_showdown_says_who_is_ahead_and_what_they_held_before_the_pot_moved() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            77,
+        );
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::Call).unwrap();
+        let summary = hand.summary.as_ref().expect("summary");
+
+        // Somebody is ahead as the hands turn over, before any board lands.
+        assert_eq!(summary.runout_from, 0);
+        assert!(
+            !summary.reveal_leaders.is_empty(),
+            "a leader from the moment the cards are face up"
+        );
+
+        // Stacks read as the hand left them, not as the pot left them.
+        let pot: crate::money::Cents = summary.awards.iter().map(|award| award.amount).sum();
+        let held: crate::money::Cents = summary.stacks_before_awards.values().sum();
+        assert_eq!(
+            held + pot,
+            hand.players
+                .iter()
+                .map(|player| player.stack)
+                .sum::<crate::money::Cents>(),
+            "every chip is either still in front of somebody or in the pot"
+        );
+        for (seat, stack) in &summary.stacks_before_awards {
+            assert!(*stack >= 0, "seat {seat} cannot hold less than nothing");
+        }
+        // Both were all in, so neither has anything left until the pot moves.
+        assert!(
+            summary
+                .stacks_before_awards
+                .values()
+                .all(|stack| *stack == 0)
+        );
     }
 
     #[test]

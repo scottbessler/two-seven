@@ -208,6 +208,8 @@ mod bot_kind_tests {
             revealed_hole_cards,
             events: Vec::new(),
             runout_from: 0,
+            reveal_leaders: Vec::new(),
+            stacks_before_awards: BTreeMap::new(),
             runout: runout
                 .into_iter()
                 .map(|cards| crate::holdem::RunoutStep {

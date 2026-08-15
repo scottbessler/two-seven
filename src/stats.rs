@@ -102,6 +102,20 @@ impl StatsStore {
         })
     }
 
+    /// Forget everything the house has done. Paired with the bank's reset, so
+    /// a fresh set of regulars starts with no money and no record.
+    pub async fn forget_bots(&self) -> Result<()> {
+        {
+            let mut guard = self.inner.lock().await;
+            let before = guard.len();
+            guard.retain(|key, _| !key.starts_with("bot:"));
+            if guard.len() == before {
+                return Ok(());
+            }
+        }
+        self.persist().await
+    }
+
     pub async fn of(&self, owner: &AccountOwner) -> PlayerStats {
         self.inner
             .lock()
@@ -188,5 +202,42 @@ impl StatsStore {
         tokio::fs::write(&tmp, body).await?;
         tokio::fs::rename(tmp, &self.path).await?;
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_house_reset_forgets_their_record_but_not_ours() {
+        let root = std::env::temp_dir().join(format!("two-seven-stats-{}", uuid::Uuid::new_v4()));
+        let stats = StatsStore::load(&root).await.unwrap();
+        let bot = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Fish, 0));
+        let person = AccountOwner::User(uuid::Uuid::new_v4());
+        {
+            let mut guard = stats.inner.lock().await;
+            guard.insert(
+                key(&bot),
+                PlayerStats {
+                    hands: 12,
+                    ..Default::default()
+                },
+            );
+            guard.insert(
+                key(&person),
+                PlayerStats {
+                    hands: 7,
+                    ..Default::default()
+                },
+            );
+        }
+        stats.forget_bots().await.unwrap();
+        assert_eq!(stats.of(&bot).await, PlayerStats::default());
+        assert_eq!(stats.of(&person).await.hands, 7);
+
+        // And it stays forgotten across a reload.
+        let reloaded = StatsStore::load(&root).await.unwrap();
+        assert_eq!(reloaded.of(&bot).await, PlayerStats::default());
+        assert_eq!(reloaded.of(&person).await.hands, 7);
     }
 }

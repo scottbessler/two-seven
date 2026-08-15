@@ -17,7 +17,12 @@ function runoutState(showdown, elapsed) {
   if (steps.length === 0) return { cards: showdown?.board?.length ?? 0, leaders: [] };
   const taken = Math.min(steps.length, Math.floor(elapsed / RUNOUT_STEP_MS));
   const step = taken > 0 ? steps[taken - 1] : null;
-  return { cards: step ? step.cards : showdown.runout_from ?? 0, leaders: step?.leaders || [] };
+  return {
+    cards: step ? step.cards : showdown.runout_from ?? 0,
+    // Somebody is ahead the moment the hands are turned over, not only once a
+    // card has landed on top of them.
+    leaders: step?.leaders || showdown.reveal_leaders || [],
+  };
 }
 
 async function fetchState() {
@@ -87,8 +92,12 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
     ?.filter((award) => award.seat === seat.index)
     .reduce((sum, award) => sum + award.amount, 0) || 0;
   // Stacks settle when the hand does. Until the last card is down they read as
-  // they did before the pot moved, or the balance gives the result away.
-  const stack = (player?.stack ?? seat.stack) - (settled ? 0 : awarded);
+  // the hand left them, or the balance gives the result away. That figure comes
+  // from the hand itself: the live seat has moved on since.
+  const beforeAwards = showdown?.stacks_before_awards?.[seat.index];
+  const stack = settled || beforeAwards == null
+    ? (player?.stack ?? seat.stack)
+    : beforeAwards;
   const winner = settled && awarded > 0;
   const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", cardsAbove && "cards-above", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position} data-seat-order=${order}>

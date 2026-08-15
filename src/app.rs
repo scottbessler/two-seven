@@ -186,12 +186,15 @@ pub async fn run() -> Result<()> {
     render::set_asset_version(asset_version());
     let data = env::var("DATA_PATH").unwrap_or_else(|_| "data".into());
     let users = Arc::new(UserStore::load(&data).await?);
-    let bank = BankStore::load(&data).await?;
+    let (bank, house_was_reset) = BankStore::load_reporting_reset(&data).await?;
     let blackjack = BlackjackStore::load(&data).await?;
     let blitz = BlitzStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
     let history = HistoryStore::load(&data).await?;
     let stats = StatsStore::load(&data).await?;
+    if house_was_reset {
+        stats.forget_bots().await?;
+    }
     let state = AppState {
         users,
         bank,

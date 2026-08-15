@@ -60,10 +60,19 @@ pub struct BankStore {
 impl BankStore {
     pub const RE_UP_AMOUNT: Cents = 100_000;
     pub const RE_UP_THRESHOLD: Cents = 10_000;
-    /// Bump this to start the house's accounts over on the next boot.
-    const HOUSE_RESET_MARKER: &'static str = "bank-house-reset-2.marker";
+    /// Bump this to start the house over on the next boot: money, loans,
+    /// history and their playing record.
+    pub const HOUSE_RESET_MARKER: &'static str = "bank-house-reset-2.marker";
 
     pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
+        Ok(Self::load_reporting_reset(root).await?.0)
+    }
+
+    /// Loads, and says whether this boot wiped the house's accounts, so their
+    /// playing record can be cleared with them.
+    pub async fn load_reporting_reset(
+        root: impl AsRef<Path>,
+    ) -> Result<(Self, bool), anyhow::Error> {
         let dir = root.as_ref().join("bank");
         tokio::fs::create_dir_all(&dir).await?;
         let marker = dir.join("bank-v2-non-debt.marker");
@@ -79,6 +88,7 @@ impl BankStore {
         // The house's books start over: no balance, no loans, no history. Bump
         // HOUSE_RESET_MARKER to wipe them again on a later release; people's
         // accounts are never touched.
+        let mut reset_house = false;
         let bots_marker = dir.join(Self::HOUSE_RESET_MARKER);
         if !tokio::fs::try_exists(&bots_marker).await? {
             let mut entries = tokio::fs::read_dir(&dir).await?;
@@ -94,6 +104,7 @@ impl BankStore {
                 }
             }
             tokio::fs::write(&bots_marker, b"house accounts reset\n").await?;
+            reset_house = true;
         }
         let mut accounts = HashMap::new();
         let mut entries = tokio::fs::read_dir(&dir).await?;
@@ -105,10 +116,13 @@ impl BankStore {
                 accounts.insert(account.owner.clone(), account);
             }
         }
-        Ok(Self {
-            inner: Arc::new(Mutex::new(Inner { accounts })),
-            dir,
-        })
+        Ok((
+            Self {
+                inner: Arc::new(Mutex::new(Inner { accounts })),
+                dir,
+            },
+            reset_house,
+        ))
     }
     pub async fn account(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;

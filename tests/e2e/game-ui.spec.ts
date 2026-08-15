@@ -698,6 +698,7 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
     ...showdownState,
     // Seat 1 has already been paid the $400 pot, the way a settled hand leaves it.
     seats: showdownState.seats.map((seat) => (seat.index === 1 ? { ...seat, stack: 62_400 } : seat)),
+    // What the hand itself left them with, before the pot was pushed.
     result_pause_seconds: 21,
     next_hand_at: new Date(Date.now() + 21_000).toISOString(),
     last_hand: {
@@ -708,15 +709,19 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
         { cards: 4, leaders: [0] },
         { cards: 5, leaders: [1] },
       ],
+      stacks_before_awards: { 0: 18_800, 1: 22_400 },
+      reveal_leaders: [1],
     },
   };
   await mountTable(page, allIn);
   const board = page.locator(".board .playing-card");
   const result = page.locator(".showdown-result");
 
-  // Betting closed before the flop, so nothing is out yet.
+  // Betting closed before the flop, so nothing is out yet -- but the hands are
+  // face up, so somebody is already ahead.
   await expect(board).toHaveCount(0);
-  await expect(page.locator(".seat.leading")).toHaveCount(0);
+  await expect(page.locator(".seat.leading")).toHaveCount(1);
+  await expect(page.locator(".seat.leading")).toContainText("Mina");
   await expect(result).toHaveText("");
   // Nothing may give the ending away while the board is still coming.
   await expect(page.locator(".seat.winner")).toHaveCount(0);
