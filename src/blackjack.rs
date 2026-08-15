@@ -740,9 +740,25 @@ mod tests {
     async fn live_games_survive_persistence_but_finished_games_do_not() {
         let root = std::env::temp_dir().join(format!("two-seven-blackjack-{}", Uuid::new_v4()));
         let user = Uuid::new_v4();
-        let id = Uuid::new_v4();
         let store = BlackjackStore::load(&root).await.unwrap();
-        store.start(user, BLACKJACK_BETS[0], id).await.unwrap();
+        // The deal is randomly seeded, so keep dealing until one survives it:
+        // a natural blackjack resolves the game before it can be resumed.
+        let id = {
+            let mut live = None;
+            for _ in 0..50 {
+                let candidate = Uuid::new_v4();
+                let view = store
+                    .start(user, BLACKJACK_BETS[0], candidate)
+                    .await
+                    .unwrap();
+                if view.status == BlackjackStatus::Playing {
+                    live = Some(candidate);
+                    break;
+                }
+                store.inner.lock().await.clear();
+            }
+            live.expect("deal a hand that is still in play")
+        };
         store.persist().await.unwrap();
 
         let restored = BlackjackStore::load(&root).await.unwrap();

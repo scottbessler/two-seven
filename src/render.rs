@@ -235,7 +235,7 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
 pub fn blackjack() -> String {
     layout(
         "Blackjack",
-        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-menu"><form id="blackjack-form"><fieldset class="bet-choices"><legend>Bet</legend><label class="bet-choice"><input type="radio" name="bet" value="500"><span>$5</span></label><label class="bet-choice"><input type="radio" name="bet" value="2000" checked><span>$20</span></label><label class="bet-choice"><input type="radio" name="bet" value="10000"><span>$100</span></label><label class="bet-choice"><input type="radio" name="bet" value="20000"><span>$200</span></label></fieldset><button>Deal $20</button></form></section></div></section>"#,
+        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-table blackjack-table"><div class="actions blackjack-actions"><button class="deal-action" type="button">Deal $5</button><button class="deal-action" type="button">Deal $20</button><button class="deal-action" type="button">Deal $100</button><button class="deal-action" type="button">Deal $200</button></div></section></div></section>"#,
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/blackjack.js")
