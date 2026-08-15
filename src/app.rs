@@ -93,6 +93,10 @@ pub fn router(s: AppState) -> Router {
         .route("/tables/{id}", get(routes::table_page))
         .route("/tables/{id}/state", get(routes::table_state))
         .route("/tables/{id}/history", get(routes::table_history))
+        .route(
+            "/tables/{id}/deal",
+            axum::routing::post(routes::deal_bot_hand),
+        )
         .route("/tables/{id}/events", get(routes::table_events))
         .route("/tables/{id}/join", axum::routing::post(routes::join_table))
         .route(

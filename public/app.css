@@ -177,6 +177,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:2.7rem;overflow:hidden;padding:.45rem .8rem;border-radius:6px;border-color:#d9ad55;background:#10241f;color:var(--ink)}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid #d9ad55;border-radius:6px;font-size:.72rem}
 .showdown-progress{position:absolute;left:0;top:0;bottom:0;background:#d9ad5540;transition:width .1s linear}
+.house-deal button{background:#245a49;border-color:#6caa91;color:var(--ink)}
 .showdown-advance b{position:relative;z-index:1;font-size:.85rem}
 .decision-area{position:relative;z-index:5;padding:.5rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
 .actions{position:static;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}

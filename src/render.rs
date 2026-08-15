@@ -577,7 +577,7 @@ fn lobby_table_list(
     let row = |table: &crate::view::LobbyTableView| {
         let detail = if let Some(tournament) = &table.tournament {
             format!(
-                "Tournament · buy-in {} · {} · {}/{} seats",
+                "buy-in {} · {} · {}/{} seats",
                 format_cents(tournament.buy_in),
                 if tournament.registered == tournament.seat_count {
                     "running"
@@ -612,8 +612,15 @@ fn lobby_table_list(
             }
         )
     };
+    let section = |title: &str, rows: &str, empty: &str| {
+        format!(
+            "<section class=\"table-list\"><h2>{title}</h2><ul>{}</ul></section>",
+            if rows.is_empty() { empty } else { rows }
+        )
+    };
     let mut yours = String::new();
-    let mut open = String::new();
+    let mut cash = String::new();
+    let mut tournaments = String::new();
     let mut dear = String::new();
     let mut dear_count = 0;
     for table in tables {
@@ -624,41 +631,32 @@ fn lobby_table_list(
             // Tables you cannot afford are folded away rather than dangled.
             dear_count += 1;
             dear.push_str(&entry);
+        } else if table.tournament.is_some() {
+            tournaments.push_str(&entry);
         } else {
-            open.push_str(&entry);
+            cash.push_str(&entry);
         }
     }
     let out_of_reach = if dear.is_empty() {
         String::new()
     } else {
         format!(
-            "<details class=\"table-list out-of-reach\"><summary>{dear_count} table{} beyond your balance</summary><ul>{dear}</ul></details>",
+            "<details class=\"table-list out-of-reach\"><summary>{dear_count} game{} beyond your balance</summary><ul>{dear}</ul></details>",
             if dear_count == 1 { "" } else { "s" }
         )
     };
     format!(
-        "{}<section class=\"table-list\"><h2>{}</h2><ul>{}</ul></section>{out_of_reach}",
+        "{}{}{}{out_of_reach}",
         if include_yours {
-            format!(
-                "<section class=\"table-list\"><h2>Your seats</h2><ul>{}</ul></section>",
-                if yours.is_empty() {
-                    "<li>None yet</li>".into()
-                } else {
-                    yours
-                }
-            )
+            section("Your seats", &yours, "<li>None yet</li>")
         } else {
             String::new()
         },
-        if include_yours {
-            "Open tables"
-        } else {
-            "Tables"
-        },
-        if open.is_empty() {
-            "<li>No tables yet</li>".to_string()
-        } else {
-            open
-        }
+        section("Cash tables", &cash, "<li>No tables yet</li>"),
+        section(
+            "Tournaments",
+            &tournaments,
+            "<li>None running · <a href=\"/tables/new\">start one</a></li>"
+        )
     )
 }

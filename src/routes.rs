@@ -1071,6 +1071,35 @@ pub async fn action(
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
+/// Ask the house to play one hand at a table nobody is sitting at. Only a
+/// signed-in watcher may, and only when there is nothing already running.
+pub async fn deal_bot_hand(
+    AuthUser(_user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    s.tables
+        .update(id, |table| {
+            if table.hand.is_some() {
+                return Err(anyhow::anyhow!("a hand is already in progress"));
+            }
+            if table
+                .seats
+                .iter()
+                .any(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }))
+            {
+                return Err(anyhow::anyhow!("this table has players of its own"));
+            }
+            // One click, one hand; clicking again while it plays changes nothing.
+            table.bot_hands_requested = 1;
+            maybe_start_hand(table);
+            Ok(())
+        })
+        .await
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    Ok(Json(serde_json::json!({"ok":true})))
+}
+
 pub async fn continue_table(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,

@@ -338,6 +338,98 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
 }
 
 #[tokio::test]
+async fn a_table_with_nobody_at_it_waits_to_be_asked() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "spectator".into(),
+            display_name: "Spectator".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    let id = {
+        let mut found = None;
+        for id in t.tables.ids().await {
+            let table = t.tables.get(id).await.unwrap();
+            if table.lock().await.cash_tier == Some(0) {
+                found = Some(id);
+            }
+        }
+        found.expect("the cheapest table")
+    };
+
+    // Time passes, the house fills every seat, and still nothing is dealt.
+    let mut now = chrono::Utc::now();
+    for _ in 0..60 {
+        now += chrono::Duration::seconds(1);
+        two_seven::driver::tick_once_at(&t.state, now)
+            .await
+            .unwrap();
+    }
+    let seated = {
+        let table = t.tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        assert!(
+            table.hand.is_none(),
+            "the house does not play to an empty room"
+        );
+        table
+            .seats
+            .iter()
+            .filter(|seat| seat.occupant.as_bot().is_some())
+            .count()
+    };
+    assert_eq!(seated, two_seven::cash::SEATS, "but it does sit down");
+
+    // A watcher asks for one hand, and gets exactly one.
+    let deal = |cookie_value: String| {
+        let router = t.router.clone();
+        async move {
+            router
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/tables/{id}/deal"))
+                        .header(header::COOKIE, cookie_value)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    assert_eq!(deal(cookie_value.clone()).await, StatusCode::OK);
+    {
+        let table = t.tables.get(id).await.unwrap();
+        assert!(table.lock().await.hand.is_some(), "the ask deals a hand");
+    }
+    // Asking again while it plays is refused rather than queued.
+    assert_eq!(deal(cookie_value.clone()).await, StatusCode::BAD_REQUEST);
+
+    // Play it out; the table then goes quiet again instead of dealing on.
+    for _ in 0..400 {
+        now += chrono::Duration::seconds(1);
+        two_seven::driver::tick_once_at(&t.state, now)
+            .await
+            .unwrap();
+    }
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    assert!(table.hand.is_none(), "one ask buys one hand, not a session");
+    assert!(table.hand_no >= 1, "and that hand was played");
+}
+
+#[tokio::test]
 async fn the_house_plays_its_way_onto_the_leaderboard() {
     let t = appx().await;
     two_seven::driver::ensure_cash_ladder(&t.state)
@@ -348,6 +440,16 @@ async fn the_house_plays_its_way_onto_the_leaderboard() {
     let mut now = chrono::Utc::now();
     for _ in 0..400 {
         now += chrono::Duration::seconds(1);
+        // Nobody is seated, so each hand has to be asked for.
+        for id in t.tables.ids().await {
+            let _ = t
+                .tables
+                .update(id, |table| {
+                    table.bot_hands_requested = 1;
+                    Ok(())
+                })
+                .await;
+        }
         two_seven::driver::tick_once_at(&t.state, now)
             .await
             .unwrap();
@@ -504,9 +606,12 @@ async fn the_lobby_counts_humans_and_folds_away_what_you_cannot_afford() {
         .filter(|tier| **tier > two_seven::bank::BankStore::RE_UP_AMOUNT)
         .count();
     assert!(
-        html.contains(&format!("{dear} tables beyond your balance")),
+        html.contains(&format!("{dear} games beyond your balance")),
         "everything above the balance folds away"
     );
+    // Cash tables and tournaments are listed apart.
+    assert!(html.contains("<h2>Cash tables</h2>"));
+    assert!(html.contains("<h2>Tournaments</h2>"));
     assert!(html.contains("out-of-reach"));
     // The cheapest table is affordable, so it is listed in the open section.
     let open = html.split("out-of-reach").next().unwrap();

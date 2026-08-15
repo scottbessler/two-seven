@@ -100,6 +100,10 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
             tracing::warn!(%id, %error, "pending departure settlement failed");
             continue;
         }
+        if let Err(error) = bank_bot_profits(state, id).await {
+            tracing::warn!(%id, %error, "banking house profits failed");
+            continue;
+        }
         if let Err(error) = rebuy_busted_cash_bots(state, id).await {
             tracing::warn!(%id, %error, "cash bot rebuy failed");
             continue;
@@ -323,6 +327,56 @@ pub(crate) async fn settle_pending_departures(
     Ok(())
 }
 
+/// A house player who has doubled up takes their original buy-in off the table
+/// and banks it, leaving the winnings in play. Otherwise the whole roll rides
+/// on one seat forever and the ladder's stakes stop meaning anything.
+async fn bank_bot_profits(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
+    let table = state
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("table missing"))?;
+    let cashes = {
+        let table = table.lock().await;
+        if !matches!(table.mode, crate::table::TableMode::Cash { .. }) || table.hand.is_some() {
+            return Ok(());
+        }
+        let buy_in = table.buy_in;
+        table
+            .seats
+            .iter()
+            .enumerate()
+            .filter_map(|(seat, value)| {
+                let bot = value.occupant.as_bot()?;
+                (value.stack >= buy_in * 2).then_some((seat, bot, buy_in))
+            })
+            .collect::<Vec<_>>()
+    };
+    for (seat, bot, amount) in cashes {
+        state
+            .tables
+            .update(id, |table| {
+                let value = table
+                    .seats
+                    .get_mut(seat)
+                    .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
+                if value.occupant.as_bot() == Some(bot) && value.stack >= amount * 2 {
+                    value.stack -= amount;
+                }
+                Ok(())
+            })
+            .await?;
+        if let Err(error) = state
+            .bank
+            .cash_out(AccountOwner::Bot(bot), id, amount)
+            .await
+        {
+            tracing::warn!(%id, %error, "banking a house player's profit failed");
+        }
+    }
+    Ok(())
+}
+
 async fn rebuy_busted_cash_bots(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
     let table = state
         .tables
@@ -483,6 +537,78 @@ mod tests {
     use axum_extra::extract::cookie::Key;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[tokio::test]
+    async fn a_doubled_up_house_player_banks_the_buy_in() {
+        let root = std::env::temp_dir().join(format!("two-seven-profit-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let state = AppState {
+            users,
+            bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
+            blitz,
+            tables: tables.clone(),
+            history: crate::history::HistoryStore::load(&root).await.unwrap(),
+            stats: crate::stats::StatsStore::load(&root).await.unwrap(),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        let bot = crate::table::Bot::new(BotKind::Shark, 0);
+        let mut table = Table::new(
+            "profits".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            20_000,
+        );
+        table.seats[0] = crate::table::Seat {
+            occupant: SeatOccupant::bot(bot),
+            // Doubled up, and then some.
+            stack: 45_000,
+            sitting_out: false,
+            pending_departure: false,
+        };
+        table.seats[1] = crate::table::Seat {
+            occupant: SeatOccupant::bot(crate::table::Bot::new(BotKind::Rock, 0)),
+            stack: 19_000,
+            sitting_out: false,
+            pending_departure: false,
+        };
+        let id = tables.insert(table).await.unwrap();
+
+        bank_bot_profits(&state, id).await.unwrap();
+
+        let table = tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        assert_eq!(
+            table.seats[0].stack, 25_000,
+            "the original buy-in comes off the table"
+        );
+        assert_eq!(
+            table.seats[1].stack, 19_000,
+            "a player still under a double-up is left alone"
+        );
+        let account = bank.account(AccountOwner::Bot(bot)).await.unwrap();
+        assert_eq!(account.balance, 20_000, "and lands in their account");
+    }
+
+    /// A table with no people at it deals only on request, so a test that
+    /// wants the house to keep playing has to keep asking.
+    async fn keep_dealing(tables: &TableStore, id: Uuid) {
+        let _ = tables
+            .update(id, |table| {
+                table.bot_hands_requested = 1;
+                Ok(())
+            })
+            .await;
+    }
 
     #[tokio::test]
     async fn the_standing_tables_seed_themselves_and_fill_with_the_house() {
@@ -722,6 +848,8 @@ mod tests {
         let mut aggressive_actions = std::collections::HashSet::new();
         for _ in 0..2_000 {
             now += Duration::seconds(1);
+            // Nobody is sitting down, so every hand has to be asked for.
+            keep_dealing(&tables, id).await;
             tick_once_at(&state, now).await.unwrap();
             let table = tables.get(id).await.unwrap();
             let table = table.lock().await;
@@ -818,6 +946,7 @@ mod tests {
         let mut now = Utc::now();
         for _ in 0..4_000 {
             now += Duration::seconds(1);
+            keep_dealing(&tables, id).await;
             tick_once_at(&state, now).await.unwrap();
         }
         let table = tables.get(id).await.unwrap();
@@ -917,6 +1046,7 @@ mod tests {
         let mut now = Utc::now();
         for _ in 0..20_000 {
             now += Duration::seconds(1);
+            keep_dealing(&tables, id).await;
             tick_once_at(&state, now).await.unwrap();
             let table = tables.get(id).await.unwrap();
             if let TableMode::Tournament(tournament) = &table.lock().await.mode

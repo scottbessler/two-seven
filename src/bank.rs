@@ -74,6 +74,24 @@ impl BankStore {
             }
             tokio::fs::write(&marker, b"legacy accounts wiped for non-debt bank\n").await?;
         }
+        // The house used to hold one account per playing style. Now that it is
+        // twenty named regulars, their books start empty; people keep theirs.
+        let bots_marker = dir.join("bank-v3-named-bots.marker");
+        if !tokio::fs::try_exists(&bots_marker).await? {
+            let mut entries = tokio::fs::read_dir(&dir).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if path.extension().and_then(|x| x.to_str()) == Some("json")
+                    && path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("bot-"))
+                {
+                    let _ = tokio::fs::remove_file(path).await;
+                }
+            }
+            tokio::fs::write(&bots_marker, b"house accounts reset for named bots\n").await?;
+        }
         let mut accounts = HashMap::new();
         let mut entries = tokio::fs::read_dir(&dir).await?;
         while let Some(entry) = entries.next_entry().await? {

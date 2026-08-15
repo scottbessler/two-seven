@@ -395,6 +395,10 @@ pub struct Table {
     /// Which rung of the standing cash ladder this is, if it is one of them.
     #[serde(default)]
     pub cash_tier: Option<usize>,
+    /// Hands the house has been asked to play with nobody sitting down. A
+    /// table with no people at it deals only when somebody watching says so.
+    #[serde(default)]
+    pub bot_hands_requested: u32,
 }
 
 /// A finished hand, kept whole for later inspection: who sat where, what they
@@ -477,6 +481,7 @@ impl Table {
             hand: None,
             last_hand: None,
             cash_tier: None,
+            bot_hands_requested: 0,
             next_action_at: None,
         }
     }
@@ -521,6 +526,18 @@ pub fn maybe_start_hand(table: &mut Table) {
             .any(|seat| matches!(seat.occupant, SeatOccupant::Empty))
     {
         return;
+    }
+    // The house does not play to an empty room. With nobody sitting down, a
+    // hand is dealt only when a watcher asks for one.
+    if !table
+        .seats
+        .iter()
+        .any(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }))
+    {
+        if table.bot_hands_requested == 0 {
+            return;
+        }
+        table.bot_hands_requested -= 1;
     }
     let stacks: Vec<(usize, Cents)> = table
         .seats
