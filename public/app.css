@@ -105,6 +105,8 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .player-info:hover .player-tooltip,.player-info:focus .player-tooltip,.player-info:focus-within .player-tooltip{display:block}
 .seat-stack{color:var(--accent)!important;font-size:.8rem!important;font-weight:800}
 .seat-badges{display:flex;min-height:.85rem;align-items:center;justify-content:center;gap:.2rem}
+.seat.leading{border-color:#7fd4a8;box-shadow:0 0 0 3px #7fd4a855,0 8px 20px #0007}
+.seat .leading-role{border-color:#7fd4a8;background:#7fd4a8;color:#0d2419}
 .seat.winner{border:2px solid #f1d56e;background:#245941;box-shadow:0 0 0 5px #f1d56e70,0 0 28px #f1d56e70,0 8px 24px #0008}
 .seat .winner-role{border-color:#f1d56e;background:#f1d56e;color:#1a160d}
 .seat-cards{position:absolute;left:50%;top:calc(100% - .15rem);display:flex;z-index:4;transform:translateX(-50%);transition:transform .2s cubic-bezier(.2,.8,.2,1.25);transform-origin:center bottom}

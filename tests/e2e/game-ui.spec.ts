@@ -553,6 +553,53 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
   await expect(page).toHaveScreenshot("landscape-table.png", { fullPage: true });
 });
 
+test("runs an all-in board out one street at a time", async ({ page }) => {
+  const allIn = {
+    ...showdownState,
+    result_pause_seconds: 21,
+    next_hand_at: new Date(Date.now() + 21_000).toISOString(),
+    last_hand: {
+      ...showdownState.last_hand,
+      runout_from: 0,
+      runout: [
+        { cards: 3, leaders: [0] },
+        { cards: 4, leaders: [0] },
+        { cards: 5, leaders: [1] },
+      ],
+    },
+  };
+  await mountTable(page, allIn);
+  const board = page.locator(".board .playing-card");
+  const result = page.locator(".showdown-result");
+
+  // Betting closed before the flop, so nothing is out yet.
+  await expect(board).toHaveCount(0);
+  await expect(page.locator(".seat.leading")).toHaveCount(0);
+  await expect(result).toHaveText("");
+  // Nothing may give the ending away while the board is still coming.
+  await expect(page.locator(".seat.winner")).toHaveCount(0);
+  await expect(page.locator(".game-log")).not.toContainText("wins");
+
+  // Each street lands five seconds apart, and the leader is called out.
+  await page.clock.install();
+  await page.clock.fastForward(5_100);
+  await expect(board).toHaveCount(3);
+  await expect(page.locator(".seat.leading")).toHaveCount(1);
+  await expect(page.locator(".seat.leading .leading-role")).toHaveText("AHEAD");
+  await expect(result, "the result waits for the last card").toHaveText("");
+
+  await page.clock.fastForward(5_000);
+  await expect(board).toHaveCount(4);
+
+  await page.clock.fastForward(5_000);
+  await expect(board).toHaveCount(5);
+  // The river changes who is ahead, and only now does the result read out.
+  await expect(page.locator(".seat.leading")).toHaveCount(1);
+  await expect(result).toContainText("Mina wins $400");
+  await expect(page.locator(".seat.winner")).toHaveCount(1);
+  await expect(page.locator(".game-log")).toContainText("Mina wins $400");
+});
+
 test("uses the short acknowledgement window for a fold result", async ({ page }) => {
   await mountTable(page, foldResultState);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");

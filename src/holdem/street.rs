@@ -55,6 +55,9 @@ impl Hand {
                 return;
             }
             StreetTransition::Deal(next) => {
+                if self.runout_from.is_none() && self.betting_is_closed() {
+                    self.runout_from = Some(self.board.len());
+                }
                 let cards = if next == Street::Flop { 3 } else { 1 };
                 for _ in 0..cards {
                     self.board.push(self.deck.deal().expect("deck has cards"));
@@ -69,6 +72,16 @@ impl Hand {
             amount: 0,
         });
         self.enter_betting_round();
+    }
+
+    /// No further betting is possible once at most one live player still has
+    /// chips to put in; the rest of the board simply runs out.
+    fn betting_is_closed(&self) -> bool {
+        self.players
+            .iter()
+            .filter(|player| !player.folded && !player.all_in && player.stack > 0)
+            .count()
+            <= 1
     }
 
     /// Entry action for a post-flop betting street: reset the round machine
@@ -130,6 +143,9 @@ impl Hand {
                 .collect(),
             revealed_hole_cards: Vec::new(),
             events: self.events.clone(),
+            // A fold win shows no runout: there is nothing left to watch.
+            runout_from: self.board.len(),
+            runout: Vec::new(),
         });
         self.complete = true;
         self.street = Street::Complete;
@@ -220,6 +236,66 @@ mod tests {
             assert_eq!(hand.street, Street::Complete);
             assert_eq!(hand.summary.as_ref().unwrap().awards.len(), 1);
         }
+    }
+
+    #[test]
+    fn all_in_runout_records_every_street_and_who_leads() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            77,
+        );
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::Call).unwrap();
+        assert!(hand.complete);
+        let summary = hand.summary.as_ref().expect("summary");
+        // Betting closed before the flop, so the whole board is a runout.
+        assert_eq!(summary.runout_from, 0);
+        assert_eq!(
+            summary
+                .runout
+                .iter()
+                .map(|step| step.cards)
+                .collect::<Vec<_>>(),
+            vec![3, 4, 5]
+        );
+        for step in &summary.runout {
+            assert!(
+                !step.leaders.is_empty(),
+                "someone must lead at every street: {step:?}"
+            );
+            assert!(
+                step.leaders
+                    .iter()
+                    .all(|seat| hand.players.iter().any(|player| player.seat == *seat)),
+                "leaders must be seats in the hand: {step:?}"
+            );
+        }
+        // The final leaders are the seats that actually take the pot.
+        let last = summary.runout.last().expect("river step");
+        let winners: Vec<usize> = summary.awards.iter().map(|award| award.seat).collect();
+        assert!(last.leaders.iter().all(|seat| winners.contains(seat)));
+    }
+
+    #[test]
+    fn a_contested_street_is_not_a_runout() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            78,
+        );
+        hand.apply_action(Action::Call).unwrap();
+        hand.apply_action(Action::Check).unwrap();
+        assert_eq!(hand.street, Street::Flop);
+        assert_eq!(hand.runout_from, None, "both players can still bet");
     }
 
     #[test]

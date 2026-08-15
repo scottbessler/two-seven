@@ -94,6 +94,19 @@ pub struct HandSummary {
     pub revealed_hole_cards: Vec<(usize, Vec<Card>)>,
     #[serde(default)]
     pub events: Vec<HandEvent>,
+    /// Board cards already face up when betting closed. Everything past this
+    /// ran out with no one left to act, so the table watches it arrive.
+    #[serde(default)]
+    pub runout_from: usize,
+    #[serde(default)]
+    pub runout: Vec<RunoutStep>,
+}
+
+/// One street of an all-in runout: the board as it stands, and who is ahead.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RunoutStep {
+    pub cards: usize,
+    pub leaders: Vec<usize>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -150,6 +163,9 @@ pub struct Hand {
     pub summary: Option<HandSummary>,
     #[serde(default)]
     pub events: Vec<HandEvent>,
+    /// Board length at the moment betting closed for good, once it has.
+    #[serde(default)]
+    pub runout_from: Option<usize>,
 }
 
 impl Hand {
@@ -219,6 +235,7 @@ impl Hand {
             complete: false,
             summary: None,
             events: Vec::new(),
+            runout_from: None,
         };
         if ante > 0 {
             let seats = hand
@@ -469,8 +486,11 @@ impl Hand {
                 amount: award.amount,
             });
         }
+        let runout_from = self.runout_from.unwrap_or(self.board.len());
         self.summary = Some(HandSummary {
             board: self.board.clone(),
+            runout: self.runout_steps(runout_from),
+            runout_from,
             results,
             awards,
             contributions: self
@@ -489,6 +509,45 @@ impl Hand {
         self.complete = true;
         self.current_player = None;
         self.pot = 0;
+    }
+
+    /// Who leads at each street of an all-in runout. Only whole streets count:
+    /// a flop arrives as one card, not three.
+    fn runout_steps(&self, from: usize) -> Vec<RunoutStep> {
+        [3usize, 4, 5]
+            .into_iter()
+            .filter(|cards| *cards > from && *cards <= self.board.len())
+            .map(|cards| RunoutStep {
+                cards,
+                leaders: self.leaders_on(&self.board[..cards]),
+            })
+            .collect()
+    }
+
+    /// The live seats holding the best hand against a partial board.
+    fn leaders_on(&self, board: &[Card]) -> Vec<usize> {
+        let ranked: Vec<(usize, crate::eval::HandRank)> = self
+            .players
+            .iter()
+            .filter(|player| !player.folded)
+            .map(|player| {
+                let cards: Vec<Card> = player
+                    .hole_cards
+                    .iter()
+                    .chain(board.iter())
+                    .copied()
+                    .collect();
+                (player.seat, evaluate(&cards).rank)
+            })
+            .collect();
+        let Some(best) = ranked.iter().map(|(_, rank)| rank).max().cloned() else {
+            return Vec::new();
+        };
+        ranked
+            .into_iter()
+            .filter(|(_, rank)| *rank == best)
+            .map(|(seat, _)| seat)
+            .collect()
     }
 
     fn winner_order(&self, mut seats: Vec<usize>) -> Vec<usize> {

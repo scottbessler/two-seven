@@ -95,8 +95,8 @@ impl FromStr for BotKind {
 #[cfg(test)]
 mod bot_kind_tests {
     use super::{
-        BotKind, FOLD_RESULT_PAUSE_SECONDS, SHOWDOWN_PAUSE_SECONDS, Stakes, Table, TableMode,
-        result_pause_seconds,
+        BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS, SHOWDOWN_PAUSE_SECONDS, Stakes,
+        Table, TableMode, result_pause_seconds,
     };
     use crate::holdem::HandSummary;
     use std::{collections::BTreeMap, str::FromStr};
@@ -121,21 +121,35 @@ mod bot_kind_tests {
 
     #[test]
     fn result_pause_distinguishes_showdown_from_fold_win() {
-        let summary = |revealed_hole_cards| HandSummary {
+        let summary = |revealed_hole_cards, runout: Vec<usize>| HandSummary {
             board: Vec::new(),
             results: Vec::new(),
             awards: Vec::new(),
             contributions: BTreeMap::new(),
             revealed_hole_cards,
             events: Vec::new(),
+            runout_from: 0,
+            runout: runout
+                .into_iter()
+                .map(|cards| crate::holdem::RunoutStep {
+                    cards,
+                    leaders: Vec::new(),
+                })
+                .collect(),
         };
         assert_eq!(
-            result_pause_seconds(Some(&summary(Vec::new()))),
+            result_pause_seconds(Some(&summary(Vec::new(), Vec::new()))),
             FOLD_RESULT_PAUSE_SECONDS
         );
+        let showdown = vec![(0, Vec::new()), (1, Vec::new())];
         assert_eq!(
-            result_pause_seconds(Some(&summary(vec![(0, Vec::new()), (1, Vec::new())]))),
+            result_pause_seconds(Some(&summary(showdown.clone(), Vec::new()))),
             SHOWDOWN_PAUSE_SECONDS
+        );
+        // Every runout street buys the table time to watch it land.
+        assert_eq!(
+            result_pause_seconds(Some(&summary(showdown, vec![3, 4, 5]))),
+            SHOWDOWN_PAUSE_SECONDS + 3 * RUNOUT_STEP_SECONDS
         );
     }
 
@@ -239,12 +253,18 @@ pub struct Table {
 
 pub const SHOWDOWN_PAUSE_SECONDS: i64 = 6;
 pub const FOLD_RESULT_PAUSE_SECONDS: i64 = 3;
+/// An all-in board runs out one street at a time so the table can watch it.
+pub const RUNOUT_STEP_SECONDS: i64 = 5;
 
-fn result_pause_seconds(summary: Option<&HandSummary>) -> i64 {
-    if summary.is_some_and(|summary| summary.revealed_hole_cards.len() > 1) {
-        SHOWDOWN_PAUSE_SECONDS
+pub fn result_pause_seconds(summary: Option<&HandSummary>) -> i64 {
+    let Some(summary) = summary else {
+        return FOLD_RESULT_PAUSE_SECONDS;
+    };
+    let runout = summary.runout.len() as i64 * RUNOUT_STEP_SECONDS;
+    if summary.revealed_hole_cards.len() > 1 {
+        SHOWDOWN_PAUSE_SECONDS + runout
     } else {
-        FOLD_RESULT_PAUSE_SECONDS
+        FOLD_RESULT_PAUSE_SECONDS + runout
     }
 }
 

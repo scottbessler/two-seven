@@ -58,6 +58,7 @@ pub struct TableView {
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub next_hand_at: Option<DateTime<Utc>>,
+    pub result_pause_seconds: i64,
     pub tournament: Option<TournamentView>,
 }
 
@@ -207,6 +208,8 @@ pub fn table_view_with_banks(
         } else {
             None
         },
+        // The client paces the runout against this, so it must not guess it.
+        result_pause_seconds: crate::table::result_pause_seconds(table.last_hand.as_ref()),
         tournament: match &table.mode {
             crate::table::TableMode::Tournament(state) => state
                 .config

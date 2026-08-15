@@ -8,6 +8,17 @@ const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
 const SHOWDOWN_PAUSE_MS = 6_000;
 const FOLD_RESULT_PAUSE_MS = 3_000;
+const RUNOUT_STEP_MS = 5_000;
+
+// An all-in board arrives a street at a time. Elapsed time since the hand
+// ended decides how much of it is face up and who is currently ahead.
+function runoutState(showdown, elapsed) {
+  const steps = showdown?.runout || [];
+  if (steps.length === 0) return { cards: showdown?.board?.length ?? 0, leaders: [] };
+  const taken = Math.min(steps.length, Math.floor(elapsed / RUNOUT_STEP_MS));
+  const step = taken > 0 ? steps[taken - 1] : null;
+  return { cards: step ? step.cards : showdown.runout_from ?? 0, leaders: step?.leaders || [] };
+}
 
 async function fetchState() {
   const response = await fetch(`/tables/${tableId}/state`, { headers: { Accept: "application/json" } });
@@ -58,7 +69,7 @@ function seatPosition(order, total) {
   return { "--seat-left": `${50 + x}%`, "--seat-top": `${50 + y}%` };
 }
 
-function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown }) {
+function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown, leading, settled }) {
   const position = seatPosition(order, total);
   const tooltipBelow = Number.parseFloat(position["--seat-top"]) < 35;
   const positionLeft = Number.parseFloat(position["--seat-left"]);
@@ -67,15 +78,16 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
-  const winner = showdown?.awards?.some((award) => award.seat === seat.index);
-  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", winner && "winner"].filter(Boolean).join(" ");
+  // While a board is still running out, nobody has won anything yet.
+  const winner = settled && showdown?.awards?.some((award) => award.seat === seat.index);
+  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position} data-seat-order=${order}>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(player?.stack ?? seat.stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
     <span class="seat-stack">${money(player?.stack ?? seat.stack)}</span>
-    <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
+    <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     <span class=${`seat-wager ${player?.street_contribution > 0 ? "" : "no-wager"}`}>${money(player?.street_contribution || 0)}</span>
     ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
     ${seat.index === button && html`<i class="button-marker">D</i>`}
@@ -160,19 +172,26 @@ function winnerLines(summary, seats) {
   });
 }
 
-function TableLog({ events, seats, summary }) {
-  const results = winnerLines(summary, seats);
-  return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${events.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
+function TableLog({ events, seats, summary, settled }) {
+  const results = settled ? winnerLines(summary, seats) : [];
+  // Awards are the punchline; they wait for the last card like everything else.
+  const shown = settled ? events : events.filter((event) => event.kind !== "Award");
+  return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
-function ShowdownAdvance({ deadline, duration, canContinue, refresh }) {
-  const [now, setNow] = useState(Date.now());
+// One clock for the whole result: it paces the runout and the countdown.
+function useResultClock(active, deadline, duration) {
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
+    if (!active) return undefined;
     const timer = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(timer);
-  }, []);
+  }, [active, deadline]);
   const dueAt = Date.parse(deadline || "");
-  const remaining = Number.isFinite(dueAt) ? Math.min(duration, Math.max(0, dueAt - now)) : duration;
+  return Number.isFinite(dueAt) ? Math.min(duration, Math.max(0, dueAt - now)) : duration;
+}
+
+function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
   const seconds = Math.ceil(remaining / 1000);
   const width = `${(remaining / duration) * 100}%`;
   const label = `Next hand in ${seconds}s`;
@@ -275,19 +294,24 @@ function TableApp() {
     events.addEventListener("error", refresh);
     return () => events.close();
   }, []);
+  const showdown = state && !state.hand ? state.last_hand : null;
+  const resultPause = 1000 * (state?.result_pause_seconds
+    ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);
+  const remaining = useResultClock(Boolean(showdown), state?.next_hand_at, resultPause);
   if (!state) return html`<p class="loading">Loading table…</p>`;
   const hand = state.hand;
-  const showdown = hand ? null : state.last_hand;
   const handEvents = hand?.events || showdown?.events || [];
   const current = hand?.current_player == null ? null : state.seats.find((seat) => seat.index === hand.current_player);
   const currentName = current?.display_name || current?.occupant || "—";
   const occupied = state.seats.filter((seat) => seat.occupant !== "empty");
   const viewerOffset = Math.max(0, occupied.findIndex((seat) => seat.index === state.viewer_seat));
   const ordered = [...occupied.slice(viewerOffset), ...occupied.slice(0, viewerOffset)];
-  const board = hand?.board || showdown?.board || [];
+  const runout = runoutState(showdown, resultPause - remaining);
+  const board = hand?.board || (showdown ? showdown.board.slice(0, runout.cards) : []);
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
-  const result = winnerLines(showdown, state.seats).join(" · ");
-  const resultPause = showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS;
+  // The result only reads once the whole board is out.
+  const settled = runout.cards >= (showdown?.board?.length ?? 0);
+  const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
     <section class="table-stage" aria-label="Poker table">
@@ -299,13 +323,13 @@ function TableApp() {
           ${showdown && html`<p class="showdown-result">${result}</p>`}
         </div>
       </div>
-      <div class="seats" data-seat-total=${ordered.length}>${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} />`)}</div>
+      <div class="seats" data-seat-total=${ordered.length}>${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`)}</div>
     </section>
     ${!showdown && (hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">Waiting for players</p>`)}
     ${(hand?.legal_actions || showdown) && html`<section class="decision-area">${showdown
-      ? html`<${ShowdownAdvance} deadline=${state.next_hand_at} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />`
+      ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${state.viewer_seat != null} refresh=${refresh} />`
       : html`<${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} />`}</section>`}
-    ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} />`}
+    ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />`}
     <p id="table-error" class="error" role="alert"></p>
     <nav class="table-controls"><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;
