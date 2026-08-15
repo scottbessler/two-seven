@@ -5,8 +5,15 @@ import { money, responseError, wholeDollarMoney } from "/public/shared.js";
 // Shared renderer contract: card-corner rank over suit.
 
 const root = document.getElementById("blackjack-app");
-// Mirrors BLACKJACK_BETS in src/blackjack.rs; the server rejects anything else.
-const BETS = [500, 2_000, 10_000, 20_000];
+
+// Mirrors bet_options in src/blackjack.rs: a nibble, a real bet, a big one,
+// and the whole roll. Anything you can cover is legal; these are the buttons.
+function betOptions(balance) {
+  if (balance < 100) return [];
+  const rounded = [balance / 100, balance / 20, balance / 4]
+    .map((bet) => Math.min(balance, Math.max(100, Math.floor(bet / 100) * 100)));
+  return [...new Set([...rounded, balance])].toSorted((left, right) => left - right);
+}
 
 function Hand({ title, cards, score, hidden }) {
   return html`<section class="blackjack-hand">
@@ -22,8 +29,15 @@ function App() {
   const [game, setGame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [balance, setBalance] = useState(0);
+
+  const loadBalance = () => fetch("/api/bank", { headers: { Accept: "application/json" } })
+    .then((response) => (response.ok ? response.json() : null))
+    .then((account) => account && setBalance(account.balance))
+    .catch(() => {});
 
   useEffect(() => {
+    loadBalance();
     fetch("/blackjack/resume")
       .then((response) => response.ok ? response.json() : null)
       .then((value) => value && setGame(value))
@@ -44,6 +58,7 @@ function App() {
       return;
     }
     setGame(await response.json());
+    loadBalance();
   };
 
   const act = async (kind) => {
@@ -60,8 +75,10 @@ function App() {
       return;
     }
     setGame(await response.json());
+    loadBalance();
   };
 
+  const bets = betOptions(balance);
   return html`<section class="blitz-table blackjack-table">
     <${CardSettings} interactive=${true} />
     ${game && html`<div class="blitz-score">
@@ -80,7 +97,9 @@ function App() {
         ${game.can_double && html`<button type="button" disabled=${busy} onClick=${() => act("double")}>Double</button>`}
         ${game.can_split && html`<button type="button" disabled=${busy} onClick=${() => act("split")}>Split</button>`}
         ${game.can_insure && html`<button type="button" disabled=${busy} onClick=${() => act("insurance")}>Insurance</button>`}
-      ` : BETS.map((amount) => html`<button class="deal-action" type="button" disabled=${busy} onClick=${() => start(amount)}>Deal ${wholeDollarMoney(amount)}</button>`)}
+      ` : bets.length === 0
+        ? html`<span class="deal-broke">Re-up from the coin menu to play a hand.</span>`
+        : bets.map((amount) => html`<button class="deal-action" type="button" disabled=${busy} onClick=${() => start(amount)}>Deal ${wholeDollarMoney(amount)}</button>`)}
     </div>
     ${error && html`<p class="error">${error}</p>`}
   </section>`;

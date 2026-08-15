@@ -223,6 +223,7 @@ fn blackjack_island_has_game_contracts() {
         "Dealer",
         "card-corner rank over suit",
         "deal-action",
+        "betOptions",
         "Deal ${wholeDollarMoney(amount)}",
         "game.can_hit && html",
         "game.can_double && html",
@@ -254,12 +255,9 @@ fn shared_island_helpers_have_contracts() {
 #[test]
 fn setup_walks_a_stepped_game_dialog() {
     for literal in [
-        "format",
-        "betting",
         "players",
         "buyIn",
         "confirm",
-        "endpoint: \"/tables\"",
         "endpoint: \"/tournaments\"",
         "starting_chips: TOURNAMENT_CHIPS",
         "payout_percentages: PAYOUTS[seats]",
@@ -271,10 +269,8 @@ fn setup_walks_a_stepped_game_dialog() {
             "missing setup contract: {literal}"
         );
     }
-    // Buy-in tiers and the stakes each one implies.
-    for tier in ["20_000", "50_000", "100_000", "200_000"] {
-        assert!(LOBBY_JS.contains(tier), "missing buy-in tier: {tier}");
-    }
+    // Cash games are standing tables now; only tournaments are created here.
+    assert!(!LOBBY_JS.contains("/tables\""));
     assert!(LOBBY_JS.contains("TOURNAMENT_CHIPS = 1_000_000"));
     assert_eq!(LOBBY_JS.matches("  [").count(), 15, "T10,000 has 15 levels");
     assert!(TABLE_JS.contains("money(state.buy_in)"));

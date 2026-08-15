@@ -24,6 +24,7 @@ struct T {
     users: Arc<UserStore>,
     bank: BankStore,
     tables: two_seven::store::TableStore,
+    state: app::AppState,
 }
 async fn appx() -> T {
     let dir = std::env::temp_dir().join(format!(
@@ -39,6 +40,7 @@ async fn appx() -> T {
     let tables = two_seven::store::TableStore::load(&dir).await.unwrap();
     let table_store = tables.clone();
     let history = two_seven::history::HistoryStore::load(&dir).await.unwrap();
+    let stats = two_seven::stats::StatsStore::load(&dir).await.unwrap();
     let key = Key::generate();
     let state = app::AppState {
         users: users.clone(),
@@ -49,12 +51,14 @@ async fn appx() -> T {
         blitz,
         tables,
         history,
+        stats,
         webauthn: Arc::new(app::build_webauthn().unwrap()),
         key: key.clone(),
         passkey_disabled: true,
     };
     T {
-        router: app::router(state),
+        router: app::router(state.clone()),
+        state,
         key,
         users,
         bank,
@@ -66,6 +70,21 @@ fn blitz_labels() -> Vec<&'static str> {
         .iter()
         .map(|difficulty| difficulty.config().label)
         .collect()
+}
+/// Cash tables are not created by players any more, so tests that need a
+/// particular shape of table put one in the store directly.
+async fn seat_table(t: &T, name: &str, seats: usize, buy_in: i64, no_debt: bool) -> Uuid {
+    let table = two_seven::table::Table::new(
+        name.into(),
+        two_seven::table::Stakes::NoLimit {
+            small_blind: 100,
+            big_blind: 200,
+        },
+        two_seven::table::TableMode::Cash { no_debt },
+        seats,
+        buy_in,
+    );
+    t.tables.insert(table).await.unwrap()
 }
 fn cookie(key: &Key, id: Uuid) -> String {
     let mut j = CookieJar::new();
@@ -195,11 +214,24 @@ async fn signed_home() {
 #[tokio::test]
 async fn game_setup_walks_a_stepped_dialog() {
     let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "setup".into(),
+            display_name: "Setup".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
     let response = t
         .router
         .oneshot(
             Request::builder()
                 .uri("/tables/new")
+                .header(header::COOKIE, cookie(&t.key, user))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -208,14 +240,281 @@ async fn game_setup_walks_a_stepped_dialog() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let html = String::from_utf8_lossy(&body);
-    // A stepped dialog: format, betting or players, buy-in, then confirm.
-    assert_eq!(html.matches("class=\"setup-step\"").count(), 4);
-    assert_eq!(html.matches("data-choice=\"buyIn\"").count(), 4);
-    assert!(html.contains("data-choice=\"format\""));
-    assert!(html.contains("data-choice=\"betting\""));
+    // A stepped dialog for tournaments: players, buy-in, then confirm.
+    assert_eq!(html.matches("class=\"setup-step\"").count(), 2);
+    assert!(html.contains("setup-step setup-confirm"));
+    assert_eq!(html.matches("data-choice=\"buyIn\"").count(), 6);
     assert!(html.contains("data-choice=\"players\""));
+    assert!(
+        !html.contains("data-choice=\"betting\""),
+        "cash games are not created"
+    );
     assert!(html.contains("quick-game-form"));
     assert!(html.contains("id=\"game-setup\""));
+    // Signed out of any money, every buy-in is out of reach.
+    assert_eq!(html.matches("setup-option-dear").count(), 6);
+}
+
+#[tokio::test]
+async fn the_house_plays_its_way_onto_the_leaderboard() {
+    let t = appx().await;
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    // Bot actions are paced in real time, so the clock has to move with the
+    // ticks for hands to actually play out.
+    let mut now = chrono::Utc::now();
+    for _ in 0..400 {
+        now += chrono::Duration::seconds(1);
+        two_seven::driver::tick_once_at(&t.state, now)
+            .await
+            .unwrap();
+    }
+    let stats = t.state.stats.all().await;
+    assert!(
+        stats.keys().any(|key| key.starts_with("bot:")),
+        "house players accumulate a record too"
+    );
+    let played: u64 = stats.values().map(|player| player.hands).sum();
+    assert!(played > 0, "somebody has played a hand");
+
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "watcher".into(),
+            display_name: "Watcher".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/leaderboard")
+                .header(header::COOKIE, cookie(&t.key, user))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    // A named regular is listed, marked as the house, with poker columns.
+    let roster = two_seven::table::Bot::roster();
+    assert!(
+        roster.iter().any(|bot| html.contains(bot.name())),
+        "a house regular should be on the board"
+    );
+    assert!(html.contains("house-tag"));
+    for header in ["Hands", "VPIP", "PFR", "Biggest pot"] {
+        assert!(html.contains(header), "missing {header} column");
+    }
+    // Balances descend down the table.
+    let balances: Vec<i64> = html
+        .split("<td class=\"money\">$")
+        .skip(1)
+        .filter_map(|cell| {
+            cell.split('<')
+                .next()?
+                .replace(',', "")
+                .split('.')
+                .next()?
+                .parse::<i64>()
+                .ok()
+        })
+        .step_by(2)
+        .collect();
+    assert!(
+        balances.windows(2).all(|pair| pair[0] >= pair[1]),
+        "the board is sorted by balance: {balances:?}"
+    );
+}
+
+#[tokio::test]
+async fn blackjack_lets_you_bet_the_whole_bankroll_but_no_more() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "highroller".into(),
+            display_name: "High Roller".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let account = t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let deal = |bet: i64| {
+        let router = t.router.clone();
+        let cookie_value = cookie_value.clone();
+        async move {
+            router
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/blackjack/start")
+                        .header(header::COOKIE, cookie_value)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(format!(r#"{{"bet":{bet}}}"#)))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status()
+        }
+    };
+    // A dollar over the balance is refused; the balance itself is not.
+    assert_eq!(deal(account.balance + 1).await, StatusCode::BAD_REQUEST);
+    assert_eq!(deal(account.balance).await, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_lobby_counts_humans_and_folds_away_what_you_cannot_afford() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "browser".into(),
+            display_name: "Browser".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    // A single re-up buys the cheapest table and nothing above it.
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let cookie_value = cookie(&t.key, user);
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    for _ in 0..(two_seven::cash::SEATS + 2) {
+        two_seven::driver::tick_once(&t.state).await.unwrap();
+    }
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/tables")
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    // The house filled every table, so none of them holds a person yet.
+    assert!(html.contains("no humans"), "the list says who is a person");
+    let dear = two_seven::cash::TIERS
+        .iter()
+        .filter(|tier| **tier > two_seven::bank::BankStore::RE_UP_AMOUNT)
+        .count();
+    assert!(
+        html.contains(&format!("{dear} tables beyond your balance")),
+        "everything above the balance folds away"
+    );
+    assert!(html.contains("out-of-reach"));
+    // The cheapest table is affordable, so it is listed in the open section.
+    let open = html.split("out-of-reach").next().unwrap();
+    assert!(open.contains(&two_seven::cash::name(two_seven::cash::TIERS[0])));
+}
+
+#[tokio::test]
+async fn a_human_may_take_a_house_players_seat() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "walkin".into(),
+            display_name: "Walk-in".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let cookie_value = cookie(&t.key, user);
+
+    // The cheapest standing table, filled by the house.
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    let id = {
+        let mut found = None;
+        for id in t.tables.ids().await {
+            let table = t.tables.get(id).await.unwrap();
+            if table.lock().await.cash_tier == Some(0) {
+                found = Some(id);
+            }
+        }
+        found.expect("the cheapest table")
+    };
+    for _ in 0..(two_seven::cash::SEATS + 2) {
+        two_seven::driver::tick_once(&t.state).await.unwrap();
+    }
+    let seated_bots = {
+        let table = t.tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        table
+            .seats
+            .iter()
+            .filter(|seat| seat.occupant.as_bot().is_some())
+            .count()
+    };
+    assert_eq!(seated_bots, two_seven::cash::SEATS, "the house filled it");
+
+    let join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        join.status(),
+        StatusCode::OK,
+        "a full house still has room for a person"
+    );
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    assert_eq!(
+        table
+            .seats
+            .iter()
+            .filter(|seat| matches!(seat.occupant, two_seven::table::SeatOccupant::Human { .. }))
+            .count(),
+        1
+    );
+    assert_eq!(
+        table
+            .seats
+            .iter()
+            .filter(|seat| seat.occupant.as_bot().is_some())
+            .count(),
+        two_seven::cash::SEATS - 1,
+        "exactly one house player gave up their seat"
+    );
 }
 
 #[tokio::test]
@@ -367,25 +666,7 @@ async fn every_finished_hand_lands_in_the_table_history() {
         .unwrap();
     let cookie_value = cookie(&t.key, user);
     t.bank.re_up(AccountOwner::User(user)).await.unwrap();
-    let create = t
-        .router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/tables")
-                .header(header::COOKIE, &cookie_value)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"name":"Logged","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"max_seats":2,"buy_in":10000}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let body: serde_json::Value =
-        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
-    let id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
+    let id = seat_table(&t, "Logged", 2, 10_000, false).await;
 
     // Nothing has been played, so the log is empty but the page still renders.
     let empty = history_json(&t, id, &cookie_value).await;
@@ -442,7 +723,12 @@ async fn every_finished_hand_lands_in_the_table_history() {
     assert_eq!(seats.len(), 2);
     for seat in seats {
         assert_eq!(seat["hole_cards"].as_array().unwrap().len(), 2);
-        assert!(seat["occupant"].as_str().unwrap().contains(':'));
+        // The occupant is structured now, so history says who by identity.
+        assert!(
+            seat["occupant"].get("Human").is_some() || seat["occupant"].get("Bot").is_some(),
+            "occupant should name a person or a house player: {}",
+            seat["occupant"]
+        );
     }
     assert!(!hand["summary"]["events"].as_array().unwrap().is_empty());
 
@@ -595,7 +881,7 @@ async fn tournament_accepts_the_full_ten_thousand_chip_ladder() {
 }
 
 #[tokio::test]
-async fn game_entries_enforce_one_dollar_floor_and_ten_thousand_dollar_ceiling() {
+async fn game_entries_enforce_a_one_dollar_floor_and_a_million_dollar_ceiling() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -611,24 +897,6 @@ async fn game_entries_enforce_one_dollar_floor_and_ten_thousand_dollar_ceiling()
         .unwrap();
     let cookie_value = cookie(&t.key, user);
 
-    let small_table = t
-        .router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/tables")
-                .header(header::COOKIE, &cookie_value)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"name":"Tiny","stakes":{"NoLimit":{"small_blind":99,"big_blind":200}},"buy_in":10000}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(small_table.status(), StatusCode::BAD_REQUEST);
-
     let huge_tournament = t
         .router
         .clone()
@@ -639,7 +907,7 @@ async fn game_entries_enforce_one_dollar_floor_and_ten_thousand_dollar_ceiling()
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
-                    r#"{"name":"Huge","buy_in":1000001,"seat_count":4,"starting_chips":10000,"levels":[{"small_blind":100,"big_blind":200,"ante":0,"hands":10}],"payout_percentages":[100]}"#,
+                    r#"{"name":"Huge","buy_in":100000001,"seat_count":4,"starting_chips":10000,"levels":[{"small_blind":100,"big_blind":200,"ante":0,"hands":10}],"payout_percentages":[100]}"#,
                 ))
                 .unwrap(),
         )
@@ -647,7 +915,8 @@ async fn game_entries_enforce_one_dollar_floor_and_ten_thousand_dollar_ceiling()
         .unwrap();
     assert_eq!(huge_tournament.status(), StatusCode::BAD_REQUEST);
 
-    for bet in [99, 2_500, 1_000_001] {
+    // Under a dollar, and more than the whole bankroll.
+    for bet in [99, 100_000_001] {
         let blackjack = t
             .router
             .clone()
@@ -887,14 +1156,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     for user in [alice, bob] {
         t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     }
-    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_a).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Test","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"max_seats":2,"buy_in":10000}"#)).unwrap()).await.unwrap();
-    assert_eq!(create.status(), StatusCode::OK);
-    let body = to_bytes(create.into_body(), usize::MAX).await.unwrap();
-    let id: Uuid = serde_json::from_slice::<serde_json::Value>(&body).unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let id = seat_table(&t, "Test", 2, 10_000, false).await;
     for cookie_value in [&cookie_a, &cookie_b] {
         let response = t
             .router
@@ -1171,30 +1433,7 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
-    let create = t
-        .router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/tables")
-                .header(header::COOKIE, &cookie_value)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(
-                    r#"{"name":"No debt bots","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"no_debt":true,"buy_in":10000}"#,
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    let id: Uuid = serde_json::from_slice::<serde_json::Value>(
-        &to_bytes(create.into_body(), usize::MAX).await.unwrap(),
-    )
-    .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let id = seat_table(&t, "No debt bots", 9, 10_000, true).await;
     let response = t
         .router
         .oneshot(
@@ -1211,7 +1450,10 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
     assert_eq!(response.status(), StatusCode::OK);
     let account = t
         .bank
-        .account(AccountOwner::Bot(two_seven::table::BotKind::Fish))
+        .account(AccountOwner::Bot(two_seven::table::Bot::new(
+            two_seven::table::BotKind::Fish,
+            0,
+        )))
         .await
         .unwrap();
     assert_eq!(account.balance, 90_000);
@@ -1234,15 +1476,7 @@ async fn no_debt_join_is_rejected() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
-    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tables").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"No debt","stakes":{"NoLimit":{"small_blind":100,"big_blind":200}},"no_debt":true,"buy_in":10000}"#)).unwrap()).await.unwrap();
-    let id: Uuid = serde_json::from_slice::<serde_json::Value>(
-        &to_bytes(create.into_body(), usize::MAX).await.unwrap(),
-    )
-    .unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .parse()
-        .unwrap();
+    let id = seat_table(&t, "No debt", 9, 10_000, true).await;
     let response = t
         .router
         .oneshot(

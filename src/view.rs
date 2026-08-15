@@ -68,8 +68,11 @@ pub struct TableView {
 pub struct LeaderboardRow {
     pub rank: usize,
     pub name: String,
+    /// House regulars are ranked alongside people, and marked as such.
+    pub house: bool,
     pub balance: Cents,
     pub loan_count: u64,
+    pub poker: crate::stats::PlayerStats,
     pub blitz: Vec<LeaderboardBlitz>,
 }
 
@@ -88,6 +91,8 @@ pub struct LobbyTableView {
     pub stakes: crate::table::Stakes,
     pub buy_in: Cents,
     pub occupied: usize,
+    /// How many of those seats hold a person rather than the house.
+    pub humans: usize,
     pub max_seats: usize,
     pub no_debt: bool,
     pub tournament: Option<LobbyTournamentView>,
@@ -279,7 +284,9 @@ fn seat_view(
         occupant: match seat.occupant {
             SeatOccupant::Empty => "empty".into(),
             SeatOccupant::Human { .. } => "human".into(),
-            SeatOccupant::Bot { kind } => format!("{kind:?}"),
+            SeatOccupant::Bot { kind, seat } => {
+                crate::table::Bot::new(kind, seat).name().to_string()
+            }
         },
         display_name: display_name.cloned(),
         sitting_out: seat.sitting_out,

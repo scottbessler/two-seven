@@ -5,7 +5,7 @@ use crate::{
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
-    money::{MIN_GAME_AMOUNT, valid_chip_amount, valid_game_amount, valid_optional_chip_amount},
+    money::{valid_game_amount, valid_optional_game_amount},
     render,
     session::{AuthUser, MaybeUser},
     table::{
@@ -52,26 +52,21 @@ pub async fn index(State(s): State<AppState>, MaybeUser(user): MaybeUser) -> Htm
         None => None,
     };
     if let Some((id, name)) = current {
-        Html(render::home_lobby(&name, &lobby_views(&s, id).await))
+        Html(render::home_lobby(
+            &name,
+            &lobby_views(&s, id).await,
+            balance_of(&s, id).await,
+        ))
     } else {
         Html(render::home(None))
     }
 }
 
-#[derive(Deserialize)]
-pub struct CreateTable {
-    pub name: String,
-    pub stakes: Stakes,
-    pub no_debt: Option<bool>,
-    pub max_seats: Option<usize>,
-    #[serde(alias = "max_buy_in")]
-    pub buy_in: Option<i64>,
+pub async fn new_table(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+    Html(render::table_create(balance_of(&s, user).await))
 }
-pub async fn new_table() -> Html<String> {
-    Html(render::table_create())
-}
-pub async fn new_tournament() -> Html<String> {
-    Html(render::tournament_create())
+pub async fn new_tournament(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+    Html(render::tournament_create(balance_of(&s, user).await))
 }
 
 #[derive(Deserialize)]
@@ -85,40 +80,21 @@ pub struct CreateTournament {
     pub payout_percentages: Vec<u8>,
 }
 
-fn valid_stakes(stakes: Stakes) -> bool {
-    match stakes {
-        Stakes::NoLimit {
-            small_blind,
-            big_blind,
-        } => {
-            valid_game_amount(small_blind)
-                && valid_game_amount(big_blind)
-                && big_blind >= small_blind
-        }
-        Stakes::Limit { small_bet, big_bet } => {
-            small_bet / 2 >= MIN_GAME_AMOUNT
-                && valid_game_amount(small_bet)
-                && valid_game_amount(big_bet)
-                && big_bet >= small_bet
-        }
-    }
-}
-
 pub async fn create_tournament(
     AuthUser(_user): AuthUser,
     State(s): State<AppState>,
     Json(input): Json<CreateTournament>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if !valid_game_amount(input.buy_in)
-        || !valid_chip_amount(input.starting_chips)
+        || !valid_game_amount(input.starting_chips)
         || input.seat_count < 2
         || input.levels.is_empty()
         || input.payout_percentages.is_empty()
         || input.levels.iter().any(|level| {
-            !valid_chip_amount(level.small_blind)
-                || !valid_chip_amount(level.big_blind)
+            !valid_game_amount(level.small_blind)
+                || !valid_game_amount(level.big_blind)
                 || level.big_blind < level.small_blind
-                || !valid_optional_chip_amount(level.ante)
+                || !valid_optional_game_amount(level.ante)
                 || level.hands == 0
         })
         || input
@@ -249,7 +225,10 @@ pub async fn register_tournament(
     Ok(Json(serde_json::json!({"ok":true})))
 }
 pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
-    Html(render::lobby(&lobby_views(&s, user).await))
+    Html(render::lobby(
+        &lobby_views(&s, user).await,
+        balance_of(&s, user).await,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -262,8 +241,12 @@ pub async fn blackjack_start(
     State(s): State<AppState>,
     Json(input): Json<BlackjackStartRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    if !valid_game_amount(input.bet) {
-        return Err(AppError::bad_request("bet must be between $1 and $10,000"));
+    // You may bet anything you can cover, up to the whole bankroll.
+    let balance = balance_of(&s, user).await;
+    if !valid_game_amount(input.bet) || input.bet > balance {
+        return Err(AppError::bad_request(
+            "bet must be at least $1 and no more than your balance",
+        ));
     }
     let id = Uuid::new_v4();
     let view = s
@@ -506,6 +489,15 @@ pub async fn hand_blitz_answer(
     Ok(Json(serde_json::json!(run)))
 }
 
+/// What the viewer has to spend, which decides what the lobby offers them.
+async fn balance_of(state: &AppState, user: Uuid) -> crate::money::Cents {
+    state
+        .bank
+        .account(AccountOwner::User(user))
+        .await
+        .map_or(0, |account| account.balance)
+}
+
 async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
     let mut tables = Vec::new();
     for id in state.tables.ids().await {
@@ -537,6 +529,11 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
                     .iter()
                     .filter(|seat| !matches!(seat.occupant, SeatOccupant::Empty))
                     .count(),
+                humans: table
+                    .seats
+                    .iter()
+                    .filter(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }))
+                    .count(),
                 max_seats: table.max_seats,
                 no_debt,
                 tournament,
@@ -548,33 +545,6 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
     }
     tables
 }
-pub async fn create_table(
-    AuthUser(_user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<CreateTable>,
-) -> Result<impl IntoResponse, AppError> {
-    let buy_in = input.buy_in.unwrap_or(10_000);
-    if !valid_stakes(input.stakes) || !valid_game_amount(buy_in) {
-        return Err(AppError::bad_request(
-            "stakes and buy-in must be between $1 and $10,000",
-        ));
-    }
-    let mode = TableMode::Cash {
-        no_debt: input.no_debt.unwrap_or(false),
-    };
-    let table = Table::new(
-        input.name,
-        input.stakes,
-        mode,
-        input.max_seats.unwrap_or(9).clamp(2, 9),
-        buy_in,
-    );
-    let id = s.tables.insert(table).await.map_err(AppError::internal)?;
-    Ok(Json(
-        serde_json::json!({"id":id,"url":format!("/tables/{id}")}),
-    ))
-}
-
 pub async fn table_page(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
@@ -616,7 +586,9 @@ async fn seat_banks(
     for (index, seat) in table.seats.iter().enumerate() {
         let owner = match seat.occupant {
             SeatOccupant::Human { user_id } => Some(AccountOwner::User(user_id)),
-            SeatOccupant::Bot { kind } => Some(AccountOwner::Bot(kind)),
+            SeatOccupant::Bot { kind, seat } => {
+                Some(AccountOwner::Bot(crate::table::Bot::new(kind, seat)))
+            }
             SeatOccupant::Empty => None,
         };
         if let Some(owner) = owner
@@ -637,51 +609,74 @@ pub struct HistoryQuery {
 /// The leaderboard: richest first, and a tie goes to whoever borrowed less.
 pub const LEADERBOARD_SIZE: usize = 20;
 
+/// A regular of that kind who is not already sitting at this table.
+fn free_bot(table: &Table, kind: BotKind) -> Option<crate::table::Bot> {
+    (0..crate::table::Bot::PER_KIND)
+        .map(|seat| crate::table::Bot::new(kind, seat))
+        .find(|bot| {
+            !table
+                .seats
+                .iter()
+                .any(|seat| seat.occupant.as_bot() == Some(*bot))
+        })
+}
+
 pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -> Html<String> {
     let accounts = s.bank.accounts().await;
     let blitz = s.blitz.all_stats().await;
+    let poker = s.stats.all().await;
     let mut users: std::collections::HashMap<Uuid, String> = std::collections::HashMap::new();
     for user in s.users.all().await {
         users.insert(user.id, user.display_name);
     }
-    // Bots bankroll themselves out of the house, so they are not in the running.
-    let mut ranked: Vec<(Uuid, crate::bank::Account)> = accounts
+    let mut ranked: Vec<(crate::bank::AccountOwner, crate::bank::Account)> = accounts
         .into_iter()
-        .filter_map(|account| match account.owner {
-            crate::bank::AccountOwner::User(id) => Some((id, account)),
-            crate::bank::AccountOwner::Bot(_) => None,
-        })
+        .map(|account| (account.owner.clone(), account))
         .collect();
-    ranked.sort_by(|(left_id, left), (right_id, right)| {
+    // Richest first; a tie goes to whoever borrowed less to get there.
+    ranked.sort_by(|(left_owner, left), (right_owner, right)| {
         right
             .balance
             .cmp(&left.balance)
             .then(left.loan_count.cmp(&right.loan_count))
-            .then_with(|| {
-                users
-                    .get(left_id)
-                    .cmp(&users.get(right_id))
-                    .then(left_id.cmp(right_id))
-            })
+            .then_with(|| format!("{left_owner:?}").cmp(&format!("{right_owner:?}")))
     });
     let rows = ranked
         .into_iter()
         .take(LEADERBOARD_SIZE)
         .enumerate()
-        .map(|(index, (id, account))| {
-            let stats = blitz.get(&id).cloned().unwrap_or_default();
+        .map(|(index, (owner, account))| {
+            let (name, house, blitz_stats) = match &owner {
+                crate::bank::AccountOwner::User(id) => (
+                    users
+                        .get(id)
+                        .cloned()
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                    false,
+                    blitz.get(id).cloned().unwrap_or_default(),
+                ),
+                crate::bank::AccountOwner::Bot(bot) => {
+                    (bot.name().to_string(), true, Default::default())
+                }
+            };
+            let poker = poker
+                .get(&match &owner {
+                    crate::bank::AccountOwner::User(id) => format!("user:{id}"),
+                    crate::bank::AccountOwner::Bot(bot) => format!("bot:{bot}"),
+                })
+                .copied()
+                .unwrap_or_default();
             crate::view::LeaderboardRow {
                 rank: index + 1,
-                name: users
-                    .get(&id)
-                    .cloned()
-                    .unwrap_or_else(|| "Unknown".to_string()),
+                name,
+                house,
                 balance: account.balance,
                 loan_count: account.loan_count,
+                poker,
                 blitz: crate::blitz::BlitzDifficulty::ALL
                     .iter()
                     .map(|difficulty| {
-                        let tally = stats.at(*difficulty);
+                        let tally = blitz_stats.at(*difficulty);
                         crate::view::LeaderboardBlitz {
                             difficulty: difficulty.config().label.to_string(),
                             attempts: tally.attempts,
@@ -857,11 +852,7 @@ pub async fn join_table(
         {
             return Err(AppError::bad_request("you are already seated"));
         }
-        if !table
-            .seats
-            .iter()
-            .any(|seat| matches!(seat.occupant, SeatOccupant::Empty))
-        {
+        if crate::cash::seat_for_human(&table.seats).is_none() {
             return Err(AppError::bad_request("table is full"));
         }
     }
@@ -869,6 +860,7 @@ pub async fn join_table(
         .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
+    let mut displaced = None;
     let result = s
         .tables
         .update(id, |t| {
@@ -877,11 +869,13 @@ pub async fn join_table(
             ) {
                 return Err(anyhow::anyhow!("you are already seated"));
             }
-            let seat = t
-                .seats
-                .iter()
-                .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+            // A human takes an empty seat, or a house player's if there is none.
+            let seat = crate::cash::seat_for_human(&t.seats)
                 .ok_or_else(|| anyhow::anyhow!("table is full"))?;
+            displaced = t.seats[seat]
+                .occupant
+                .as_bot()
+                .map(|bot| (bot, t.seats[seat].stack));
             t.seats[seat] = crate::table::Seat {
                 occupant: SeatOccupant::Human { user_id: user },
                 stack: buy_in,
@@ -895,6 +889,10 @@ pub async fn join_table(
     if let Err(error) = result {
         let _ = s.bank.cash_out(AccountOwner::User(user), id, buy_in).await;
         return Err(AppError::internal(error));
+    }
+    // A house player who lost their seat takes their chips with them.
+    if let Some((bot, stack)) = displaced {
+        let _ = s.bank.cash_out(AccountOwner::Bot(bot), id, stack).await;
     }
     Ok(Json(serde_json::json!({"ok":true})))
 }
@@ -992,6 +990,9 @@ async fn record_hands(s: &AppState, id: Uuid, records: &[crate::table::HandRecor
     for record in records {
         if let Err(error) = s.history.append(id, record).await {
             tracing::warn!(%id, %error, "hand history append failed");
+        }
+        if let Err(error) = s.stats.record(record).await {
+            tracing::warn!(%id, %error, "player stats update failed");
         }
     }
 }
@@ -1210,11 +1211,11 @@ pub async fn bot_table(
             "bot seating is unavailable while a hand is in progress",
         ));
     }
-    if let SeatOccupant::Bot { kind } = old {
+    if let Some(bot) = old.as_bot() {
         let stack = s.tables.get(id).await.unwrap().lock().await.seats[input.seat].stack;
         if !tournament {
             s.bank
-                .cash_out(AccountOwner::Bot(kind), id, stack)
+                .cash_out(AccountOwner::Bot(bot), id, stack)
                 .await
                 .map_err(AppError::internal)?;
         }
@@ -1224,6 +1225,17 @@ pub async fn bot_table(
         let kind = kind_name
             .parse::<BotKind>()
             .map_err(AppError::bad_request)?;
+        // Seat one of that kind's regulars who is not already at this table.
+        let bot = {
+            let table = s
+                .tables
+                .get(id)
+                .await
+                .ok_or_else(|| AppError::not_found("table not found"))?;
+            let table = table.lock().await;
+            free_bot(&table, kind)
+                .ok_or_else(|| AppError::bad_request("every one of them is already seated"))?
+        };
         let amount = if tournament {
             let table = s
                 .tables
@@ -1240,7 +1252,7 @@ pub async fn bot_table(
         };
         s.bank
             .buy_in(
-                AccountOwner::Bot(kind),
+                AccountOwner::Bot(bot),
                 id,
                 amount,
                 if tournament {
@@ -1256,7 +1268,7 @@ pub async fn bot_table(
             )
             .await
             .map_err(|_| AppError::bad_request("insufficient funds"))?;
-        bought = Some((kind, amount));
+        bought = Some((bot, amount));
     }
     let result = s
         .tables
@@ -1265,8 +1277,8 @@ pub async fn bot_table(
                 .seats
                 .get_mut(input.seat)
                 .ok_or_else(|| anyhow::anyhow!("invalid seat"))?;
-            if let Some((kind, amount)) = bought {
-                seat.occupant = SeatOccupant::Bot { kind };
+            if let Some((bot, amount)) = bought {
+                seat.occupant = SeatOccupant::bot(bot);
                 seat.stack = if tournament {
                     match &table.mode {
                         TableMode::Tournament(state) => state.config.starting_chips,
@@ -1291,8 +1303,8 @@ pub async fn bot_table(
         })
         .await;
     if let Err(error) = result {
-        if let Some((kind, amount)) = bought {
-            let _ = s.bank.cash_out(AccountOwner::Bot(kind), id, amount).await;
+        if let Some((bot, amount)) = bought {
+            let _ = s.bank.cash_out(AccountOwner::Bot(bot), id, amount).await;
         }
         return Err(AppError::internal(error));
     }

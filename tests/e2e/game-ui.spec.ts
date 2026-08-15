@@ -110,71 +110,41 @@ async function mountTable(page, state) {
   await page.evaluate(() => import(`/public/table.js?e2e=${Date.now()}`));
 }
 
-test("builds a game one question at a time", async ({ page }) => {
-  const posted = [];
-  await Promise.all(["**/tables", "**/tournaments"].map((path) => page.route(path, async (route) => {
-    posted.push({ path, body: route.request().postDataJSON() });
-    await route.fulfill({ json: { id: "made", url: "/tables/made" } });
-  })));
+let accounts = 0;
+
+async function signIn(page, name) {
+  // Both projects share one server, so a username has to be unique per run.
+  accounts += 1;
+  await page.goto("/");
+  await page.fill('#register-form input[name="username"]', `${name}${Date.now()}${accounts}${Math.random().toString(36).slice(2, 8)}`);
+  await page.fill('#register-form input[name="display_name"]', name);
+  await page.click("#register-form button");
+  await page.waitForTimeout(600);
+}
+
+test("builds a tournament one question at a time", async ({ page }) => {
+  await signIn(page, "setup");
+  // A single re-up buys the cheaper entries and nothing above them.
+  await page.request.post("/api/bank", { data: {} });
   await page.goto("/tables/new");
   await expect(page.locator("#game-setup")).toBeVisible();
-  // Only the current question is on screen.
-  await expect(page.locator(".setup-step:not([hidden])")).toHaveCount(1);
-  await expect(page.locator(".setup-step:not([hidden])")).toContainText("What are we playing?");
-  await expect(page).toHaveScreenshot("game-setup.png", { fullPage: true });
-
-  await page.locator('.setup-option[value="cash"]').click();
-  await expect(page.locator(".setup-step:not([hidden])")).toContainText("Which betting rules?");
-  await page.locator('.setup-option[value="limit"]').click();
-  await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
-  await page.locator('.setup-option[value="50000"]').click();
-  await expect(page.locator("#setup-summary")).toHaveText("$500 cash game · $5/$10 limit · 6 seats");
-
-  // Back returns to the previous question with the choice still marked.
-  await page.locator(".setup-back").click();
-  await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
-  await expect(page.locator('.setup-option[value="50000"]')).toHaveAttribute("aria-pressed", "true");
-  await page.locator('.setup-option[value="200000"]').click();
-  await expect(page.locator("#setup-summary")).toHaveText("$2,000 cash game · $20/$40 limit · 6 seats");
-  await page.fill('input[name="name"]', "Friday night");
-  await page.locator(".setup-create").click();
-  await expect.poll(() => posted.length).toBe(1);
-  expect(posted[0].path).toBe("**/tables");
-  expect(posted[0].body).toEqual({
-    name: "Friday night",
-    no_debt: false,
-    stakes: { Limit: { small_bet: 2_000, big_bet: 4_000 } },
-    max_seats: 6,
-    buy_in: 200_000,
-  });
-});
-
-test("sizes a tournament from the ten-thousand chip ladder", async ({ page }) => {
-  const posted = [];
-  await page.route("**/tournaments", async (route) => {
-    posted.push(route.request().postDataJSON());
-    await route.fulfill({ json: { id: "made", url: "/tables/made" } });
-  });
-  await page.goto("/tables/new");
-  await page.locator('.setup-option[value="tournament"]').click();
-  // Tournaments skip the betting question: they are always no-limit.
   await expect(page.locator(".setup-step:not([hidden])")).toContainText("How many players?");
+  // Cash games are standing tables now, so nothing here asks about them.
+  await expect(page.locator('.setup-option[data-choice="betting"]')).toHaveCount(0);
+
   await page.locator('.setup-option[value="9"]').click();
-  await page.locator('.setup-option[value="20000"]').click();
-  await expect(page.locator("#setup-summary")).toHaveText("$200 tournament · 9 players · 10,000 chips · top 3 paid");
+  await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
+  // You may only pick an entry you can actually cover.
+  await expect(page.locator('.setup-option[value="100000"]')).toBeEnabled();
+  await expect(page.locator('.setup-option[value="1000000"]')).toBeDisabled();
+  await expect(page.locator('.setup-option[value="1000000"]')).toContainText("More than you have");
+
+  await page.locator('.setup-option[value="100000"]').click();
+  await expect(page.locator("#setup-summary")).toHaveText("$1,000 tournament · 9 players · 10,000 chips · top 3 paid");
   await page.fill('input[name="name"]', "Sunday deep");
   await page.locator(".setup-create").click();
-  await expect.poll(() => posted.length).toBe(1);
-  const body = posted[0];
-  expect(body.buy_in).toBe(20_000);
-  expect(body.seat_count).toBe(9);
-  expect(body.starting_chips, "always 10,000 chips").toBe(1_000_000);
-  expect(body.payout_percentages).toEqual([50, 30, 20]);
-  expect(body.levels).toHaveLength(15);
-  expect(body.levels[0]).toEqual({ small_blind: 10_000, big_blind: 20_000, ante: 0, hands: 18 });
-  expect(body.levels.at(-1)).toEqual({ small_blind: 800_000, big_blind: 1_600_000, ante: 0, hands: 18 });
-  // A level lasts twice as many hands as there are players.
-  expect(body.levels.every((level) => level.hands === 18)).toBe(true);
+  await page.waitForURL(/\/tables\/[0-9a-f-]+$/);
+  await expect(page.locator(".tournament-panel")).toContainText("Level 1");
 });
 
 test("shows live hand cues and event log", async ({ page }) => {

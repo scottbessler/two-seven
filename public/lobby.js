@@ -1,14 +1,3 @@
-// Buy-in drives everything else: no-limit blinds, limit bet sizes, and the
-// stack you sit down with. Amounts are cents.
-const BUY_INS = {
-  20_000: { label: "$200", blinds: [100, 200], limit: [200, 400] },
-  50_000: { label: "$500", blinds: [200, 400], limit: [500, 1_000] },
-  100_000: { label: "$1,000", blinds: [500, 1_000], limit: [1_000, 2_000] },
-  200_000: { label: "$2,000", blinds: [1_000, 2_000], limit: [2_000, 4_000] },
-};
-
-const CASH_SEATS = 6;
-
 // Tournaments always deal 10,000 chips and climb the T10,000 ladder from
 // homepokertourney.org. Chips are cents, so a 100-chip blind is 10,000.
 const TOURNAMENT_CHIPS = 1_000_000;
@@ -44,49 +33,36 @@ function tournamentLevels(players) {
   }));
 }
 
-export function gameRequest({ format, betting, players, buyIn }, name, noDebt) {
+function money(cents) {
+  return `$${(cents / 100).toLocaleString("en-US")}`;
+}
+
+export function gameRequest({ players, buyIn }, name, noDebt) {
   // Choices arrive as strings from the option buttons; the API wants numbers.
   const amount = Number(buyIn);
-  const tier = BUY_INS[amount];
-  if (!tier) throw new Error("Pick a buy-in");
-  if (format === "tournament") {
-    const seats = Number(players);
-    return {
-      endpoint: "/tournaments",
-      body: {
-        name,
-        no_debt: noDebt,
-        buy_in: amount,
-        seat_count: seats,
-        starting_chips: TOURNAMENT_CHIPS,
-        levels: tournamentLevels(seats),
-        payout_percentages: PAYOUTS[seats],
-      },
-    };
-  }
-  const stakes = betting === "limit"
-    ? { Limit: { small_bet: tier.limit[0], big_bet: tier.limit[1] } }
-    : { NoLimit: { small_blind: tier.blinds[0], big_blind: tier.blinds[1] } };
+  const seats = Number(players);
+  if (!amount || !PAYOUTS[seats]) throw new Error("Pick a size and a buy-in");
   return {
-    endpoint: "/tables",
-    body: { name, no_debt: noDebt, stakes, max_seats: CASH_SEATS, buy_in: amount },
+    endpoint: "/tournaments",
+    body: {
+      name,
+      no_debt: noDebt,
+      buy_in: amount,
+      seat_count: seats,
+      starting_chips: TOURNAMENT_CHIPS,
+      levels: tournamentLevels(seats),
+      payout_percentages: PAYOUTS[seats],
+    },
   };
 }
 
-export function summarize({ format, betting, players, buyIn }) {
-  const tier = BUY_INS[Number(buyIn)];
-  if (format === "tournament") {
-    const paid = PAYOUTS[Number(players)].length;
-    return `${tier.label} tournament · ${players} players · 10,000 chips · top ${paid} paid`;
-  }
-  const stakes = betting === "limit"
-    ? `$${tier.limit[0] / 100}/$${tier.limit[1] / 100} limit`
-    : `$${tier.blinds[0] / 100}/$${tier.blinds[1] / 100} no-limit`;
-  return `${tier.label} cash game · ${stakes} · ${CASH_SEATS} seats`;
+export function summarize({ players, buyIn }) {
+  const paid = PAYOUTS[Number(players)].length;
+  return `${money(Number(buyIn))} tournament · ${players} players · 10,000 chips · top ${paid} paid`;
 }
 
-function stepsFor(choices) {
-  return ["format", choices.format === "tournament" ? "players" : "betting", "buyIn", "confirm"];
+function stepsFor() {
+  return ["players", "buyIn", "confirm"];
 }
 
 const form = document.getElementById("quick-game-form");
@@ -94,7 +70,7 @@ const dialog = document.getElementById("game-setup");
 if (form && dialog) {
   const choices = {};
   let index = 0;
-  const steps = () => stepsFor(choices);
+  const steps = () => stepsFor();
   const back = form.querySelector(".setup-back");
   const errorEl = document.getElementById("create-error");
   const summary = document.getElementById("setup-summary");

@@ -50,8 +50,10 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                 let Some(seat) = hand.current_player else {
                     return Ok(());
                 };
-                let Some(SeatOccupant::Bot { kind }) =
-                    table.seats.get(seat).map(|seat| &seat.occupant)
+                let Some(bot) = table
+                    .seats
+                    .get(seat)
+                    .and_then(|value| value.occupant.as_bot())
                 else {
                     return Ok(());
                 };
@@ -62,7 +64,7 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                 if table.next_action_at.is_some_and(|at| at > now) {
                     return Ok(());
                 }
-                let kind = *kind;
+                let kind = bot.kind;
                 let view = hand_view(hand, Some(seat));
                 let legal = view
                     .legal_actions
@@ -90,6 +92,9 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
             if let Err(error) = state.history.append(id, record).await {
                 tracing::warn!(%id, %error, "hand history append failed");
             }
+            if let Err(error) = state.stats.record(record).await {
+                tracing::warn!(%id, %error, "player stats update failed");
+            }
         }
         if let Err(error) = settle_pending_departures(state, id).await {
             tracing::warn!(%id, %error, "pending departure settlement failed");
@@ -102,6 +107,90 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
         if let Err(error) = pay_tournament_if_finished(state, id).await {
             tracing::warn!(%id, %error, "tournament payout failed");
         }
+        if let Err(error) = seat_a_house_player(state, id).await {
+            tracing::warn!(%id, %error, "house seating failed");
+        }
+    }
+    Ok(())
+}
+
+/// The standing cash tables always exist. Called once at startup; the tick
+/// keeps their seats full from there.
+pub async fn ensure_cash_ladder(state: &AppState) -> Result<(), anyhow::Error> {
+    let mut present = std::collections::BTreeSet::new();
+    for id in state.tables.ids().await {
+        if let Some(table) = state.tables.get(id).await
+            && let Some(tier) = table.lock().await.cash_tier
+        {
+            present.insert(tier);
+        }
+    }
+    for tier in 0..crate::cash::TIERS.len() {
+        if !present.contains(&tier) {
+            state.tables.insert(crate::cash::table(tier)).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Fill one empty seat at a standing table from the roster. One per tick is
+/// enough: a table refills in a couple of seconds and nothing stalls the loop.
+async fn seat_a_house_player(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
+    let Some(table) = state.tables.get(id).await else {
+        return Ok(());
+    };
+    let (buy_in, vacancy, bot) = {
+        let table = table.lock().await;
+        let Some(tier) = table.cash_tier else {
+            return Ok(());
+        };
+        // Never rearrange a table mid-hand.
+        if table.hand.is_some() {
+            return Ok(());
+        }
+        let Some(vacancy) = table
+            .seats
+            .iter()
+            .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+        else {
+            return Ok(());
+        };
+        let Some(bot) = crate::cash::house_bot(&table, tier, vacancy) else {
+            return Ok(());
+        };
+        (table.buy_in, vacancy, bot)
+    };
+    if state
+        .bank
+        .buy_in(AccountOwner::Bot(bot), id, buy_in, false)
+        .await
+        .is_err()
+    {
+        return Ok(());
+    }
+    if let Err(error) = state
+        .tables
+        .update(id, |table| {
+            let value = table
+                .seats
+                .get_mut(vacancy)
+                .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
+            if matches!(value.occupant, SeatOccupant::Empty) {
+                value.occupant = SeatOccupant::bot(bot);
+                value.stack = buy_in;
+                value.sitting_out = false;
+                value.pending_departure = false;
+            }
+            maybe_start_hand(table);
+            Ok(())
+        })
+        .await
+    {
+        let _ = state
+            .bank
+            .cash_out(AccountOwner::Bot(bot), id, buy_in)
+            .await;
+        tracing::warn!(%id, %error, "seating a house player failed");
     }
     Ok(())
 }
@@ -142,12 +231,12 @@ pub(crate) async fn settle_pending_departures(
                     .bank
                     .cash_out(AccountOwner::User(user_id), id, stack)
                     .await?;
-            } else if let SeatOccupant::Bot { kind } = occupant
+            } else if let Some(bot) = occupant.as_bot()
                 && stack > 0
             {
                 state
                     .bank
-                    .cash_out(AccountOwner::Bot(kind), id, stack)
+                    .cash_out(AccountOwner::Bot(bot), id, stack)
                     .await?;
             }
         } else {
@@ -217,12 +306,12 @@ async fn rebuy_busted_cash_bots(state: &AppState, id: uuid::Uuid) -> Result<(), 
             .collect::<Vec<_>>()
     };
     for (seat, occupant, amount) in rebuys {
-        let SeatOccupant::Bot { kind } = occupant else {
+        let Some(bot) = occupant.as_bot() else {
             continue;
         };
         state
             .bank
-            .buy_in(AccountOwner::Bot(kind), id, amount, false)
+            .buy_in(AccountOwner::Bot(bot), id, amount, false)
             .await?;
         if let Err(error) = state
             .tables
@@ -231,9 +320,7 @@ async fn rebuy_busted_cash_bots(state: &AppState, id: uuid::Uuid) -> Result<(), 
                     .seats
                     .get_mut(seat)
                     .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
-                if matches!(&value.occupant, SeatOccupant::Bot { kind: current } if *current == kind)
-                    && value.stack == 0
-                {
+                if value.occupant.as_bot() == Some(bot) && value.stack == 0 {
                     value.stack = amount;
                 }
                 Ok(())
@@ -242,7 +329,7 @@ async fn rebuy_busted_cash_bots(state: &AppState, id: uuid::Uuid) -> Result<(), 
         {
             let _ = state
                 .bank
-                .cash_out(AccountOwner::Bot(kind), id, amount)
+                .cash_out(AccountOwner::Bot(bot), id, amount)
                 .await;
             return Err(error);
         }
@@ -295,7 +382,9 @@ async fn pay_tournament_if_finished(state: &AppState, id: uuid::Uuid) -> Result<
                 let occupant = table.seats.get(*seat)?.occupant.clone();
                 let owner = match occupant {
                     SeatOccupant::Human { user_id } => AccountOwner::User(user_id),
-                    SeatOccupant::Bot { kind } => AccountOwner::Bot(kind),
+                    SeatOccupant::Bot { kind, seat } => {
+                        AccountOwner::Bot(crate::table::Bot::new(kind, seat))
+                    }
                     SeatOccupant::Empty => return None,
                 };
                 Some((position, owner))
@@ -355,6 +444,81 @@ mod tests {
     use uuid::Uuid;
 
     #[tokio::test]
+    async fn the_standing_tables_seed_themselves_and_fill_with_the_house() {
+        let root = std::env::temp_dir().join(format!("two-seven-ladder-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
+        let state = AppState {
+            users,
+            bank,
+            blackjack: crate::blackjack::BlackjackStore::new(),
+            blitz,
+            tables: tables.clone(),
+            history,
+            stats,
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        ensure_cash_ladder(&state).await.unwrap();
+        assert_eq!(tables.ids().await.len(), crate::cash::TIERS.len());
+        // Seeding twice must not double the ladder.
+        ensure_cash_ladder(&state).await.unwrap();
+        assert_eq!(tables.ids().await.len(), crate::cash::TIERS.len());
+
+        // One seat fills per tick, so a table is full in a handful of them.
+        for _ in 0..(crate::cash::SEATS * crate::cash::TIERS.len() + 4) {
+            tick_once(&state).await.unwrap();
+        }
+        let cheapest = {
+            let mut found = None;
+            for id in tables.ids().await {
+                let table = tables.get(id).await.unwrap();
+                let table = table.lock().await;
+                if table.cash_tier == Some(0) {
+                    found = Some(table.clone());
+                }
+            }
+            found.expect("the cheapest table")
+        };
+        assert_eq!(cheapest.buy_in, crate::cash::TIERS[0]);
+        assert_eq!(cheapest.max_seats, crate::cash::SEATS);
+        let seated: Vec<_> = cheapest
+            .seats
+            .iter()
+            .filter_map(|seat| seat.occupant.as_bot())
+            .collect();
+        assert_eq!(
+            seated.len(),
+            crate::cash::SEATS,
+            "the house fills the table"
+        );
+        let distinct: std::collections::BTreeSet<_> = seated.iter().collect();
+        assert_eq!(distinct.len(), seated.len(), "nobody sits down twice");
+        assert!(
+            seated
+                .iter()
+                .filter(|bot| bot.kind == crate::table::BotKind::Fish)
+                .count()
+                >= 3,
+            "the cheapest table is mostly fish: {seated:?}"
+        );
+        // Each of them bought in from their own account.
+        for bot in &seated {
+            let account = state.bank.account(AccountOwner::Bot(*bot)).await.unwrap();
+            assert!(
+                account.entries.iter().any(|entry| entry.delta < 0),
+                "{} paid their own way",
+                bot.name()
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn cash_bots_rebuy_after_busting() {
         let root = std::env::temp_dir().join(format!("two-seven-rebuy-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
@@ -362,6 +526,7 @@ mod tests {
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
@@ -369,6 +534,7 @@ mod tests {
             blitz,
             tables: tables.clone(),
             history,
+            stats,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -384,24 +550,25 @@ mod tests {
             100,
         );
         table.seats[0] = Seat {
-            occupant: SeatOccupant::Bot {
-                kind: BotKind::Rock,
-            },
+            occupant: SeatOccupant::bot(crate::table::Bot::new(BotKind::Rock, 0)),
             stack: 0,
             sitting_out: false,
             pending_departure: false,
         };
         table.seats[1] = Seat {
-            occupant: SeatOccupant::Bot {
-                kind: BotKind::Fish,
-            },
+            occupant: SeatOccupant::bot(crate::table::Bot::new(BotKind::Fish, 0)),
             stack: 100,
             sitting_out: false,
             pending_departure: false,
         };
-        bank.buy_in(AccountOwner::Bot(BotKind::Fish), table.id, 100, false)
-            .await
-            .unwrap();
+        bank.buy_in(
+            AccountOwner::Bot(crate::table::Bot::new(BotKind::Fish, 0)),
+            table.id,
+            100,
+            false,
+        )
+        .await
+        .unwrap();
         let id = tables.insert(table).await.unwrap();
         tick_once_at(&state, Utc::now() + Duration::seconds(1))
             .await
@@ -410,7 +577,7 @@ mod tests {
         let table = table.lock().await;
         assert_eq!(table.seats[0].stack, 100);
         assert!(
-            bank.account(AccountOwner::Bot(BotKind::Rock))
+            bank.account(AccountOwner::Bot(crate::table::Bot::new(BotKind::Rock, 0)))
                 .await
                 .unwrap()
                 .entries
@@ -434,6 +601,7 @@ mod tests {
             blitz: blitz.clone(),
             tables,
             history: crate::history::HistoryStore::load(&root).await.unwrap(),
+            stats: crate::stats::StatsStore::load(&root).await.unwrap(),
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -463,6 +631,7 @@ mod tests {
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
@@ -470,6 +639,7 @@ mod tests {
             blitz,
             tables: tables.clone(),
             history,
+            stats,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -491,11 +661,16 @@ mod tests {
             100,
         );
         for (seat, kind) in kinds.into_iter().enumerate() {
-            bank.buy_in(AccountOwner::Bot(kind), table.id, 100, false)
-                .await
-                .unwrap();
+            bank.buy_in(
+                AccountOwner::Bot(crate::table::Bot::new(kind, 0)),
+                table.id,
+                100,
+                false,
+            )
+            .await
+            .unwrap();
             table.seats[seat] = Seat {
-                occupant: crate::table::SeatOccupant::Bot { kind },
+                occupant: crate::table::SeatOccupant::bot(crate::table::Bot::new(kind, 0)),
                 stack: 100,
                 sitting_out: false,
                 pending_departure: false,
@@ -534,7 +709,10 @@ mod tests {
             "cash bot rebuys should add chips from bot bankrolls"
         );
         for kind in kinds {
-            let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
+            let account = bank
+                .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+                .await
+                .unwrap();
             assert_eq!(
                 account.entries.iter().map(|entry| entry.delta).sum::<i64>(),
                 account.balance
@@ -550,6 +728,7 @@ mod tests {
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
@@ -557,6 +736,7 @@ mod tests {
             blitz,
             tables: tables.clone(),
             history,
+            stats,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -578,11 +758,16 @@ mod tests {
             100,
         );
         for (seat, kind) in kinds.into_iter().enumerate() {
-            bank.buy_in(AccountOwner::Bot(kind), table.id, 100, false)
-                .await
-                .unwrap();
+            bank.buy_in(
+                AccountOwner::Bot(crate::table::Bot::new(kind, 0)),
+                table.id,
+                100,
+                false,
+            )
+            .await
+            .unwrap();
             table.seats[seat] = Seat {
-                occupant: SeatOccupant::Bot { kind },
+                occupant: SeatOccupant::bot(crate::table::Bot::new(kind, 0)),
                 stack: 100,
                 sitting_out: false,
                 pending_departure: false,
@@ -611,6 +796,7 @@ mod tests {
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
@@ -618,6 +804,7 @@ mod tests {
             blitz,
             tables: tables.clone(),
             history,
+            stats,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -670,11 +857,16 @@ mod tests {
             100,
         );
         for (seat, kind) in kinds.into_iter().enumerate() {
-            bank.buy_in(AccountOwner::Bot(kind), table.id, 100, false)
-                .await
-                .unwrap();
+            bank.buy_in(
+                AccountOwner::Bot(crate::table::Bot::new(kind, 0)),
+                table.id,
+                100,
+                false,
+            )
+            .await
+            .unwrap();
             table.seats[seat] = Seat {
-                occupant: SeatOccupant::Bot { kind },
+                occupant: SeatOccupant::bot(crate::table::Bot::new(kind, 0)),
                 stack: 100,
                 sitting_out: false,
                 pending_departure: false,
@@ -711,7 +903,10 @@ mod tests {
         drop(table);
         let mut prizes = 0;
         for (seat, kind) in kinds.into_iter().enumerate() {
-            let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
+            let account = bank
+                .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+                .await
+                .unwrap();
             let entries = account
                 .entries
                 .iter()
@@ -740,6 +935,7 @@ mod tests {
         let tables = TableStore::load(&root).await.unwrap();
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
         let state = AppState {
             users,
             bank: bank.clone(),
@@ -747,6 +943,7 @@ mod tests {
             blitz,
             tables: tables.clone(),
             history,
+            stats,
             webauthn: Arc::new(build_webauthn().unwrap()),
             key: Key::generate(),
             passkey_disabled: true,
@@ -784,11 +981,16 @@ mod tests {
             2,
             100,
         );
-        bank.buy_in(AccountOwner::Bot(kind), tournament.id, 100, false)
-            .await
-            .unwrap();
+        bank.buy_in(
+            AccountOwner::Bot(crate::table::Bot::new(kind, 0)),
+            tournament.id,
+            100,
+            false,
+        )
+        .await
+        .unwrap();
         tournament.seats[0] = Seat {
-            occupant: SeatOccupant::Bot { kind },
+            occupant: SeatOccupant::bot(crate::table::Bot::new(kind, 0)),
             stack: 50,
             sitting_out: true,
             pending_departure: true,
@@ -797,7 +999,10 @@ mod tests {
         settle_pending_departures(&state, tournament_id)
             .await
             .unwrap();
-        let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
+        let account = bank
+            .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+            .await
+            .unwrap();
         assert_eq!(
             account
                 .entries
@@ -817,18 +1022,26 @@ mod tests {
             2,
             100,
         );
-        bank.buy_in(AccountOwner::Bot(kind), cash.id, 100, false)
-            .await
-            .unwrap();
+        bank.buy_in(
+            AccountOwner::Bot(crate::table::Bot::new(kind, 0)),
+            cash.id,
+            100,
+            false,
+        )
+        .await
+        .unwrap();
         cash.seats[0] = Seat {
-            occupant: SeatOccupant::Bot { kind },
+            occupant: SeatOccupant::bot(crate::table::Bot::new(kind, 0)),
             stack: 50,
             sitting_out: true,
             pending_departure: true,
         };
         let cash_id = tables.insert(cash).await.unwrap();
         settle_pending_departures(&state, cash_id).await.unwrap();
-        let account = bank.account(AccountOwner::Bot(kind)).await.unwrap();
+        let account = bank
+            .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+            .await
+            .unwrap();
         assert_eq!(
             account
                 .entries

@@ -1,4 +1,4 @@
-use crate::money::format_cents;
+use crate::money::{Cents, format_cents};
 use std::sync::OnceLock;
 use uuid::Uuid;
 static VERSION: OnceLock<String> = OnceLock::new();
@@ -103,77 +103,41 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
     }
 }
 
-pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String {
+pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
     layout(
         "Lobby",
         &format!(
             "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
             escape(name),
-            lobby_table_list(tables, true),
+            lobby_table_list(tables, true, balance),
             sign_out()
         ),
         "",
     )
 }
 
-pub fn table_create() -> String {
-    game_create()
+pub fn table_create(balance: Cents) -> String {
+    game_create(balance)
 }
 
-pub fn tournament_create() -> String {
-    game_create()
+pub fn tournament_create(balance: Cents) -> String {
+    game_create(balance)
 }
 
-fn game_create() -> String {
+fn game_create(balance: Cents) -> String {
     // One question per step; lobby.js walks the steps and assembles the config.
     let step = |name: &str, legend: &str, options: &str| {
         format!(
             r#"<fieldset class="setup-step" data-step="{name}" hidden><legend>{legend}</legend><div class="setup-options">{options}</div></fieldset>"#
         )
     };
-    let option = |name: &str, value: &str, title: &str, detail: &str| {
+    let option = |name: &str, value: &str, title: &str, detail: &str, affordable: bool| {
         format!(
-            r#"<button class="setup-option" type="button" data-choice="{name}" value="{value}"><b>{title}</b><small>{detail}</small></button>"#
+            r#"<button class="setup-option{}" type="button" data-choice="{name}" value="{value}"{}><b>{title}</b><small>{detail}</small></button>"#,
+            if affordable { "" } else { " setup-option-dear" },
+            if affordable { "" } else { " disabled" }
         )
     };
-    let format_step = step(
-        "format",
-        "What are we playing?",
-        &format!(
-            "{}{}",
-            option(
-                "format",
-                "cash",
-                "Cash game",
-                "Buy in, play any number of hands, cash out whenever"
-            ),
-            option(
-                "format",
-                "tournament",
-                "Tournament",
-                "One entry, 10,000 chips, play until someone has them all"
-            )
-        ),
-    );
-    let betting_step = step(
-        "betting",
-        "Which betting rules?",
-        &format!(
-            "{}{}",
-            option(
-                "betting",
-                "no-limit",
-                "No-limit",
-                "Bet anything you have in front of you"
-            ),
-            option(
-                "betting",
-                "limit",
-                "Limit",
-                "Fixed bet sizes, a bet and three raises per street"
-            )
-        ),
-    );
     let players_step = step(
         "players",
         "How many players?",
@@ -183,35 +147,49 @@ fn game_create() -> String {
                 "players",
                 "4",
                 "4 players",
-                "Winner takes the whole prize pool"
+                "Winner takes the whole prize pool",
+                true
             ),
-            option("players", "6", "6 players", "Top 2 paid"),
-            option("players", "9", "9 players", "Top 3 paid")
+            option("players", "6", "6 players", "Top 2 paid", true),
+            option("players", "9", "9 players", "Top 3 paid", true)
         ),
     );
+    let buy_ins = [
+        (20_000, "$200"),
+        (50_000, "$500"),
+        (100_000, "$1,000"),
+        (200_000, "$2,000"),
+        (500_000, "$5,000"),
+        (1_000_000, "$10,000"),
+    ];
     let buy_in_step = step(
         "buyIn",
         "How much to buy in?",
-        &format!(
-            "{}{}{}{}",
-            option("buyIn", "20000", "$200", "$1/$2 blinds · $2/$4 limit"),
-            option("buyIn", "50000", "$500", "$2/$4 blinds · $5/$10 limit"),
-            option("buyIn", "100000", "$1,000", "$5/$10 blinds · $10/$20 limit"),
-            option(
-                "buyIn",
-                "200000",
-                "$2,000",
-                "$10/$20 blinds · $20/$40 limit"
-            )
-        ),
+        &buy_ins
+            .iter()
+            .map(|(amount, label)| {
+                option(
+                    "buyIn",
+                    &amount.to_string(),
+                    label,
+                    if *amount > balance {
+                        "More than you have"
+                    } else {
+                        "10,000 chips · blinds climb every few hands"
+                    },
+                    *amount <= balance,
+                )
+            })
+            .collect::<String>(),
     );
-    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name the game</legend><p class="setup-summary" id="setup-summary"></p><label>Game name<input name="name" required maxlength="48" placeholder="Friday night"></label><button class="setup-create" type="submit">Create game</button></fieldset>"#;
+    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name the tournament</legend><p class="setup-summary" id="setup-summary"></p><label>Game name<input name="name" required maxlength="48" placeholder="Friday night"></label><label class="setup-debt"><input type="checkbox" name="no_debt"> Require available balance</label><button class="setup-create" type="submit">Create tournament</button></fieldset>"#;
     let body = format!(
-        r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form"><header><h2 id="setup-title">Start a game</h2><a class="setup-close" href="/tables" aria-label="Cancel">×</a></header>{format_step}{betting_step}{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
+        r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form"><header><h2 id="setup-title">Start a tournament</h2><a class="setup-close" href="/tables" aria-label="Cancel">×</a></header><p class="setup-note">Cash games run around the clock in the lobby. A tournament is the one you start yourself.</p>{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
         lobby = asset("/public/lobby.js")
     );
-    layout("Start a game", &body, "")
+    layout("Start a tournament", &body, "")
 }
+
 pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
     let difficulties = crate::blitz::BlitzDifficulty::ALL
         .iter()
@@ -250,7 +228,7 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
 pub fn blackjack() -> String {
     layout(
         "Blackjack",
-        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-table blackjack-table"><div class="actions blackjack-actions"><button class="deal-action" type="button">Deal $5</button><button class="deal-action" type="button">Deal $20</button><button class="deal-action" type="button">Deal $100</button><button class="deal-action" type="button">Deal $200</button></div></section></div></section>"#,
+        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-table blackjack-table"><div class="actions blackjack-actions"><span class="deal-broke">Loading your stakes…</span></div></section></div></section>"#,
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/blackjack.js")
@@ -362,11 +340,17 @@ pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
                 })
                 .collect::<String>();
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"money\">{}</td><td>{}</td>{}</tr>",
+                "<tr><td class=\"rank\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}%</td><td class=\"money\">{}</td>{}</tr>",
                 row.rank,
                 escape(&row.name),
+                if row.house { " <i class=\"house-tag\">house</i>" } else { "" },
                 format_cents(row.balance),
                 row.loan_count,
+                row.poker.hands,
+                row.poker.vpip_percent(),
+                row.poker.pfr_percent(),
+                row.poker.win_percent(),
+                format_cents(row.poker.biggest_pot),
                 blitz
             )
         })
@@ -375,13 +359,13 @@ pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
         "<p class=\"loading\">Nobody has played yet.</p>".to_string()
     } else {
         format!(
-            "<table class=\"leaderboard-table\"><thead><tr><th></th><th>Player</th><th>Balance</th><th>Loans</th>{headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th></th><th></th><th></th>{subheaders}</tr></thead><tbody>{body}</tbody></table>"
+            "<table class=\"leaderboard-table\"><thead><tr><th></th><th>Player</th><th>Balance</th><th>Loans</th><th colspan=\"5\">Poker</th>{headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th></th><th></th><th></th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Biggest pot</th>{subheaders}</tr></thead><tbody>{body}</tbody></table>"
         )
     };
     layout(
         "Leaderboard",
         &format!(
-            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by balance. A tie goes to whoever took fewer loans.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{table}</section>",
+            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by balance, house players included. A tie goes to whoever took fewer loans.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{table}</section>",
             crate::routes::LEADERBOARD_SIZE
         ),
         "",
@@ -398,11 +382,12 @@ pub fn table_history(
 ) -> String {
     // Two bots of the same kind are otherwise indistinguishable, so every
     // label carries its seat.
-    let seat_label = |seat: usize, occupant: &str| -> String {
-        let who = names.get(&seat).cloned().unwrap_or_else(|| {
-            occupant
-                .strip_prefix("bot:")
-                .map_or_else(|| "empty".to_string(), str::to_string)
+    let seat_label = |seat: usize, occupant: &crate::table::SeatOccupant| -> String {
+        let who = names.get(&seat).cloned().unwrap_or_else(|| match occupant {
+            crate::table::SeatOccupant::Bot { kind, seat } => {
+                crate::table::Bot::new(*kind, *seat).name().to_string()
+            }
+            _ => "empty".to_string(),
         });
         format!("{seat} · {who}")
     };
@@ -516,14 +501,16 @@ fn card_text(value: &str) -> String {
 fn event_line(
     event: &crate::holdem::HandEvent,
     seats: &[crate::table::HandRecordSeat],
-    seat_label: &impl Fn(usize, &str) -> String,
+    seat_label: &impl Fn(usize, &crate::table::SeatOccupant) -> String,
 ) -> String {
     let who = event.seat.map_or_else(String::new, |seat| {
         let occupant = seats
             .iter()
             .find(|entry| entry.seat == seat)
-            .map_or("", |entry| entry.occupant.as_str());
-        seat_label(seat, occupant)
+            .map_or(crate::table::SeatOccupant::Empty, |entry| {
+                entry.occupant.clone()
+            });
+        seat_label(seat, &occupant)
     });
     let amount = if event.amount > 0 {
         format!(" {}", format_cents(event.amount))
@@ -571,23 +558,24 @@ fn format_duration_ms(ms: u64) -> String {
     }
 }
 
-pub fn lobby(tables: &[crate::view::LobbyTableView]) -> String {
+pub fn lobby(tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
     layout(
         "Lobby",
         &format!(
             "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
-            lobby_table_list(tables, false)
+            lobby_table_list(tables, false, balance)
         ),
         "",
     )
 }
 
-fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool) -> String {
-    let mut yours = String::new();
-    let mut open = String::new();
-    for table in tables {
-        let is_yours = table.your_seat.is_some();
-        let tournament = if let Some(tournament) = &table.tournament {
+fn lobby_table_list(
+    tables: &[crate::view::LobbyTableView],
+    include_yours: bool,
+    balance: Cents,
+) -> String {
+    let row = |table: &crate::view::LobbyTableView| {
+        let detail = if let Some(tournament) = &table.tournament {
             format!(
                 "Tournament · buy-in {} · {} · {}/{} seats",
                 format_cents(tournament.buy_in),
@@ -601,29 +589,55 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
             )
         } else {
             format!(
-                "Cash · {} buy-in · {} · {} · {}/{} seats",
+                "{} buy-in · {} · {} · {}",
                 format_cents(table.buy_in),
                 table.stakes,
-                if table.no_debt { "no-debt" } else { "standard" },
-                table.occupied,
-                table.max_seats
+                match table.humans {
+                    0 => "no humans".to_string(),
+                    1 => "1 human".to_string(),
+                    count => format!("{count} humans"),
+                },
+                format_args!("{}/{} seats", table.occupied, table.max_seats)
             )
         };
-        let row = format!(
+        format!(
             "<li><a href=\"/tables/{}\">{}</a><span>{}</span>{}</li>",
             table.id,
             escape(&table.name),
-            tournament,
-            if is_yours { " <b>Your seat</b>" } else { "" }
-        );
-        if include_yours && is_yours {
-            yours.push_str(&row);
+            detail,
+            if table.your_seat.is_some() {
+                " <b>Your seat</b>"
+            } else {
+                ""
+            }
+        )
+    };
+    let mut yours = String::new();
+    let mut open = String::new();
+    let mut dear = String::new();
+    let mut dear_count = 0;
+    for table in tables {
+        let entry = row(table);
+        if include_yours && table.your_seat.is_some() {
+            yours.push_str(&entry);
+        } else if table.buy_in > balance {
+            // Tables you cannot afford are folded away rather than dangled.
+            dear_count += 1;
+            dear.push_str(&entry);
         } else {
-            open.push_str(&row);
+            open.push_str(&entry);
         }
     }
+    let out_of_reach = if dear.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "<details class=\"table-list out-of-reach\"><summary>{dear_count} table{} beyond your balance</summary><ul>{dear}</ul></details>",
+            if dear_count == 1 { "" } else { "s" }
+        )
+    };
     format!(
-        "{}<section class=\"table-list\"><h2>{}</h2><ul>{}</ul></section>{}",
+        "{}<section class=\"table-list\"><h2>{}</h2><ul>{}</ul></section>{out_of_reach}",
         if include_yours {
             format!(
                 "<section class=\"table-list\"><h2>Your seats</h2><ul>{}</ul></section>",
@@ -642,10 +656,9 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
             "Tables"
         },
         if open.is_empty() {
-            "<li>No tables yet</li>"
+            "<li>No tables yet</li>".to_string()
         } else {
-            &open
-        },
-        ""
+            open
+        }
     )
 }

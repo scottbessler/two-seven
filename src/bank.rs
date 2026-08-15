@@ -1,6 +1,6 @@
 use crate::{
     money::{Cents, valid_game_amount},
-    table::BotKind,
+    table::Bot,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ use uuid::Uuid;
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum AccountOwner {
     User(Uuid),
-    Bot(BotKind),
+    Bot(Bot),
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum LedgerKind {
@@ -180,11 +180,16 @@ impl BankStore {
             );
         }
         if matches!(owner, AccountOwner::Bot(_)) {
-            while guard.accounts[&owner].balance < amount {
+            // The house covers a bot's seat in one loan. Lending a fixed
+            // thousand at a time meant a $1,000,000 table cost a bot a
+            // thousand loans and a thousand ledger lines per buy-in.
+            let balance = guard.accounts[&owner].balance;
+            if balance < amount {
+                let shortfall = (amount - balance).max(Self::RE_UP_AMOUNT);
                 Self::append_locked(
                     guard.accounts.get_mut(&owner).expect("account"),
                     LedgerKind::ReUp,
-                    Self::RE_UP_AMOUNT,
+                    shortfall,
                     "re-up loan".into(),
                     true,
                 );
@@ -321,7 +326,7 @@ impl BankStore {
     async fn persist(&self, account: &Account) -> Result<(), anyhow::Error> {
         let name = match account.owner {
             AccountOwner::User(id) => format!("user-{id}.json"),
-            AccountOwner::Bot(kind) => format!("bot-{kind}.json"),
+            AccountOwner::Bot(bot) => format!("bot-{}-{}.json", bot.kind, bot.seat),
         };
         let path = self.dir.join(name);
         let tmp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
@@ -354,6 +359,26 @@ impl BankStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn a_bot_covers_a_big_seat_with_one_loan() {
+        let root = std::env::temp_dir().join(format!("two-seven-bigseat-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let bot = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
+        let table = Uuid::new_v4();
+        // The dearest table costs a thousand times the standard loan.
+        let account = bank
+            .buy_in(bot.clone(), table, 100_000_000, false)
+            .await
+            .unwrap();
+        assert_eq!(account.loan_count, 1, "one seat, one loan");
+        assert_eq!(
+            account.entries.len(),
+            2,
+            "a loan and a buy-in, not a thousand of each"
+        );
+        assert_eq!(account.balance, 0);
+    }
+
     #[tokio::test]
     async fn ledger_balances_match() {
         let dir = tempfile_dir();
@@ -411,7 +436,7 @@ mod tests {
     #[tokio::test]
     async fn bot_buy_ins_auto_re_up_without_debt() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
-        let owner = AccountOwner::Bot(BotKind::Fish);
+        let owner = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Fish, 0));
         let account = bank
             .buy_in(owner, Uuid::new_v4(), 100, false)
             .await

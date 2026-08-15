@@ -13,7 +13,8 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "PORT=18080 cargo run",
+    // The dialog needs a signed-in balance, and passkeys cannot be driven here.
+    command: "PASSKEY_DISABLED=1 PORT=18080 cargo run",
     url: "http://127.0.0.1:18080/healthcheck",
     reuseExistingServer: true,
     timeout: 120_000,

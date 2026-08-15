@@ -3,7 +3,9 @@ use std::fmt;
 
 pub type Cents = i64;
 pub const MIN_GAME_AMOUNT: Cents = 100;
-pub const MAX_GAME_ENTRY: Cents = 1_000_000;
+/// The most that may ride on anything: the top cash table's entry, and the
+/// ceiling a blackjack bet or a tournament blind level may climb to.
+pub const MAX_GAME_ENTRY: Cents = 100_000_000;
 
 pub fn valid_game_amount(value: Cents) -> bool {
     (MIN_GAME_AMOUNT..=MAX_GAME_ENTRY).contains(&value)
@@ -11,18 +13,6 @@ pub fn valid_game_amount(value: Cents) -> bool {
 
 pub fn valid_optional_game_amount(value: Cents) -> bool {
     value == 0 || valid_game_amount(value)
-}
-
-/// Tournament chips are play money rather than an entry price, so a late blind
-/// level climbs well past what anyone may buy in for.
-pub const MAX_CHIP_AMOUNT: Cents = 100_000_000;
-
-pub fn valid_chip_amount(value: Cents) -> bool {
-    (MIN_GAME_AMOUNT..=MAX_CHIP_AMOUNT).contains(&value)
-}
-
-pub fn valid_optional_chip_amount(value: Cents) -> bool {
-    value == 0 || valid_chip_amount(value)
 }
 
 pub fn format_cents(value: Cents) -> String {
@@ -59,22 +49,20 @@ mod tests {
     }
 
     #[test]
-    fn game_amounts_stay_between_one_and_ten_thousand_dollars() {
+    fn game_amounts_start_at_a_dollar() {
         assert!(!valid_game_amount(99));
         assert!(valid_game_amount(100));
         assert!(valid_game_amount(1_000_000));
-        assert!(!valid_game_amount(1_000_001));
         assert!(valid_optional_game_amount(0));
         assert!(!valid_optional_game_amount(50));
     }
 
     #[test]
-    fn tournament_chips_climb_past_the_cash_ceiling() {
-        // The T10,000 ladder tops out at a 16,000-chip big blind.
-        assert!(!valid_game_amount(1_600_000));
-        assert!(valid_chip_amount(1_600_000));
-        assert!(!valid_chip_amount(99));
-        assert!(!valid_chip_amount(MAX_CHIP_AMOUNT + 1));
-        assert!(valid_optional_chip_amount(0));
+    fn the_ceiling_covers_the_whole_cash_ladder() {
+        // The top table costs $1,000,000 to sit down at, and the T10,000
+        // tournament ladder tops out at a 16,000-chip big blind.
+        assert!(valid_game_amount(100_000_000));
+        assert!(valid_game_amount(1_600_000));
+        assert!(!valid_game_amount(100_000_001));
     }
 }

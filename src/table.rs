@@ -59,12 +59,76 @@ impl Stakes {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum BotKind {
     Fish,
     Rock,
     Grinder,
     Shark,
+}
+
+/// One of the house players. A kind is a way of playing; a bot is somebody who
+/// plays that way, with their own name and their own bankroll.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub struct Bot {
+    pub kind: BotKind,
+    /// Which of the kind's five regulars this is.
+    #[serde(default)]
+    pub seat: u8,
+}
+
+impl Bot {
+    pub const PER_KIND: u8 = 5;
+
+    pub fn new(kind: BotKind, seat: u8) -> Self {
+        Self {
+            kind,
+            seat: seat % Self::PER_KIND,
+        }
+    }
+
+    /// Everyone who plays for the house, in a stable order.
+    pub fn roster() -> Vec<Self> {
+        BotKind::ALL
+            .into_iter()
+            .flat_map(|kind| (0..Self::PER_KIND).map(move |seat| Self { kind, seat }))
+            .collect()
+    }
+
+    pub fn name(self) -> &'static str {
+        let names = match self.kind {
+            BotKind::Fish => ["Marlon", "Dede", "Ollie", "Pip", "Wanda"],
+            BotKind::Rock => ["Agnes", "Bernard", "Constance", "Dov", "Edda"],
+            BotKind::Grinder => ["Hark", "Ines", "Jules", "Kip", "Lena"],
+            BotKind::Shark => ["Nadia", "Osman", "Prisha", "Quill", "Rune"],
+        };
+        names[(self.seat % Self::PER_KIND) as usize]
+    }
+}
+
+impl fmt::Display for Bot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.kind, self.seat)
+    }
+}
+
+impl FromStr for Bot {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.split_once(':') {
+            Some((kind, seat)) => Ok(Self::new(
+                kind.parse()?,
+                seat.parse().map_err(|_| format!("bad bot seat: {seat}"))?,
+            )),
+            // A bare kind is how a bot was named before they had names.
+            None => Ok(Self::new(value.parse()?, 0)),
+        }
+    }
+}
+
+impl BotKind {
+    pub const ALL: [Self; 4] = [Self::Fish, Self::Rock, Self::Grinder, Self::Shark];
 }
 
 impl fmt::Display for BotKind {
@@ -95,11 +159,26 @@ impl FromStr for BotKind {
 #[cfg(test)]
 mod bot_kind_tests {
     use super::{
-        BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS, SHOWDOWN_PAUSE_SECONDS,
+        Bot, BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS, SHOWDOWN_PAUSE_SECONDS,
         SeatOccupant, Stakes, Table, TableMode, next_button, result_pause_seconds,
     };
     use crate::holdem::HandSummary;
     use std::{collections::BTreeMap, str::FromStr};
+
+    #[test]
+    fn every_bot_is_a_distinct_person() {
+        let roster = Bot::roster();
+        assert_eq!(roster.len(), 20, "five regulars for each of four kinds");
+        let names: std::collections::BTreeSet<&str> = roster.iter().map(|bot| bot.name()).collect();
+        assert_eq!(names.len(), roster.len(), "no two share a name");
+        // A seat round-trips through its text form, and a bare kind still reads
+        // as the first regular of that kind.
+        for bot in &roster {
+            assert_eq!(bot.to_string().parse::<Bot>().unwrap(), *bot);
+        }
+        assert_eq!("shark".parse::<Bot>().unwrap(), Bot::new(BotKind::Shark, 0));
+        assert_eq!(Bot::new(BotKind::Fish, 7), Bot::new(BotKind::Fish, 2));
+    }
 
     #[test]
     fn bot_kind_uses_stable_slugs() {
@@ -166,9 +245,7 @@ mod bot_kind_tests {
             20_000,
         );
         for (index, seat) in table.seats.iter_mut().enumerate() {
-            seat.occupant = SeatOccupant::Bot {
-                kind: BotKind::Rock,
-            };
+            seat.occupant = SeatOccupant::bot(crate::table::Bot::new(BotKind::Rock, 0));
             // Seats 1 and 2 are busted; only 0 and 3 still have chips.
             seat.stack = if index == 1 || index == 2 { 0 } else { 20_000 };
         }
@@ -252,8 +329,30 @@ pub struct TournamentState {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum SeatOccupant {
     Empty,
-    Human { user_id: Uuid },
-    Bot { kind: BotKind },
+    Human {
+        user_id: Uuid,
+    },
+    Bot {
+        kind: BotKind,
+        #[serde(default)]
+        seat: u8,
+    },
+}
+
+impl SeatOccupant {
+    pub fn bot(bot: Bot) -> Self {
+        Self::Bot {
+            kind: bot.kind,
+            seat: bot.seat,
+        }
+    }
+
+    pub fn as_bot(&self) -> Option<Bot> {
+        match self {
+            Self::Bot { kind, seat } => Some(Bot::new(*kind, *seat)),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for SeatOccupant {
@@ -261,7 +360,7 @@ impl fmt::Display for SeatOccupant {
         match self {
             Self::Empty => f.write_str("empty"),
             Self::Human { user_id } => write!(f, "human:{user_id}"),
-            Self::Bot { kind } => write!(f, "bot:{kind}"),
+            Self::Bot { kind, seat } => write!(f, "bot:{}", Bot::new(*kind, *seat).name()),
         }
     }
 }
@@ -293,6 +392,9 @@ pub struct Table {
     pub hand: Option<Hand>,
     pub last_hand: Option<HandSummary>,
     pub next_action_at: Option<DateTime<Utc>>,
+    /// Which rung of the standing cash ladder this is, if it is one of them.
+    #[serde(default)]
+    pub cash_tier: Option<usize>,
 }
 
 /// A finished hand, kept whole for later inspection: who sat where, what they
@@ -311,7 +413,7 @@ pub struct HandRecord {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandRecordSeat {
     pub seat: usize,
-    pub occupant: String,
+    pub occupant: SeatOccupant,
     /// Every hole card, including folded hands, which the live view redacts.
     pub hole_cards: Vec<crate::cards::Card>,
     pub stack_before: Cents,
@@ -374,6 +476,7 @@ impl Table {
             updated_at: now,
             hand: None,
             last_hand: None,
+            cash_tier: None,
             next_action_at: None,
         }
     }
@@ -407,6 +510,16 @@ pub fn maybe_start_hand(table: &mut Table) {
         state.started = true;
     }
     if table.hand.is_some() || table.seats.iter().filter(|seat| deals_in(seat)).count() < 2 {
+        return;
+    }
+    // A standing cash table waits for the house to fill it rather than locking
+    // itself into a short-handed game the moment two players are down.
+    if table.cash_tier.is_some()
+        && table
+            .seats
+            .iter()
+            .any(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+    {
         return;
     }
     let stacks: Vec<(usize, Cents)> = table
@@ -515,7 +628,7 @@ pub fn settle_finished_hand(table: &mut Table) -> Option<HandRecord> {
                     occupant: table
                         .seats
                         .get(player.seat)
-                        .map_or_else(|| "empty".into(), |seat| seat.occupant.to_string()),
+                        .map_or(SeatOccupant::Empty, |seat| seat.occupant.clone()),
                     hole_cards: player.hole_cards.clone(),
                     stack_before: player.stack + player.contribution - awarded,
                     stack_after: player.stack,

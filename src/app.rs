@@ -1,6 +1,7 @@
 use crate::{
     auth, bank::BankStore, blackjack::BlackjackStore, blitz::BlitzStore, driver,
-    history::HistoryStore, render, routes, session::MaybeUser, store::TableStore, users::UserStore,
+    history::HistoryStore, render, routes, session::MaybeUser, stats::StatsStore,
+    store::TableStore, users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -28,6 +29,7 @@ pub struct AppState {
     pub blitz: BlitzStore,
     pub tables: TableStore,
     pub history: HistoryStore,
+    pub stats: StatsStore,
     pub webauthn: Arc<Webauthn>,
     pub key: Key,
     pub passkey_disabled: bool,
@@ -87,10 +89,7 @@ pub fn router(s: AppState) -> Router {
             "/tournaments/{id}/register",
             axum::routing::post(routes::register_tournament),
         )
-        .route(
-            "/tables",
-            axum::routing::get(routes::tables).post(routes::create_table),
-        )
+        .route("/tables", axum::routing::get(routes::tables))
         .route("/tables/{id}", get(routes::table_page))
         .route("/tables/{id}/state", get(routes::table_state))
         .route("/tables/{id}/history", get(routes::table_history))
@@ -188,6 +187,7 @@ pub async fn run() -> Result<()> {
     let blitz = BlitzStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
     let history = HistoryStore::load(&data).await?;
+    let stats = StatsStore::load(&data).await?;
     let state = AppState {
         users,
         bank,
@@ -195,10 +195,12 @@ pub async fn run() -> Result<()> {
         blitz,
         tables,
         history,
+        stats,
         webauthn: Arc::new(build_webauthn()?),
         key: load_key(),
         passkey_disabled: env_flag("PASSKEY_DISABLED"),
     };
+    driver::ensure_cash_ladder(&state).await?;
     driver::spawn(state.clone());
     let app = router(state);
     let listener = bind_listener().await?;

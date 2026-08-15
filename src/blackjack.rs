@@ -12,8 +12,28 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-/// The only stakes a blackjack hand may be dealt for.
-pub const BLACKJACK_BETS: [Cents; 4] = [500, 2_000, 10_000, 20_000];
+/// The stakes offered for a bankroll: a nibble, a real bet, a big one, and
+/// everything you have. Any amount you can cover is legal; these are the four
+/// worth putting on a button.
+pub fn bet_options(balance: Cents) -> Vec<Cents> {
+    if balance < crate::money::MIN_GAME_AMOUNT {
+        return Vec::new();
+    }
+    let mut bets: Vec<Cents> = [balance / 100, balance / 20, balance / 4]
+        .into_iter()
+        // Whole dollars read better on a button, and nothing under a dollar.
+        .map(|bet| {
+            (bet / 100 * 100)
+                .max(crate::money::MIN_GAME_AMOUNT)
+                .min(balance)
+        })
+        .collect();
+    // The last option is the exact balance: betting everything means everything.
+    bets.push(balance);
+    bets.sort_unstable();
+    bets.dedup();
+    bets
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct BlackjackView {
@@ -169,10 +189,8 @@ impl BlackjackStore {
         bet: Cents,
         id: Uuid,
     ) -> Result<BlackjackView, BlackjackError> {
-        if !BLACKJACK_BETS.contains(&bet) {
-            return Err(BlackjackError::IllegalAction(
-                "bet must be $5, $20, $100, or $200",
-            ));
+        if !valid_game_amount(bet) {
+            return Err(BlackjackError::IllegalAction("bet must be at least $1"));
         }
         let mut guard = self.inner.lock().await;
         if guard
@@ -736,6 +754,37 @@ mod tests {
         assert_eq!(score(&cards), (15, false));
     }
 
+    #[test]
+    fn stakes_follow_the_bankroll_up_to_all_of_it() {
+        // A thousand dollars offers a nibble through to everything.
+        assert_eq!(bet_options(100_000), vec![1_000, 5_000, 25_000, 100_000]);
+        // A million-dollar roll scales the same way.
+        assert_eq!(
+            bet_options(100_000_000),
+            vec![1_000_000, 5_000_000, 25_000_000, 100_000_000]
+        );
+        // Small rolls collapse toward a dollar rather than offering nothing.
+        assert_eq!(bet_options(300), vec![100, 300]);
+        assert_eq!(bet_options(100), vec![100]);
+        assert!(bet_options(99).is_empty(), "you cannot bet what you lack");
+        for balance in [100, 137, 900, 12_345, 1_000_000] {
+            let bets = bet_options(balance);
+            assert!(
+                bets.iter().all(|bet| *bet <= balance),
+                "never over the roll"
+            );
+            assert!(
+                bets.windows(2).all(|pair| pair[0] < pair[1]),
+                "sorted, no repeats"
+            );
+            assert_eq!(
+                *bets.last().unwrap(),
+                balance.min(balance),
+                "all-in is offered"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn live_games_survive_persistence_but_finished_games_do_not() {
         let root = std::env::temp_dir().join(format!("two-seven-blackjack-{}", Uuid::new_v4()));
@@ -747,10 +796,7 @@ mod tests {
             let mut live = None;
             for _ in 0..50 {
                 let candidate = Uuid::new_v4();
-                let view = store
-                    .start(user, BLACKJACK_BETS[0], candidate)
-                    .await
-                    .unwrap();
+                let view = store.start(user, 500, candidate).await.unwrap();
                 if view.status == BlackjackStatus::Playing {
                     live = Some(candidate);
                     break;
