@@ -335,6 +335,9 @@ function TableApp() {
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
   // The result only reads once the whole board is out.
   const settled = runout.cards >= (showdown?.board?.length ?? 0);
+  // Nobody is seated, so no next hand is coming on its own: once the result
+  // has had its moment, hand the table back to whoever is watching.
+  const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
   const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
@@ -349,13 +352,21 @@ function TableApp() {
       </div>
       <div class="seats" data-seat-total=${ordered.length}>${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`)}</div>
     </section>
-    ${!showdown && (hand ? html`<p class="table-status">${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}</p>` : html`<p class="table-status waiting-status">${state.can_deal ? "Nobody is seated · deal a hand to watch the house play" : "Waiting for players"}</p>`)}
-    ${(hand?.legal_actions || showdown || state.can_deal) && html`<section class="decision-area">${showdown
+    <p class=${`table-status ${hand ? "" : "waiting-status"}`}>${showdown
+      ? ""
+      : hand
+        ? `${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}`
+        : state.can_deal
+          ? "Nobody seated · deal a hand"
+          : "Waiting for players"}</p>
+    <section class="decision-area">${showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions
         ? html`<${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} />`
-        : html`<${DealHouseHand} refresh=${refresh} />`}</section>`}
-    ${handEvents.length > 0 && html`<${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />`}
+        : state.can_deal
+          ? html`<${DealHouseHand} refresh=${refresh} />`
+          : null}</section>
+    <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />
     <p id="table-error" class="error" role="alert"></p>
     <nav class="table-controls"><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommand} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;

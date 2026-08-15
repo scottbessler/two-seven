@@ -498,6 +498,27 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   // And it waits to be asked before it plays.
   await expect(page.getByRole("button", { name: "Deal a hand" })).toBeVisible();
 
+  // After a hand, no next one is coming on its own, so once the result has had
+  // its moment the table offers to deal again rather than counting down forever.
+  const finished = {
+    ...houseTable,
+    last_hand: showdownState.last_hand,
+    result_pause_seconds: 6,
+    next_hand_at: new Date(Date.now() - 1_000).toISOString(),
+  };
+  await mountTable(page, finished);
+  await expect(page.locator(".showdown-result")).toContainText("wins $400");
+  await expect(page.getByRole("button", { name: "Deal a hand" })).toBeVisible();
+  await expect(page.locator(".showdown-advance.spectator")).toHaveCount(0);
+
+  // While the result is still counting down it keeps the countdown.
+  const settling = {
+    ...finished,
+    next_hand_at: new Date(Date.now() + 5_000).toISOString(),
+  };
+  await mountTable(page, settling);
+  await expect(page.getByRole("button", { name: "Deal a hand" })).toHaveCount(0);
+
   // A table full of people has no room, and offers nothing.
   const packed = {
     ...houseTable,
@@ -506,6 +527,33 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   };
   await mountTable(page, packed);
   await expect(page.locator(".table-controls .table-command")).toHaveCount(0);
+
+  // The bar, the status line and the log all keep their place whether or not
+  // they have anything in them, so the table above does not jump about.
+  const bands = async () => {
+    await page.locator(".table-stage").waitFor();
+    return page.evaluate(() => ({
+    decision: document.querySelectorAll(".decision-area").length,
+    status: document.querySelectorAll(".table-status").length,
+    log: document.querySelectorAll(".game-log").length,
+    stage: Math.round(document.querySelector(".table-stage").getBoundingClientRect().height),
+    }));
+  };
+  await mountTable(page, houseTable);
+  const idle = await bands();
+  await mountTable(page, tableState);
+  const playing = await bands();
+  expect(idle.decision, "an idle table reserves the action bar").toBe(1);
+  expect(idle.status, "and the status line").toBe(1);
+  expect(idle.log, "and the log").toBe(1);
+  expect(playing.decision).toBe(1);
+  expect(playing.status).toBe(1);
+  expect(playing.log).toBe(1);
+  // Not to the pixel: a phone wraps seven action buttons onto a second row,
+  // which is worth the space. Nowhere near the hundred-odd pixels a whole band
+  // appearing or vanishing used to move it.
+  const slack = (page.viewportSize()?.width || 0) > 640 ? 20 : 48;
+  expect(Math.abs(playing.stage - idle.stage), "the table keeps its height").toBeLessThan(slack);
 });
 
 test("offers one state-aware table lifecycle command", async ({ page }) => {

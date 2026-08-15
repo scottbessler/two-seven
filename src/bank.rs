@@ -60,6 +60,8 @@ pub struct BankStore {
 impl BankStore {
     pub const RE_UP_AMOUNT: Cents = 100_000;
     pub const RE_UP_THRESHOLD: Cents = 10_000;
+    /// Bump this to start the house's accounts over on the next boot.
+    const HOUSE_RESET_MARKER: &'static str = "bank-house-reset-2.marker";
 
     pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
         let dir = root.as_ref().join("bank");
@@ -74,9 +76,10 @@ impl BankStore {
             }
             tokio::fs::write(&marker, b"legacy accounts wiped for non-debt bank\n").await?;
         }
-        // The house used to hold one account per playing style. Now that it is
-        // twenty named regulars, their books start empty; people keep theirs.
-        let bots_marker = dir.join("bank-v3-named-bots.marker");
+        // The house's books start over: no balance, no loans, no history. Bump
+        // HOUSE_RESET_MARKER to wipe them again on a later release; people's
+        // accounts are never touched.
+        let bots_marker = dir.join(Self::HOUSE_RESET_MARKER);
         if !tokio::fs::try_exists(&bots_marker).await? {
             let mut entries = tokio::fs::read_dir(&dir).await?;
             while let Some(entry) = entries.next_entry().await? {
@@ -90,7 +93,7 @@ impl BankStore {
                     let _ = tokio::fs::remove_file(path).await;
                 }
             }
-            tokio::fs::write(&bots_marker, b"house accounts reset for named bots\n").await?;
+            tokio::fs::write(&bots_marker, b"house accounts reset\n").await?;
         }
         let mut accounts = HashMap::new();
         let mut entries = tokio::fs::read_dir(&dir).await?;
@@ -377,6 +380,35 @@ impl BankStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn the_house_starts_over_but_people_keep_their_money() {
+        let root = std::env::temp_dir().join(format!("two-seven-reset-{}", Uuid::new_v4()));
+        let bot = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Fish, 0));
+        let person = AccountOwner::User(Uuid::new_v4());
+        {
+            let bank = BankStore::load(&root).await.unwrap();
+            bank.re_up(bot.clone()).await.unwrap();
+            bank.re_up(person.clone()).await.unwrap();
+            let banked = bank.account(bot.clone()).await.unwrap();
+            assert!(banked.balance > 0 && banked.loan_count > 0);
+        }
+        // Clearing the marker is what a release does when it bumps its name.
+        tokio::fs::remove_file(root.join("bank").join(BankStore::HOUSE_RESET_MARKER))
+            .await
+            .unwrap();
+
+        let bank = BankStore::load(&root).await.unwrap();
+        let house = bank.account(bot).await.unwrap();
+        assert_eq!(house.balance, 0, "no money");
+        assert_eq!(house.loan_count, 0, "no loans");
+        assert!(house.entries.is_empty(), "no history");
+        assert_eq!(
+            bank.account(person).await.unwrap().balance,
+            BankStore::RE_UP_AMOUNT,
+            "a person's account is left alone"
+        );
+    }
+
     #[tokio::test]
     async fn a_bot_covers_a_big_seat_with_one_loan() {
         let root = std::env::temp_dir().join(format!("two-seven-bigseat-{}", Uuid::new_v4()));
