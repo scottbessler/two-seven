@@ -62,6 +62,10 @@ impl UserStore {
     pub async fn get(&self, id: Uuid) -> Option<User> {
         self.index.lock().await.by_id.get(&id).cloned()
     }
+    /// Everyone with an account, for the leaderboard.
+    pub async fn all(&self) -> Vec<User> {
+        self.index.lock().await.by_id.values().cloned().collect()
+    }
     pub async fn get_by_username(&self, n: &str) -> Option<User> {
         let g = self.index.lock().await;
         g.by_username

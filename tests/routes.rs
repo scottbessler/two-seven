@@ -61,6 +61,12 @@ async fn appx() -> T {
         tables: table_store,
     }
 }
+fn blitz_labels() -> Vec<&'static str> {
+    two_seven::blitz::BlitzDifficulty::ALL
+        .iter()
+        .map(|difficulty| difficulty.config().label)
+        .collect()
+}
 fn cookie(key: &Key, id: Uuid) -> String {
     let mut j = CookieJar::new();
     j.signed_mut(key).add(RawCookie::new("sid", id.to_string()));
@@ -210,6 +216,84 @@ async fn game_setup_walks_a_stepped_dialog() {
     assert!(html.contains("data-choice=\"players\""));
     assert!(html.contains("quick-game-form"));
     assert!(html.contains("id=\"game-setup\""));
+}
+
+#[tokio::test]
+async fn the_leaderboard_ranks_by_balance_then_by_fewer_loans() {
+    let t = appx().await;
+    // Same balance, different borrowing: the one who took fewer loans is above.
+    let thrifty = Uuid::new_v4();
+    let borrower = Uuid::new_v4();
+    let poorest = Uuid::new_v4();
+    for (id, name) in [
+        (thrifty, "Thrifty"),
+        (borrower, "Borrower"),
+        (poorest, "Poorest"),
+    ] {
+        t.users
+            .insert(User {
+                id,
+                username: name.to_lowercase(),
+                display_name: name.into(),
+                credentials: vec![],
+                settings: UserSettings::default(),
+                created_at: chrono::Utc::now(),
+            })
+            .await
+            .unwrap();
+    }
+    let spend = async |user: Uuid, amount: i64| {
+        t.bank
+            .append(
+                AccountOwner::User(user),
+                LedgerKind::Adjustment,
+                -amount,
+                "spent".into(),
+            )
+            .await
+            .unwrap();
+    };
+    // A re-up is the loan, and it is only available once nearly broke, so the
+    // borrower has to go bust before taking a second one.
+    t.bank.re_up(AccountOwner::User(thrifty)).await.unwrap();
+    t.bank.re_up(AccountOwner::User(borrower)).await.unwrap();
+    spend(borrower, 95_000).await;
+    t.bank.re_up(AccountOwner::User(borrower)).await.unwrap();
+    spend(borrower, 5_000).await;
+    t.bank.re_up(AccountOwner::User(poorest)).await.unwrap();
+    spend(poorest, 50_000).await;
+
+    let cookie_value = cookie(&t.key, thrifty);
+    let response = t
+        .router
+        .oneshot(
+            Request::builder()
+                .uri("/leaderboard")
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    let place = |name: &str| html.find(name).unwrap_or(usize::MAX);
+    assert!(
+        place("Thrifty") < place("Borrower"),
+        "equal balances break toward fewer loans"
+    );
+    assert!(
+        place("Borrower") < place("Poorest"),
+        "a bigger balance still outranks"
+    );
+    // Every difficulty gets its own accuracy and streak columns.
+    for difficulty in blitz_labels() {
+        assert!(html.contains(difficulty), "missing {difficulty} columns");
+    }
+    assert_eq!(html.matches("<th>Accuracy</th><th>Streak</th>").count(), 3);
+    // Bots bankroll themselves and are not in the running.
+    assert!(!html.contains("fish"));
 }
 
 #[tokio::test]

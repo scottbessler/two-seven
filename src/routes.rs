@@ -634,6 +634,68 @@ pub struct HistoryQuery {
 
 /// The table's hand history. Answers JSON when asked for it, so a debugging
 /// session can read the raw records without scraping the page.
+/// The leaderboard: richest first, and a tie goes to whoever borrowed less.
+pub const LEADERBOARD_SIZE: usize = 20;
+
+pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -> Html<String> {
+    let accounts = s.bank.accounts().await;
+    let blitz = s.blitz.all_stats().await;
+    let mut users: std::collections::HashMap<Uuid, String> = std::collections::HashMap::new();
+    for user in s.users.all().await {
+        users.insert(user.id, user.display_name);
+    }
+    // Bots bankroll themselves out of the house, so they are not in the running.
+    let mut ranked: Vec<(Uuid, crate::bank::Account)> = accounts
+        .into_iter()
+        .filter_map(|account| match account.owner {
+            crate::bank::AccountOwner::User(id) => Some((id, account)),
+            crate::bank::AccountOwner::Bot(_) => None,
+        })
+        .collect();
+    ranked.sort_by(|(left_id, left), (right_id, right)| {
+        right
+            .balance
+            .cmp(&left.balance)
+            .then(left.loan_count.cmp(&right.loan_count))
+            .then_with(|| {
+                users
+                    .get(left_id)
+                    .cmp(&users.get(right_id))
+                    .then(left_id.cmp(right_id))
+            })
+    });
+    let rows = ranked
+        .into_iter()
+        .take(LEADERBOARD_SIZE)
+        .enumerate()
+        .map(|(index, (id, account))| {
+            let stats = blitz.get(&id).cloned().unwrap_or_default();
+            crate::view::LeaderboardRow {
+                rank: index + 1,
+                name: users
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                balance: account.balance,
+                loan_count: account.loan_count,
+                blitz: crate::blitz::BlitzDifficulty::ALL
+                    .iter()
+                    .map(|difficulty| {
+                        let tally = stats.at(*difficulty);
+                        crate::view::LeaderboardBlitz {
+                            difficulty: difficulty.config().label.to_string(),
+                            attempts: tally.attempts,
+                            accuracy_percent: tally.accuracy_percent(),
+                            best_streak: tally.best_streak,
+                        }
+                    })
+                    .collect(),
+            }
+        })
+        .collect::<Vec<_>>();
+    Html(render::leaderboard(&rows))
+}
+
 pub async fn table_history(
     AuthUser(_user): AuthUser,
     State(s): State<AppState>,

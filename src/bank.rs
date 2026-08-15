@@ -109,6 +109,11 @@ impl BankStore {
         }
         Ok(guard.accounts.get(&owner).expect("account").clone())
     }
+    /// Every account on the books, for the leaderboard.
+    pub async fn accounts(&self) -> Vec<Account> {
+        self.inner.lock().await.accounts.values().cloned().collect()
+    }
+
     pub async fn append(
         &self,
         owner: AccountOwner,

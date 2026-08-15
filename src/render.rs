@@ -94,7 +94,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
                 escape(&name),
                 sign_out()
             ),
@@ -107,7 +107,7 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView]) -> String 
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
             escape(name),
             lobby_table_list(tables, true),
             sign_out()
@@ -330,6 +330,64 @@ pub fn table_page(view: &crate::view::TableView) -> String {
     )
 }
 
+/// Standings: the bankroll, and how well people read a board.
+pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
+    let headers = rows.first().map_or_else(String::new, |row| {
+        row.blitz
+            .iter()
+            .map(|blitz| format!("<th colspan=\"2\">{}</th>", escape(&blitz.difficulty)))
+            .collect()
+    });
+    let subheaders = rows.first().map_or_else(String::new, |row| {
+        row.blitz
+            .iter()
+            .map(|_| "<th>Accuracy</th><th>Streak</th>".to_string())
+            .collect()
+    });
+    let body = rows
+        .iter()
+        .map(|row| {
+            let blitz = row
+                .blitz
+                .iter()
+                .map(|blitz| {
+                    if blitz.attempts == 0 {
+                        return "<td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td>"
+                            .to_string();
+                    }
+                    format!(
+                        "<td>{}%</td><td>{}</td>",
+                        blitz.accuracy_percent, blitz.best_streak
+                    )
+                })
+                .collect::<String>();
+            format!(
+                "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"money\">{}</td><td>{}</td>{}</tr>",
+                row.rank,
+                escape(&row.name),
+                format_cents(row.balance),
+                row.loan_count,
+                blitz
+            )
+        })
+        .collect::<String>();
+    let table = if rows.is_empty() {
+        "<p class=\"loading\">Nobody has played yet.</p>".to_string()
+    } else {
+        format!(
+            "<table class=\"leaderboard-table\"><thead><tr><th></th><th>Player</th><th>Balance</th><th>Loans</th>{headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th></th><th></th><th></th>{subheaders}</tr></thead><tbody>{body}</tbody></table>"
+        )
+    };
+    layout(
+        "Leaderboard",
+        &format!(
+            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by balance. A tie goes to whoever took fewer loans.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{table}</section>",
+            crate::routes::LEADERBOARD_SIZE
+        ),
+        "",
+    )
+}
+
 /// The debugging view of a table's past hands, newest first.
 pub fn table_history(
     id: Uuid,
@@ -517,7 +575,7 @@ pub fn lobby(tables: &[crate::view::LobbyTableView]) -> String {
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
+            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
             lobby_table_list(tables, false)
         ),
         "",

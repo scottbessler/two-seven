@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
@@ -18,7 +18,7 @@ use uuid::Uuid;
 const EXPIRY_GRACE_MS: i64 = 3_000;
 const FINISHED_RUN_RETENTION_MS: i64 = 60_000;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum BlitzDifficulty {
     Easy,
     Normal,
@@ -86,6 +86,30 @@ pub struct BlitzStats {
     pub correct: u64,
     pub total_answer_ms: u64,
     pub best_streak: u64,
+    /// The same tallies split by difficulty. Accuracy on Easy says something
+    /// different from accuracy on Hard, so a total on its own is misleading.
+    #[serde(default)]
+    pub by_difficulty: BTreeMap<BlitzDifficulty, BlitzTally>,
+}
+
+/// One difficulty's worth of the numbers [`BlitzStats`] totals up.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BlitzTally {
+    pub runs: u64,
+    pub attempts: u64,
+    pub correct: u64,
+    pub total_answer_ms: u64,
+    pub best_streak: u64,
+}
+
+impl BlitzTally {
+    pub fn accuracy_percent(&self) -> u64 {
+        (self.correct * 100).checked_div(self.attempts).unwrap_or(0)
+    }
+
+    pub fn avg_answer_ms(&self) -> u64 {
+        self.total_answer_ms.checked_div(self.correct).unwrap_or(0)
+    }
 }
 
 impl BlitzStats {
@@ -95,6 +119,13 @@ impl BlitzStats {
 
     pub fn avg_answer_ms(&self) -> u64 {
         self.total_answer_ms.checked_div(self.correct).unwrap_or(0)
+    }
+
+    pub fn at(&self, difficulty: BlitzDifficulty) -> BlitzTally {
+        self.by_difficulty
+            .get(&difficulty)
+            .copied()
+            .unwrap_or_default()
     }
 }
 
@@ -202,6 +233,11 @@ impl BlitzStore {
             .unwrap_or_default()
     }
 
+    /// Every player's blitz record, for the leaderboard.
+    pub async fn all_stats(&self) -> HashMap<Uuid, BlitzStats> {
+        self.inner.lock().await.stats.clone()
+    }
+
     pub async fn start(
         &self,
         user: Uuid,
@@ -221,6 +257,7 @@ impl BlitzStore {
         guard.runs.retain(|_, run| run.active || run.user != user);
         let stats = guard.stats.entry(user).or_default();
         stats.runs += 1;
+        stats.by_difficulty.entry(difficulty).or_default().runs += 1;
         let run = BlitzRun {
             id,
             user,
@@ -284,12 +321,19 @@ impl BlitzStore {
         let winning_label = run.round.ranks[winner].label.clone();
         let payout_awarded = if correct { run.next_payout() } else { 0 };
         {
+            let difficulty = run.difficulty;
+            let streak = run.correct + 1;
             let stats = guard.stats.entry(user).or_default();
+            let tally = stats.by_difficulty.entry(difficulty).or_default();
             stats.attempts += 1;
+            tally.attempts += 1;
             if correct {
                 stats.correct += 1;
                 stats.total_answer_ms += answer_ms;
-                stats.best_streak = stats.best_streak.max(run.correct + 1);
+                stats.best_streak = stats.best_streak.max(streak);
+                tally.correct += 1;
+                tally.total_answer_ms += answer_ms;
+                tally.best_streak = tally.best_streak.max(streak);
             }
         }
         if correct {
@@ -428,6 +472,46 @@ fn expire_runs(runs: &mut HashMap<Uuid, BlitzRun>, now: DateTime<Utc>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn answers_are_tallied_against_the_difficulty_they_were_played_at() {
+        let root = std::env::temp_dir().join(format!("two-seven-blitz-stats-{}", Uuid::new_v4()));
+        let store = BlitzStore::load(&root).await.unwrap();
+        let user = Uuid::new_v4();
+        let run = store
+            .start(user, BlitzDifficulty::Normal, Uuid::new_v4())
+            .await
+            .unwrap();
+        // Answer every round until the run ends, right or wrong.
+        let mut round = run.round.id;
+        let mut answered = 0;
+        for _ in 0..8 {
+            let Ok(result) = store.answer(user, run.id, round, 0).await else {
+                break;
+            };
+            answered += 1;
+            if !result.run.active {
+                break;
+            }
+            round = result.run.round.id;
+        }
+        assert!(answered > 0, "the run should accept at least one answer");
+
+        let stats = store.stats(user).await;
+        assert_eq!(stats.attempts, answered, "the total counts every answer");
+        let normal = stats.at(BlitzDifficulty::Normal);
+        assert_eq!(
+            normal.attempts, answered,
+            "and so does the difficulty played"
+        );
+        assert_eq!(normal.runs, 1);
+        assert_eq!(normal.correct, stats.correct);
+        assert_eq!(normal.best_streak, stats.best_streak);
+        // Difficulties that were never played stay empty rather than sharing.
+        for untouched in [BlitzDifficulty::Easy, BlitzDifficulty::Hard] {
+            assert_eq!(stats.at(untouched), BlitzTally::default());
+        }
+    }
 
     #[test]
     fn time_limit_halves_at_earnings_doubling_thresholds() {

@@ -62,6 +62,25 @@ pub struct TableView {
     pub tournament: Option<TournamentView>,
 }
 
+/// One row of the leaderboard: the money, and how sharp they are at reading a
+/// board, which is a different kind of good.
+#[derive(Clone, Debug, Serialize)]
+pub struct LeaderboardRow {
+    pub rank: usize,
+    pub name: String,
+    pub balance: Cents,
+    pub loan_count: u64,
+    pub blitz: Vec<LeaderboardBlitz>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LeaderboardBlitz {
+    pub difficulty: String,
+    pub attempts: u64,
+    pub accuracy_percent: u64,
+    pub best_streak: u64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct LobbyTableView {
     pub id: uuid::Uuid,

@@ -43,6 +43,7 @@ pub fn router(s: AppState) -> Router {
         .route("/healthcheck", get(routes::healthcheck))
         .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
+        .route("/leaderboard", get(routes::leaderboard))
         .route("/blackjack", get(routes::blackjack))
         .route(
             "/blackjack/start",
