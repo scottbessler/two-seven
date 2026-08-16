@@ -284,17 +284,20 @@ pub async fn blackjack_start(
     State(s): State<AppState>,
     Json(input): Json<BlackjackStartRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // You may bet anything you can cover, up to the whole bankroll.
+    // Leave half the bankroll available for a double or split.
     let balance = balance_of(&s, user).await;
-    if !valid_game_amount(input.bet) || input.bet > balance {
+    let max_start = (balance / 2 / 100 * 100)
+        .max(crate::money::MIN_GAME_AMOUNT)
+        .min(balance);
+    if !valid_game_amount(input.bet) || input.bet > max_start {
         return Err(AppError::bad_request(
-            "bet must be at least $1 and no more than your balance",
+            "bet must be at least $1 and no more than half your balance",
         ));
     }
     let id = Uuid::new_v4();
     let view = s
         .blackjack
-        .start(user, input.bet, id)
+        .start(user, input.bet, id, balance - input.bet)
         .await
         .map_err(blackjack_error)?;
     s.bank
@@ -315,7 +318,7 @@ pub async fn blackjack_resume(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
 ) -> Json<Option<crate::blackjack::BlackjackView>> {
-    Json(s.blackjack.resume(user).await)
+    Json(s.blackjack.resume(user, balance_of(&s, user).await).await)
 }
 
 #[derive(Deserialize)]
@@ -328,9 +331,10 @@ pub async fn blackjack_hit(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let balance = balance_of(&s, user).await;
     let view = s
         .blackjack
-        .hit(user, input.id)
+        .hit(user, input.id, balance)
         .await
         .map_err(blackjack_error)?;
     if view.payout > 0 {
@@ -348,9 +352,10 @@ pub async fn blackjack_stand(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let balance = balance_of(&s, user).await;
     let view = s
         .blackjack
-        .stand(user, input.id)
+        .stand(user, input.id, balance)
         .await
         .map_err(blackjack_error)?;
     if view.payout > 0 {
@@ -368,7 +373,8 @@ pub async fn blackjack_double(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    match s.blackjack.double(user, input.id).await {
+    let balance = balance_of(&s, user).await;
+    match s.blackjack.double(user, input.id, balance).await {
         Ok((view, wager)) => {
             if wager > 0 {
                 s.bank
@@ -394,7 +400,8 @@ pub async fn blackjack_split(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    match s.blackjack.split(user, input.id).await {
+    let balance = balance_of(&s, user).await;
+    match s.blackjack.split(user, input.id, balance).await {
         Ok((view, wager)) => {
             if wager > 0 {
                 s.bank
@@ -420,7 +427,8 @@ pub async fn blackjack_insurance(
     State(s): State<AppState>,
     Json(input): Json<BlackjackActionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    match s.blackjack.insure(user, input.id).await {
+    let balance = balance_of(&s, user).await;
+    match s.blackjack.insure(user, input.id, balance).await {
         Ok((view, wager)) => {
             s.bank
                 .blackjack_bet(AccountOwner::User(user), input.id, wager)

@@ -98,6 +98,12 @@ table show the seat owner's bank balance the same way (bots included).
   modelled (irrelevant with a shuffled deck).
 - Actions: `fold`, `check`, `call`, `bet`, `raise`, plus implicit all-in when a
   player cannot cover.
+- **Blackjack:** Starting-bet options use whole-dollar amounts, with the
+  smallest option capped at $100, and are capped at half the player's
+  spendable bankroll (rounded down to whole dollars), except rolls below $2 may
+  bet their full balance. Double and split require another bet of the active
+  hand to remain available; insurance requires half that bet. The same
+  affordability rules govern displayed action flags and server validation.
 - **Limit** stakes (`small_bet`/`big_bet`): blinds are `small_bet/2` and
   `small_bet`; bets are `small_bet` preflop and on the flop, `big_bet` on turn
   and river; at most 4 wagers per street (bet + 3 raises).
