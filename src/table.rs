@@ -159,8 +159,9 @@ impl FromStr for BotKind {
 #[cfg(test)]
 mod bot_kind_tests {
     use super::{
-        Bot, BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS, SHOWDOWN_PAUSE_SECONDS,
-        SeatOccupant, Stakes, Table, TableMode, next_button, result_pause_seconds,
+        BlindLevel, Bot, BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS,
+        SHOWDOWN_PAUSE_SECONDS, SeatOccupant, Stakes, Table, TableMode, TournamentConfig,
+        TournamentState, maybe_start_hand, next_button, result_pause_seconds,
     };
     use crate::holdem::HandSummary;
     use std::{collections::BTreeMap, str::FromStr};
@@ -232,6 +233,89 @@ mod bot_kind_tests {
             result_pause_seconds(Some(&summary(showdown, vec![3, 4, 5]))),
             SHOWDOWN_PAUSE_SECONDS + 3 * RUNOUT_STEP_SECONDS
         );
+    }
+
+    #[test]
+    fn a_table_of_busted_people_waits_like_an_empty_one() {
+        let mut table = Table::new(
+            "waiting".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            3,
+            20_000,
+        );
+        table.cash_tier = Some(0);
+        for seat in table.seats.iter_mut() {
+            seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Fish, 0));
+            seat.stack = 20_000;
+        }
+        // Give the bots distinct identities so nothing else objects.
+        for (index, seat) in table.seats.iter_mut().enumerate() {
+            seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Fish, index as u8));
+        }
+        assert!(table.waits_for_a_watcher(), "nobody is playing");
+
+        // A person with chips is somebody to deal for.
+        table.seats[0].occupant = SeatOccupant::Human {
+            user_id: uuid::Uuid::new_v4(),
+        };
+        assert!(!table.waits_for_a_watcher());
+
+        // Busted, they are not playing any more, so it waits again.
+        table.seats[0].stack = 0;
+        assert!(table.waits_for_a_watcher(), "a busted seat is not a player");
+
+        // Sitting out counts the same way.
+        table.seats[0].stack = 20_000;
+        table.seats[0].sitting_out = true;
+        assert!(table.waits_for_a_watcher());
+    }
+
+    #[test]
+    fn a_tournament_plays_itself_out_without_anybody_watching() {
+        let mut table = Table::new(
+            "final table".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Tournament(TournamentState {
+                config: TournamentConfig {
+                    buy_in: 1_000,
+                    seat_count: 2,
+                    starting_chips: 10_000,
+                    levels: vec![BlindLevel {
+                        small_blind: 100,
+                        big_blind: 200,
+                        ante: 0,
+                        hands: 4,
+                    }],
+                    payout_percentages: vec![100],
+                    no_debt: false,
+                },
+                current_level: 0,
+                hands_at_level: 0,
+                finish_order: Vec::new(),
+                registered: 2,
+                started: true,
+                prize_pool: 2_000,
+                finished: false,
+                paid_out: false,
+            }),
+            2,
+            1_000,
+        );
+        for (index, seat) in table.seats.iter_mut().enumerate() {
+            seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Shark, index as u8));
+            seat.stack = 10_000;
+        }
+        // Nobody is watching and nobody has asked, but somebody has to win it.
+        assert!(!table.waits_for_a_watcher());
+        maybe_start_hand(&mut table);
+        assert!(table.hand.is_some(), "a tournament deals itself out");
     }
 
     #[test]
@@ -489,6 +573,20 @@ impl Table {
     }
 }
 
+impl Table {
+    /// Whether this table is playing for nobody. A person who has been busted
+    /// out is not playing: their seat holds no chips, so a cash table with only
+    /// busted people at it is a table of house players and waits to be asked.
+    /// Tournaments never wait -- they run to a winner.
+    pub fn waits_for_a_watcher(&self) -> bool {
+        matches!(self.mode, TableMode::Cash { .. })
+            && !self
+                .seats
+                .iter()
+                .any(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }) && deals_in(seat))
+    }
+}
+
 /// Whether a seat takes part in the next hand.
 fn deals_in(seat: &Seat) -> bool {
     !seat.sitting_out && seat.stack > 0 && !matches!(seat.occupant, SeatOccupant::Empty)
@@ -529,13 +627,10 @@ pub fn maybe_start_hand(table: &mut Table) {
     {
         return;
     }
-    // The house does not play to an empty room. With nobody sitting down, a
-    // hand is dealt only when a watcher asks for one.
-    if !table
-        .seats
-        .iter()
-        .any(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }))
-    {
+    // The house does not play to an empty room: a cash table with nobody in it
+    // deals only when a watcher asks. A tournament plays itself out regardless,
+    // because somebody has to win it.
+    if table.waits_for_a_watcher() {
         if table.bot_hands_requested == 0 {
             return;
         }

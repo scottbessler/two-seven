@@ -1083,11 +1083,7 @@ pub async fn deal_bot_hand(
             if table.hand.is_some() {
                 return Err(anyhow::anyhow!("a hand is already in progress"));
             }
-            if table
-                .seats
-                .iter()
-                .any(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }))
-            {
+            if !table.waits_for_a_watcher() {
                 return Err(anyhow::anyhow!("this table has players of its own"));
             }
             // One click, one hand; clicking again while it plays changes nothing.

@@ -605,6 +605,19 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await page.locator(".table-controls .table-command").first().click();
   expect(rebuyBody).toEqual({});
 
+  // A cash table whose only person is busted is a table of house players
+  // again: it stops dealing on its own and offers the deal button.
+  const bustedBetweenHands = {
+    ...tableState,
+    hand: null,
+    can_deal: true,
+    seats: tableState.seats.map((seat) => (seat.index === tableState.viewer_seat
+      ? Object.assign({}, seat, { stack: 0 })
+      : seat)),
+  };
+  await mountTable(page, bustedBetweenHands);
+  await expect(page.getByRole("button", { name: "Deal a hand" })).toBeVisible();
+
   // Busted mid-hand you cannot rebuy yet, but leaving is still on offer.
   const bustedMidHand = {
     ...tableState,

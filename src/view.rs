@@ -238,10 +238,7 @@ pub fn table_view_with_banks(
         // The client paces the runout against this, so it must not guess it.
         result_pause_seconds: crate::table::result_pause_seconds(table.last_hand.as_ref()),
         can_deal: table.hand.is_none()
-            && !table
-                .seats
-                .iter()
-                .any(|seat| matches!(seat.occupant, crate::table::SeatOccupant::Human { .. }))
+            && table.waits_for_a_watcher()
             && table.seats.iter().filter(|seat| seat.stack > 0).count() >= 2,
         tournament: match &table.mode {
             crate::table::TableMode::Tournament(state) => state
