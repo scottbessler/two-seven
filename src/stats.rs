@@ -129,6 +129,17 @@ impl StatsStore {
         self.inner.lock().await.clone()
     }
 
+    pub async fn reset_all(&self) -> Result<usize> {
+        let removed = {
+            let mut guard = self.inner.lock().await;
+            let removed = guard.len();
+            guard.clear();
+            removed
+        };
+        self.persist().await?;
+        Ok(removed)
+    }
+
     /// Fold one finished hand into everybody's record.
     pub async fn record(&self, hand: &HandRecord) -> Result<()> {
         let pot: Cents = hand.summary.awards.iter().map(|award| award.amount).sum();

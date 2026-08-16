@@ -236,6 +236,25 @@ pub fn blackjack() -> String {
     )
 }
 
+pub fn admin(error: Option<&str>, message: Option<&str>) -> String {
+    let notice = message.map_or_else(String::new, |value| {
+        format!(
+            r#"<p class="admin-message" role="status">{}</p>"#,
+            escape(value)
+        )
+    });
+    let error = error.map_or_else(String::new, |value| {
+        format!(r#"<p class="error" role="alert">{}</p>"#, escape(value))
+    });
+    layout(
+        "Admin",
+        &format!(
+            r#"<section class="card admin-panel"><h1>Admin</h1>{notice}{error}<form method="post" action="/admin"><label>Secret password<input type="password" name="password" autocomplete="current-password" required autofocus></label><div class="admin-actions"><button class="danger" type="submit" name="action" value="money">Reset all money and loans</button><button class="danger" type="submit" name="action" value="poker">Reset all poker stats</button><button class="danger" type="submit" name="action" value="blitz">Reset all blitz stats</button></div></form><p><a href="/tables">Lobby</a></p></section>"#
+        ),
+        "",
+    )
+}
+
 pub fn card_test() -> String {
     let cards = ["s", "h", "c", "d"]
         .into_iter()

@@ -52,6 +52,7 @@ async fn appx() -> T {
         tables,
         history,
         stats,
+        admin_password: Arc::new("test-admin-password".into()),
         webauthn: Arc::new(app::build_webauthn().unwrap()),
         key: key.clone(),
         passkey_disabled: true,
@@ -209,6 +210,90 @@ async fn signed_home() {
         .unwrap();
     let b = to_bytes(r.into_body(), usize::MAX).await.unwrap();
     assert!(String::from_utf8_lossy(&b).contains("Welcome, Alice"));
+}
+
+#[tokio::test]
+async fn admin_requires_the_local_password() {
+    let t = appx().await;
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("password=wrong&action=poker"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("did not unlock"));
+}
+
+#[tokio::test]
+async fn admin_money_reset_clears_accounts_and_kicks_people_from_tables() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "reset".into(),
+            display_name: "Reset".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let table = seat_table(&t, "Reset table", 2, 20_000, false).await;
+    t.tables
+        .update(table, |table| {
+            table.seats[0].occupant = two_seven::table::SeatOccupant::Human { user_id: user };
+            table.seats[0].stack = 20_000;
+            table.seats[1].occupant = two_seven::table::SeatOccupant::bot(
+                two_seven::table::Bot::new(two_seven::table::BotKind::Fish, 0),
+            );
+            table.seats[1].stack = 20_000;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("password=test-admin-password&action=money"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("1 humans kicked out"));
+
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance,
+        0
+    );
+    let table = t.tables.get(table).await.unwrap();
+    let table = table.lock().await;
+    assert!(table.hand.is_none());
+    assert!(table.seats.iter().all(|seat| {
+        matches!(seat.occupant, two_seven::table::SeatOccupant::Empty) && seat.stack == 0
+    }));
 }
 
 #[tokio::test]

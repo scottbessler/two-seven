@@ -32,6 +32,10 @@ input,button,select{font:inherit;padding:.7rem;border-radius:8px;border:1px soli
 button{background:var(--accent);color:#1a160d;font-weight:700;cursor:pointer}
 button.danger{background:var(--danger);color:white}
 .error{color:#ff9f9f}
+.admin-panel{max-width:36rem;margin:auto}
+.admin-panel form{gap:1rem}
+.admin-actions{display:grid;grid-template-columns:1fr;gap:.55rem}
+.admin-message{margin:0;padding:.65rem .8rem;border:1px solid #6caa91;border-radius:8px;background:#123d34;color:#f1d56e;font-weight:800}
 .out-of-reach{margin-top:1rem;padding:.6rem .8rem;border:1px solid #346252;border-radius:8px;background:#10241f66}
 .out-of-reach summary{color:var(--muted);cursor:pointer}
 .out-of-reach ul{margin-top:.6rem}

@@ -149,6 +149,22 @@ impl BankStore {
         self.inner.lock().await.accounts.values().cloned().collect()
     }
 
+    pub async fn reset_all(&self) -> Result<usize, anyhow::Error> {
+        let removed = {
+            let mut guard = self.inner.lock().await;
+            let removed = guard.accounts.len();
+            guard.accounts.clear();
+            removed
+        };
+        let mut entries = tokio::fs::read_dir(&self.dir).await?;
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.path().extension().and_then(|x| x.to_str()) == Some("json") {
+                tokio::fs::remove_file(entry.path()).await?;
+            }
+        }
+        Ok(removed)
+    }
+
     pub async fn append(
         &self,
         owner: AccountOwner,

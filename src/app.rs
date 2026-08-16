@@ -30,6 +30,7 @@ pub struct AppState {
     pub tables: TableStore,
     pub history: HistoryStore,
     pub stats: StatsStore,
+    pub admin_password: Arc<String>,
     pub webauthn: Arc<Webauthn>,
     pub key: Key,
     pub passkey_disabled: bool,
@@ -47,6 +48,7 @@ pub fn router(s: AppState) -> Router {
         .route("/card-test", get(routes::card_test))
         .route("/leaderboard", get(routes::leaderboard))
         .route("/blackjack", get(routes::blackjack))
+        .route("/admin", get(routes::admin_page).post(routes::admin_action))
         .route(
             "/blackjack/start",
             axum::routing::post(routes::blackjack_start),
@@ -192,6 +194,7 @@ pub async fn run() -> Result<()> {
     let tables = TableStore::load(&data).await?;
     let history = HistoryStore::load(&data).await?;
     let stats = StatsStore::load(&data).await?;
+    let admin_password = Arc::new(crate::admin::load_password(&data).await?);
     if house_was_reset {
         stats.forget_bots().await?;
     }
@@ -203,6 +206,7 @@ pub async fn run() -> Result<()> {
         tables,
         history,
         stats,
+        admin_password,
         webauthn: Arc::new(build_webauthn()?),
         key: load_key(),
         passkey_disabled: env_flag("PASSKEY_DISABLED"),

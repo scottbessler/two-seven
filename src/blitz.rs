@@ -238,6 +238,18 @@ impl BlitzStore {
         self.inner.lock().await.stats.clone()
     }
 
+    pub async fn reset_stats(&self) -> Result<usize, anyhow::Error> {
+        let removed = {
+            let mut guard = self.inner.lock().await;
+            let removed = guard.stats.len();
+            guard.stats.clear();
+            guard.runs.clear();
+            removed
+        };
+        self.persist_stats().await?;
+        Ok(removed)
+    }
+
     pub async fn start(
         &self,
         user: Uuid,

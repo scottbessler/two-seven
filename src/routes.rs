@@ -15,7 +15,7 @@ use crate::{
     view::{LobbyTableView, LobbyTournamentView, table_view_with_banks},
 };
 use axum::{
-    Json,
+    Form, Json,
     extract::{Path, State},
     http::header,
     response::{
@@ -45,6 +45,49 @@ pub async fn card_test() -> Html<String> {
 }
 pub async fn blackjack(AuthUser(_user): AuthUser) -> Html<String> {
     Html(render::blackjack())
+}
+
+pub async fn admin_page(State(_s): State<AppState>) -> Html<String> {
+    Html(render::admin(None, None))
+}
+
+#[derive(Deserialize)]
+pub struct AdminAction {
+    pub password: String,
+    pub action: String,
+}
+
+pub async fn admin_action(
+    State(s): State<AppState>,
+    Form(input): Form<AdminAction>,
+) -> Result<Html<String>, AppError> {
+    if !crate::admin::password_matches(&s.admin_password, input.password.trim()) {
+        return Ok(Html(render::admin(
+            Some("That password did not unlock admin."),
+            None,
+        )));
+    }
+    let message = match input.action.as_str() {
+        "money" => {
+            let report = crate::admin::reset_money_and_loans(&s)
+                .await
+                .map_err(AppError::internal)?;
+            format!(
+                "Reset money and loans: {} accounts cleared, {} tables reset, {} humans kicked out.",
+                report.accounts, report.tables, report.humans_kicked
+            )
+        }
+        "poker" => {
+            let removed = s.stats.reset_all().await.map_err(AppError::internal)?;
+            format!("Reset poker stats for {removed} players.")
+        }
+        "blitz" => {
+            let removed = s.blitz.reset_stats().await.map_err(AppError::internal)?;
+            format!("Reset blitz stats for {removed} players.")
+        }
+        _ => return Err(AppError::bad_request("unknown admin action")),
+    };
+    Ok(Html(render::admin(None, Some(&message))))
 }
 pub async fn index(State(s): State<AppState>, MaybeUser(user): MaybeUser) -> Html<String> {
     let current = match user {
