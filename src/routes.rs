@@ -1,7 +1,7 @@
 use crate::{
     app::AppState,
     bank::AccountOwner,
-    blackjack::BlackjackError,
+    blackjack::{BlackjackError, max_starting_bet},
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
@@ -286,9 +286,7 @@ pub async fn blackjack_start(
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Leave half the bankroll available for a double or split.
     let balance = balance_of(&s, user).await;
-    let max_start = (balance / 2 / 100 * 100)
-        .max(crate::money::MIN_GAME_AMOUNT)
-        .min(balance);
+    let max_start = max_starting_bet(balance);
     if !valid_game_amount(input.bet) || input.bet > max_start {
         return Err(AppError::bad_request(
             "bet must be at least $1 and no more than half your balance",

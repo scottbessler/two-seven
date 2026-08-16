@@ -13,6 +13,7 @@ use tower::ServiceExt;
 use two_seven::{
     app,
     bank::{AccountOwner, BankStore, LedgerKind},
+    blackjack::max_starting_bet,
     cards::Card,
     eval::evaluate,
     users::{User, UserSettings, UserStore},
@@ -643,7 +644,10 @@ async fn blackjack_caps_starting_bet_at_half_the_bankroll() {
     // A dollar over the balance is refused, and the full balance is too high.
     assert_eq!(deal(account.balance + 1).await, StatusCode::BAD_REQUEST);
     assert_eq!(deal(account.balance).await, StatusCode::BAD_REQUEST);
-    assert_eq!(deal(account.balance / 2 / 100 * 100).await, StatusCode::OK);
+    assert_eq!(
+        deal(max_starting_bet(account.balance)).await,
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]

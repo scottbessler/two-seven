@@ -12,23 +12,33 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+pub const CHEAPEST_STARTING_BET_CAP: Cents = 10_000;
+
+pub fn max_starting_bet(balance: Cents) -> Cents {
+    (balance / 2 / 100 * 100)
+        .max(crate::money::MIN_GAME_AMOUNT)
+        .min(balance)
+}
+
 /// The stakes offered for a bankroll: a nibble, a real bet, and a big one.
 pub fn bet_options(balance: Cents) -> Vec<Cents> {
     if balance < crate::money::MIN_GAME_AMOUNT {
         return Vec::new();
     }
-    let max_start = (balance / 2 / 100 * 100)
-        .max(crate::money::MIN_GAME_AMOUNT)
-        .min(balance);
-    let mut bets: Vec<Cents> = [(balance / 100).min(10_000), balance / 20, balance / 4]
-        .into_iter()
-        // Whole dollars read better on a button, and nothing under a dollar.
-        .map(|bet| {
-            (bet / 100 * 100)
-                .max(crate::money::MIN_GAME_AMOUNT)
-                .min(max_start)
-        })
-        .collect();
+    let max_start = max_starting_bet(balance);
+    let mut bets: Vec<Cents> = [
+        (balance / 100).min(CHEAPEST_STARTING_BET_CAP),
+        balance / 20,
+        balance / 4,
+    ]
+    .into_iter()
+    // Whole dollars read better on a button, and nothing under a dollar.
+    .map(|bet| {
+        (bet / 100 * 100)
+            .max(crate::money::MIN_GAME_AMOUNT)
+            .min(max_start)
+    })
+    .collect();
     bets.push(max_start);
     bets.sort_unstable();
     bets.dedup();
@@ -807,8 +817,7 @@ mod tests {
                 bets.windows(2).all(|pair| pair[0] < pair[1]),
                 "sorted, no repeats"
             );
-            let max_start = (balance / 2 / 100 * 100).max(100).min(balance);
-            assert_eq!(*bets.last().unwrap(), max_start);
+            assert_eq!(*bets.last().unwrap(), max_starting_bet(balance));
         }
     }
 
