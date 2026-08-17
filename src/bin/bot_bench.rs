@@ -82,6 +82,11 @@ fn shark_preset(name: &str) -> Option<SharkParams> {
         "features" => Some(features_params()),
         "aggro_noprobe" => Some(aggro_noprobe_params()),
         "tuned" => Some(tuned_params()),
+        "samples25" => Some(samples25_params()),
+        "samples50" => Some(samples50_params()),
+        "samples200" => Some(samples200_params()),
+        "samples400" => Some(samples400_params()),
+        "samples64" => Some(samples64_params()),
         _ => None,
     }
 }
@@ -206,6 +211,34 @@ fn tuned_params() -> SharkParams {
     params.semi_bluff_ratio = SharkParams::DEFAULT.semi_bluff_ratio;
     params.thin_value_edge_cap = SharkParams::DEFAULT.thin_value_edge_cap;
     params
+}
+
+fn sample_params(flop: usize, turn: usize, river: usize) -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    params.flop_samples = flop;
+    params.turn_samples = turn;
+    params.river_samples = river;
+    params
+}
+
+fn samples25_params() -> SharkParams {
+    sample_params(40, 56, 80)
+}
+
+fn samples50_params() -> SharkParams {
+    sample_params(80, 112, 160)
+}
+
+fn samples200_params() -> SharkParams {
+    sample_params(320, 448, 640)
+}
+
+fn samples400_params() -> SharkParams {
+    sample_params(640, 896, 1280)
+}
+
+fn samples64_params() -> SharkParams {
+    sample_params(64, 64, 64)
 }
 
 fn parse_kind(name: &str) -> BenchBot {
@@ -400,6 +433,11 @@ mod tests {
             "features",
             "aggro_noprobe",
             "tuned",
+            "samples25",
+            "samples50",
+            "samples200",
+            "samples400",
+            "samples64",
         ] {
             let parsed = parse_kind(&format!("shark:{name}"));
             assert_eq!(parsed.label(), format!("shark:{name}"));
@@ -430,6 +468,11 @@ mod tests {
             "features",
             "aggro_noprobe",
             "tuned",
+            "samples25",
+            "samples50",
+            "samples200",
+            "samples400",
+            "samples64",
         ];
         let presets: Vec<_> = names
             .iter()
@@ -442,6 +485,23 @@ mod tests {
                     "presets {name} and {other_name} unexpectedly match"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn shark_sampling_presets_only_change_sample_counts() {
+        for (name, flop, turn, river) in [
+            ("samples25", 40, 56, 80),
+            ("samples50", 80, 112, 160),
+            ("samples200", 320, 448, 640),
+            ("samples400", 640, 896, 1280),
+            ("samples64", 64, 64, 64),
+        ] {
+            let mut expected = SharkParams::DEFAULT;
+            expected.flop_samples = flop;
+            expected.turn_samples = turn;
+            expected.river_samples = river;
+            assert_eq!(shark_preset(name), Some(expected));
         }
     }
 
