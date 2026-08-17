@@ -50,9 +50,36 @@ pub struct SharkFrequency {
 }
 
 impl SharkFrequency {
+    fn enabled(self) -> bool {
+        self.numerator > 0 && self.denominator > 0
+    }
+
     fn succeeds(self, rng: &mut StdRng) -> bool {
         rng.gen_ratio(self.numerator, self.denominator)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DrawKind {
+    None,
+    Flush,
+    OpenEndedStraight,
+    GutshotStraight,
+    BackdoorFlush,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DrawTier {
+    None,
+    Weak,
+    Strong,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DrawInfo {
+    pub kind: DrawKind,
+    pub tier: DrawTier,
+    pub outs: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -107,10 +134,48 @@ pub struct SharkParams {
     pub semi_bluff_edge: f64,
     /// Frequency of the in-position semi-bluff.
     pub semi_bluff_frequency: SharkFrequency,
+    /// Minimum direct outs that make a draw strong.
+    pub strong_draw_outs: usize,
+    /// Minimum direct outs that make a draw worth a weak semi-bluff.
+    pub weak_draw_outs: usize,
+    /// Frequency for semi-bluffing a strong draw.
+    pub strong_draw_semi_bluff_frequency: SharkFrequency,
+    /// Frequency for semi-bluffing a weak draw.
+    pub weak_draw_semi_bluff_frequency: SharkFrequency,
+    /// Permit draw semi-bluffs while out of position.
+    pub draw_semi_bluff_out_of_position: bool,
+    /// Maximum opponents against whom draw semi-bluffs retain fold equity.
+    pub draw_semi_bluff_max_opponents: usize,
+    /// Maximum equity bonus supplied by deep implied odds on a draw call.
+    pub implied_odds_equity_cap: f64,
+    /// Behind-pot depth that reaches the full implied-odds bonus.
+    pub implied_odds_stack_pot_ratio: f64,
     /// Pot fraction used for a value bet.
     pub value_bet_ratio: SharkRatio,
+    /// Pot fraction used for a very strong polarized value bet.
+    pub polarized_value_ratio: SharkRatio,
+    /// Equity threshold for considering a value bet very strong.
+    pub polarized_value_equity: f64,
+    /// Frequency of choosing the polarized value size on very strong hands.
+    pub polarized_value_frequency: SharkFrequency,
+    /// Pot fraction used for thin value or protection.
+    pub thin_value_ratio: SharkRatio,
+    /// Largest edge still considered thin value.
+    pub thin_value_edge_cap: f64,
     /// Pot fraction used for a semi-bluff.
     pub semi_bluff_ratio: SharkRatio,
+    /// Pot fraction used for an uncontested probe or stab.
+    pub probe_ratio: SharkRatio,
+    /// Frequency of probing an uncontested passive heads-up pot.
+    pub probe_frequency: SharkFrequency,
+    /// Edge discount against opponents who have shown only passive action.
+    pub passive_value_edge_discount: f64,
+    /// Edge premium when an opponent has shown aggression this street.
+    pub current_street_aggression_edge_premium: f64,
+    /// Number of aggressive actions that makes a bettor especially credible.
+    pub aggressive_action_count_threshold: usize,
+    /// Extra equity required to call a repeatedly aggressive bettor.
+    pub aggressive_bettor_call_equity_premium: f64,
     /// Effective-stack fraction at which a wager commits the stack.
     pub all_in_threshold: SharkRatio,
     /// Monte Carlo samples on the flop.
@@ -166,8 +231,39 @@ impl SharkParams {
             numerator: 1,
             denominator: 4,
         },
+        strong_draw_outs: 8,
+        weak_draw_outs: 4,
+        strong_draw_semi_bluff_frequency: SharkFrequency {
+            numerator: 2,
+            denominator: 3,
+        },
+        weak_draw_semi_bluff_frequency: SharkFrequency {
+            numerator: 1,
+            denominator: 4,
+        },
+        draw_semi_bluff_out_of_position: true,
+        draw_semi_bluff_max_opponents: 2,
+        implied_odds_equity_cap: 0.10,
+        implied_odds_stack_pot_ratio: 1.0,
         value_bet_ratio: SharkRatio::new(2, 3),
+        polarized_value_ratio: SharkRatio::new(1, 1),
+        polarized_value_equity: 0.80,
+        polarized_value_frequency: SharkFrequency {
+            numerator: 1,
+            denominator: 2,
+        },
+        thin_value_ratio: SharkRatio::new(1, 2),
+        thin_value_edge_cap: 0.18,
         semi_bluff_ratio: SharkRatio::new(1, 2),
+        probe_ratio: SharkRatio::new(1, 3),
+        probe_frequency: SharkFrequency {
+            numerator: 1,
+            denominator: 8,
+        },
+        passive_value_edge_discount: 0.02,
+        current_street_aggression_edge_premium: 0.03,
+        aggressive_action_count_threshold: 2,
+        aggressive_bettor_call_equity_premium: 0.04,
         all_in_threshold: SharkRatio::new(2, 3),
         flop_samples: 160,
         turn_samples: 224,
@@ -196,12 +292,8 @@ pub fn shark_with(
     let in_position = behind <= params.in_position_max_behind;
     let effective = effective_stack(view, legal.seat);
     let equity = estimate_equity(params, view, legal.seat, seed, opponents);
+    let draw = classify_draw(params, view);
     let fair_share = 1.0 / (opponents + 1) as f64;
-    let pot_odds = if legal.to_call == 0 {
-        0.0
-    } else {
-        legal.to_call as f64 / (view.pot + legal.to_call) as f64
-    };
     let edge = equity - fair_share;
     let bet_edge = if opponents == 1 {
         if in_position {
@@ -214,20 +306,50 @@ pub fn shark_with(
     } else {
         params.multiway_out_of_position_edge
     };
-    if edge >= bet_edge || equity > params.absolute_value_equity {
-        let target = legal.to_call + params.value_bet_ratio.apply_cents(view.pot);
+    let all_passive = all_opponents_passive_or_calling(view, legal.seat);
+    let current_aggression = opponents_with_current_aggression(view, legal.seat);
+    let adjusted_bet_edge = if all_passive {
+        bet_edge - params.passive_value_edge_discount
+    } else {
+        bet_edge
+    } + if current_aggression > 0 {
+        params.current_street_aggression_edge_premium
+    } else {
+        0.0
+    };
+    if edge >= adjusted_bet_edge || equity > params.absolute_value_equity {
+        let ratio = wager_ratio(params, WagerIntent::Value, equity, edge, &mut rng);
+        let target = legal.to_call + ratio.apply_cents(view.pot);
         return sized_wager(params, legal, target, effective)
             .unwrap_or_else(|| first_calling(legal));
     }
-    if in_position
+    let raw_semi_bluff = in_position
         && edge > params.semi_bluff_edge
-        && params.semi_bluff_frequency.succeeds(&mut rng)
-    {
-        let target = legal.to_call + params.semi_bluff_ratio.apply_cents(view.pot);
+        && params.semi_bluff_frequency.enabled()
+        && params.semi_bluff_frequency.succeeds(&mut rng);
+    let draw_semi_bluff = draw_semi_bluff(params, draw, in_position, opponents, &mut rng);
+    if raw_semi_bluff || draw_semi_bluff {
+        let target = legal.to_call
+            + wager_ratio(params, WagerIntent::SemiBluff, equity, edge, &mut rng)
+                .apply_cents(view.pot);
         return sized_wager(params, legal, target, effective)
             .unwrap_or_else(|| first_calling(legal));
     }
-    if legal.to_call > 0 && equity < pot_odds {
+    if should_probe(
+        params,
+        legal,
+        in_position,
+        opponents,
+        current_aggression,
+        all_passive,
+        &mut rng,
+    ) {
+        let target =
+            wager_ratio(params, WagerIntent::Probe, equity, edge, &mut rng).apply_cents(view.pot);
+        return sized_wager(params, legal, target, effective)
+            .unwrap_or_else(|| first_calling(legal));
+    }
+    if should_fold(params, equity, draw, view, legal, effective) {
         return first(legal, Action::Fold);
     }
     first_calling(legal)
@@ -366,6 +488,120 @@ fn preflop_score_cards(cards: &[Card]) -> i32 {
         score -= (gap - 2).min(3);
     }
     score
+}
+
+/// Finds direct flop/turn draws that use a hole card; a flop three-flush is
+/// treated as a weak backdoor draw, while board-only draws are ignored.
+pub(super) fn classify_draw(params: &SharkParams, view: &HandView) -> DrawInfo {
+    if !matches!(view.board.len(), 3 | 4) {
+        return DrawInfo {
+            kind: DrawKind::None,
+            tier: DrawTier::None,
+            outs: 0,
+        };
+    }
+    let Some(hole) = view.your_hole_cards.as_ref() else {
+        return DrawInfo {
+            kind: DrawKind::None,
+            tier: DrawTier::None,
+            outs: 0,
+        };
+    };
+    if hole.len() != 2 {
+        return DrawInfo {
+            kind: DrawKind::None,
+            tier: DrawTier::None,
+            outs: 0,
+        };
+    }
+    let mut known = hole.clone();
+    known.extend(view.board.iter().copied());
+
+    let mut flush_kind = DrawKind::None;
+    let mut flush_outs = 0;
+    for suit in hole.iter().map(|card| card.suit) {
+        let count = known.iter().filter(|card| card.suit == suit).count();
+        let hole_count = hole.iter().filter(|card| card.suit == suit).count();
+        if hole_count == 0 {
+            continue;
+        }
+        if count == 4 {
+            flush_kind = DrawKind::Flush;
+            flush_outs = flush_outs.max(13 - count);
+        } else if view.board.len() == 3 && count == 3 {
+            flush_kind = DrawKind::BackdoorFlush;
+        }
+    }
+
+    let rank_values: Vec<i32> = known.iter().map(|card| card.rank as i32).collect();
+    let hole_rank_values: Vec<i32> = hole.iter().map(|card| card.rank as i32).collect();
+    let straight_windows = [
+        [14, 2, 3, 4, 5],
+        [2, 3, 4, 5, 6],
+        [3, 4, 5, 6, 7],
+        [4, 5, 6, 7, 8],
+        [5, 6, 7, 8, 9],
+        [6, 7, 8, 9, 10],
+        [7, 8, 9, 10, 11],
+        [8, 9, 10, 11, 12],
+        [9, 10, 11, 12, 13],
+        [10, 11, 12, 13, 14],
+    ];
+    let mut straight_missing = Vec::new();
+    let mut straight_kind = DrawKind::None;
+    for window in straight_windows {
+        let missing: Vec<i32> = window
+            .iter()
+            .copied()
+            .filter(|rank| !rank_values.contains(rank))
+            .collect();
+        if missing.len() != 1 || !window.iter().any(|rank| hole_rank_values.contains(rank)) {
+            continue;
+        }
+        let missing_rank = missing[0];
+        if !straight_missing.contains(&missing_rank) {
+            straight_missing.push(missing_rank);
+        }
+        let missing_index = window
+            .iter()
+            .position(|rank| *rank == missing_rank)
+            .unwrap_or(0);
+        straight_kind = if missing_index == 0 || missing_index == 4 {
+            DrawKind::OpenEndedStraight
+        } else {
+            DrawKind::GutshotStraight
+        };
+    }
+    let straight_outs = straight_missing
+        .iter()
+        .map(|rank| {
+            4usize.saturating_sub(rank_values.iter().filter(|known| *known == rank).count())
+        })
+        .sum();
+    let (kind, outs) = if flush_outs >= straight_outs && flush_outs > 0 {
+        (flush_kind, flush_outs)
+    } else if straight_outs > 0 {
+        (
+            if straight_missing.len() > 1 {
+                DrawKind::OpenEndedStraight
+            } else {
+                straight_kind
+            },
+            straight_outs,
+        )
+    } else if flush_kind == DrawKind::BackdoorFlush {
+        (flush_kind, 0)
+    } else {
+        (DrawKind::None, 0)
+    };
+    let tier = if outs > 0 && outs >= params.strong_draw_outs {
+        DrawTier::Strong
+    } else if outs >= params.weak_draw_outs && outs > 0 || kind == DrawKind::BackdoorFlush {
+        DrawTier::Weak
+    } else {
+        DrawTier::None
+    };
+    DrawInfo { kind, tier, outs }
 }
 
 fn live_order(view: &HandView) -> Vec<usize> {
@@ -512,6 +748,204 @@ fn effective_stack(view: &HandView, seat: usize) -> Cents {
         .max()
         .unwrap_or(hero);
     hero.min(largest_opponent)
+}
+
+#[derive(Clone, Copy)]
+enum WagerIntent {
+    Value,
+    SemiBluff,
+    Probe,
+}
+
+fn wager_ratio(
+    params: &SharkParams,
+    intent: WagerIntent,
+    equity: f64,
+    edge: f64,
+    rng: &mut StdRng,
+) -> SharkRatio {
+    match intent {
+        WagerIntent::Value => value_bet_ratio(params, equity, edge, rng),
+        WagerIntent::SemiBluff => params.semi_bluff_ratio,
+        WagerIntent::Probe => params.probe_ratio,
+    }
+}
+
+fn value_bet_ratio(params: &SharkParams, equity: f64, edge: f64, rng: &mut StdRng) -> SharkRatio {
+    if equity >= params.polarized_value_equity
+        && params.polarized_value_frequency.enabled()
+        && params.polarized_value_frequency.succeeds(rng)
+    {
+        params.polarized_value_ratio
+    } else if edge <= params.thin_value_edge_cap {
+        params.thin_value_ratio
+    } else {
+        params.value_bet_ratio
+    }
+}
+
+fn draw_semi_bluff(
+    params: &SharkParams,
+    draw: DrawInfo,
+    in_position: bool,
+    opponents: usize,
+    rng: &mut StdRng,
+) -> bool {
+    if draw.tier == DrawTier::None
+        || opponents > params.draw_semi_bluff_max_opponents
+        || (!in_position && !params.draw_semi_bluff_out_of_position)
+    {
+        return false;
+    }
+    let frequency = match draw.tier {
+        DrawTier::Strong => params.strong_draw_semi_bluff_frequency,
+        DrawTier::Weak => params.weak_draw_semi_bluff_frequency,
+        DrawTier::None => return false,
+    };
+    frequency.enabled() && frequency.succeeds(rng)
+}
+
+fn all_opponents_passive_or_calling(view: &HandView, hero_seat: usize) -> bool {
+    view.players
+        .iter()
+        .filter(|player| player.seat != hero_seat && !player.folded)
+        .all(|player| !matches!(opponent_tier(view, player.seat), OpponentTier::Aggressive))
+}
+
+fn opponents_with_current_aggression(view: &HandView, hero_seat: usize) -> usize {
+    view.players
+        .iter()
+        .filter(|player| player.seat != hero_seat && !player.folded)
+        .filter(|player| has_current_street_aggression(view, player.seat))
+        .count()
+}
+
+fn has_current_street_aggression(view: &HandView, seat: usize) -> bool {
+    view.events.iter().any(|event| {
+        event.street == current_street(view)
+            && event.seat == Some(seat)
+            && matches!(
+                event.kind,
+                crate::holdem::HandEventKind::Bet
+                    | crate::holdem::HandEventKind::Raise
+                    | crate::holdem::HandEventKind::AllIn
+            )
+    })
+}
+
+fn current_street(view: &HandView) -> crate::holdem::Street {
+    match view.board.len() {
+        0 => crate::holdem::Street::Preflop,
+        3 => crate::holdem::Street::Flop,
+        4 => crate::holdem::Street::Turn,
+        _ => crate::holdem::Street::River,
+    }
+}
+
+fn aggressive_bettor_call_premium(params: &SharkParams, view: &HandView, hero_seat: usize) -> f64 {
+    if params.aggressive_bettor_call_equity_premium == 0.0 {
+        return 0.0;
+    }
+    let threshold = params.aggressive_action_count_threshold;
+    if threshold == 0 {
+        return params.aggressive_bettor_call_equity_premium;
+    }
+    let mut counts = std::collections::BTreeMap::<usize, usize>::new();
+    for event in view.events.iter().filter(|event| {
+        event.seat != Some(hero_seat)
+            && matches!(
+                event.kind,
+                crate::holdem::HandEventKind::Bet
+                    | crate::holdem::HandEventKind::Raise
+                    | crate::holdem::HandEventKind::AllIn
+            )
+    }) {
+        *counts
+            .entry(event.seat.expect("aggressive event has a seat"))
+            .or_default() += 1;
+    }
+    let bettor = view.events.iter().rev().find_map(|event| {
+        (event.street == current_street(view)
+            && event.seat != Some(hero_seat)
+            && matches!(
+                event.kind,
+                crate::holdem::HandEventKind::Bet
+                    | crate::holdem::HandEventKind::Raise
+                    | crate::holdem::HandEventKind::AllIn
+            ))
+        .then_some(event.seat)
+        .flatten()
+    });
+    if bettor
+        .and_then(|seat| counts.get(&seat))
+        .is_some_and(|count| *count >= threshold)
+    {
+        params.aggressive_bettor_call_equity_premium
+    } else {
+        0.0
+    }
+}
+
+fn implied_odds_bonus(
+    params: &SharkParams,
+    draw: DrawInfo,
+    view: &HandView,
+    legal: &LegalActions,
+    effective: Cents,
+) -> f64 {
+    if draw.tier == DrawTier::None
+        || view.board.len() >= 5
+        || legal.to_call <= 0
+        || params.implied_odds_equity_cap <= 0.0
+    {
+        return 0.0;
+    }
+    let pot_after_call = view.pot + legal.to_call;
+    if pot_after_call <= 0 {
+        return 0.0;
+    }
+    let behind = effective.saturating_sub(legal.to_call);
+    let depth = behind as f64 / pot_after_call as f64;
+    let scale = params.implied_odds_stack_pot_ratio;
+    if scale <= 0.0 {
+        return 0.0;
+    }
+    params.implied_odds_equity_cap * (depth / scale).min(1.0)
+}
+
+fn should_fold(
+    params: &SharkParams,
+    equity: f64,
+    draw: DrawInfo,
+    view: &HandView,
+    legal: &LegalActions,
+    effective: Cents,
+) -> bool {
+    if legal.to_call <= 0 {
+        return false;
+    }
+    let pot_odds = legal.to_call as f64 / (view.pot + legal.to_call) as f64;
+    let bonus = implied_odds_bonus(params, draw, view, legal, effective);
+    let premium = aggressive_bettor_call_premium(params, view, legal.seat);
+    equity + bonus < pot_odds + premium
+}
+
+fn should_probe(
+    params: &SharkParams,
+    legal: &LegalActions,
+    in_position: bool,
+    opponents: usize,
+    current_aggression: usize,
+    all_passive: bool,
+    rng: &mut StdRng,
+) -> bool {
+    legal.to_call == 0
+        && in_position
+        && opponents == 1
+        && current_aggression == 0
+        && all_passive
+        && params.probe_frequency.enabled()
+        && params.probe_frequency.succeeds(rng)
 }
 
 fn all_in_or_wager(params: &SharkParams, legal: &LegalActions, effective: Cents) -> Option<Action> {
@@ -719,4 +1153,255 @@ fn take_pair(available: &mut Vec<Card>, first: usize, second: usize) -> Vec<Card
     let first_card = available.swap_remove(first);
     let second_card = available.swap_remove(if second > first { second - 1 } else { second });
     vec![first_card, second_card]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        holdem::{Action, LegalActions, WagerBounds},
+        view::{HandPlayerView, HandView},
+    };
+    use std::str::FromStr;
+
+    fn cards(values: &[&str]) -> Vec<Card> {
+        values
+            .iter()
+            .map(|value| Card::from_str(value).unwrap())
+            .collect()
+    }
+
+    fn postflop(hole: &[&str], board: &[&str]) -> HandView {
+        HandView {
+            street: match board.len() {
+                3 => "Flop",
+                4 => "Turn",
+                _ => "River",
+            }
+            .into(),
+            button: 0,
+            big_blind: 2,
+            board: cards(board),
+            your_hole_cards: Some(cards(hole)),
+            seats: Vec::new(),
+            pot: 100,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: vec![
+                HandPlayerView {
+                    seat: 0,
+                    stack: 10_000,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+                HandPlayerView {
+                    seat: 1,
+                    stack: 10_000,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+            ],
+            events: Vec::new(),
+            last_bet: 0,
+            to_call: 0,
+        }
+    }
+
+    #[test]
+    fn draw_classification_covers_flush_straights_backdoors_and_board_only() {
+        let flush = classify_draw(
+            &SharkParams::DEFAULT,
+            &postflop(&["As", "Js"], &["Ks", "7s", "Qd"]),
+        );
+        assert_eq!(flush.kind, DrawKind::Flush);
+        assert_eq!(flush.tier, DrawTier::Strong);
+        assert_eq!(flush.outs, 9);
+
+        let open_ended = classify_draw(
+            &SharkParams::DEFAULT,
+            &postflop(&["8c", "7d"], &["6s", "5h", "Kd"]),
+        );
+        assert_eq!(open_ended.kind, DrawKind::OpenEndedStraight);
+        assert_eq!(open_ended.outs, 8);
+        assert_eq!(open_ended.tier, DrawTier::Strong);
+
+        let gutshot = classify_draw(
+            &SharkParams::DEFAULT,
+            &postflop(&["8c", "6d"], &["5s", "9h", "Kd"]),
+        );
+        assert_eq!(gutshot.kind, DrawKind::GutshotStraight);
+        assert_eq!(gutshot.outs, 4);
+        assert_eq!(gutshot.tier, DrawTier::Weak);
+
+        let backdoor = classify_draw(
+            &SharkParams::DEFAULT,
+            &postflop(&["As", "Kd"], &["2s", "7s", "Qd"]),
+        );
+        assert_eq!(backdoor.kind, DrawKind::BackdoorFlush);
+        assert_eq!(backdoor.tier, DrawTier::Weak);
+
+        let board_only = classify_draw(
+            &SharkParams::DEFAULT,
+            &postflop(&["Ac", "Kd"], &["2s", "7s", "Qs"]),
+        );
+        assert_eq!(board_only.tier, DrawTier::None);
+        assert_eq!(board_only.kind, DrawKind::None);
+    }
+
+    #[test]
+    fn implied_odds_bonus_turns_a_marginal_fold_into_a_call_but_not_on_river() {
+        let mut view = postflop(&["As", "Js"], &["Ks", "7s", "Qd"]);
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Fold, Action::Call],
+            to_call: 100,
+            wager: None,
+            wagers_capped: false,
+        };
+        let draw = classify_draw(&SharkParams::DEFAULT, &view);
+        assert!(!should_fold(
+            &SharkParams::DEFAULT,
+            0.45,
+            draw,
+            &view,
+            &legal,
+            10_000,
+        ));
+        view.board.push(Card::from_str("2c").unwrap());
+        view.board.push(Card::from_str("3d").unwrap());
+        assert_eq!(
+            classify_draw(&SharkParams::DEFAULT, &view).tier,
+            DrawTier::None
+        );
+        assert!(should_fold(
+            &SharkParams::DEFAULT,
+            0.45,
+            classify_draw(&SharkParams::DEFAULT, &view),
+            &view,
+            &legal,
+            10_000,
+        ));
+    }
+
+    #[test]
+    fn probe_requires_heads_up_unbet_passive_action() {
+        let params = SharkParams {
+            probe_frequency: SharkFrequency {
+                numerator: 1,
+                denominator: 1,
+            },
+            ..SharkParams::DEFAULT
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Check, Action::Bet { amount: 10 }],
+            to_call: 0,
+            wager: None,
+            wagers_capped: false,
+        };
+        let mut rng = StdRng::seed_from_u64(1);
+        assert!(should_probe(&params, &legal, true, 1, 0, true, &mut rng));
+        assert!(!should_probe(&params, &legal, true, 2, 0, true, &mut rng));
+        assert!(!should_probe(
+            &params,
+            &LegalActions {
+                to_call: 10,
+                ..legal.clone()
+            },
+            true,
+            1,
+            0,
+            true,
+            &mut rng
+        ));
+        assert!(!should_probe(&params, &legal, true, 1, 1, true, &mut rng));
+    }
+
+    #[test]
+    fn value_sizing_selects_thin_standard_and_polarized_intents() {
+        let mut rng = StdRng::seed_from_u64(1);
+        assert_eq!(
+            value_bet_ratio(&SharkParams::DEFAULT, 0.65, 0.12, &mut rng),
+            SharkParams::DEFAULT.thin_value_ratio
+        );
+        assert_eq!(
+            value_bet_ratio(&SharkParams::DEFAULT, 0.75, 0.25, &mut rng),
+            SharkParams::DEFAULT.value_bet_ratio
+        );
+        let params = SharkParams {
+            polarized_value_frequency: SharkFrequency {
+                numerator: 1,
+                denominator: 1,
+            },
+            ..SharkParams::DEFAULT
+        };
+        assert_eq!(
+            value_bet_ratio(&params, 0.80, 0.25, &mut rng),
+            params.polarized_value_ratio
+        );
+        assert_eq!(
+            wager_ratio(
+                &SharkParams::DEFAULT,
+                WagerIntent::SemiBluff,
+                0.0,
+                0.0,
+                &mut rng
+            ),
+            SharkParams::DEFAULT.semi_bluff_ratio
+        );
+        assert_eq!(
+            wager_ratio(
+                &SharkParams::DEFAULT,
+                WagerIntent::Probe,
+                0.0,
+                0.0,
+                &mut rng
+            ),
+            SharkParams::DEFAULT.probe_ratio
+        );
+    }
+
+    #[test]
+    fn parameter_override_changes_a_wager_decision() {
+        let view = postflop(&["As", "Ad"], &["2c", "7d", "Ks"]);
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Check, Action::Bet { amount: 1 }],
+            to_call: 0,
+            wager: Some(WagerBounds {
+                min: 1,
+                max: 10_000,
+                fixed: None,
+            }),
+            wagers_capped: false,
+        };
+        let off = SharkFrequency {
+            numerator: 0,
+            denominator: 1,
+        };
+        let phase1 = SharkParams {
+            polarized_value_frequency: off,
+            polarized_value_ratio: SharkRatio::new(2, 3),
+            thin_value_ratio: SharkRatio::new(2, 3),
+            passive_value_edge_discount: 0.0,
+            ..SharkParams::DEFAULT
+        };
+        let large = SharkParams {
+            value_bet_ratio: SharkRatio::new(1, 1),
+            thin_value_ratio: SharkRatio::new(1, 1),
+            polarized_value_frequency: off,
+            passive_value_edge_discount: 0.0,
+            ..phase1
+        };
+        let first = shark_with(&phase1, &view, &legal, 5);
+        let second = shark_with(&large, &view, &legal, 5);
+        assert_ne!(first, second);
+    }
 }

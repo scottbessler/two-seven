@@ -149,7 +149,7 @@ One shared bank account per bot kind. Difficulty ladder:
 | `Fish` | Near-random: calls far too much, raises at random, never folds a pair. |
 | `Rock` | Tight-passive: fixed preflop opening ranges, calls with made hands, folds otherwise. |
 | `Grinder` | Tight-aggressive: hand strength buckets + pot odds, bets/raises with strong made hands and draws, folds marginal spots. |
-| `Shark` | Position- and stack-aware Monte-Carlo equity against action-weighted opponent ranges; compares equity with pot odds, adjusts aggression for position and multiway pots, and commits short or near-all-in stacks rather than leaving dust. |
+| `Shark` | Parameterized position- and stack-aware Monte Carlo policy with action-weighted ranges, draw-aware semi-bluffs, implied-odds calls, intent-based sizing, and opponent-read adjustments; commits short or near-all-in stacks rather than leaving dust. |
 
 Bots see only what a player in that seat legitimately sees (their own hole cards
 and the board) — the same redacted view a human gets (§V3).

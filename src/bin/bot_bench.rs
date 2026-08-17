@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use two_seven::{
-    bot::{SharkParams, shark_with},
+    bot::{SharkFrequency, SharkParams, SharkRatio, shark_with},
     holdem::{Action, Hand, LegalActions, Street},
     table::{BotKind, Stakes},
     view::{HandView, hand_view},
@@ -75,8 +75,92 @@ impl BenchBot {
 fn shark_preset(name: &str) -> Option<SharkParams> {
     match name {
         "default" => Some(SharkParams::DEFAULT),
+        "phase1" => Some(phase1_params()),
+        "nit" => Some(nit_params()),
+        "aggro" => Some(aggro_params()),
         _ => None,
     }
+}
+
+fn phase1_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    let off = SharkFrequency {
+        numerator: 0,
+        denominator: 1,
+    };
+    params.strong_draw_semi_bluff_frequency = off;
+    params.weak_draw_semi_bluff_frequency = off;
+    params.draw_semi_bluff_max_opponents = 0;
+    params.draw_semi_bluff_out_of_position = false;
+    params.implied_odds_equity_cap = 0.0;
+    params.polarized_value_ratio = params.value_bet_ratio;
+    params.polarized_value_equity = 1.0;
+    params.polarized_value_frequency = off;
+    params.thin_value_ratio = params.value_bet_ratio;
+    params.probe_frequency = off;
+    params.passive_value_edge_discount = 0.0;
+    params.current_street_aggression_edge_premium = 0.0;
+    params.aggressive_bettor_call_equity_premium = 0.0;
+    params
+}
+
+fn nit_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    params.late_open_score = 5;
+    params.middle_open_score = 6;
+    params.early_open_score = 7;
+    params.big_blind_defense_score = 4;
+    params.small_blind_defense_score = 5;
+    params.other_defense_score = 7;
+    params.heads_up_in_position_edge = 0.12;
+    params.heads_up_out_of_position_edge = 0.18;
+    params.multiway_in_position_edge = 0.16;
+    params.multiway_out_of_position_edge = 0.22;
+    params.strong_draw_semi_bluff_frequency = SharkFrequency {
+        numerator: 1,
+        denominator: 6,
+    };
+    params.weak_draw_semi_bluff_frequency = SharkFrequency {
+        numerator: 1,
+        denominator: 8,
+    };
+    params.probe_frequency = SharkFrequency {
+        numerator: 0,
+        denominator: 1,
+    };
+    params
+}
+
+fn aggro_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    params.late_open_score = 3;
+    params.middle_open_score = 4;
+    params.early_open_score = 5;
+    params.big_blind_defense_score = 2;
+    params.small_blind_defense_score = 3;
+    params.other_defense_score = 5;
+    params.heads_up_in_position_edge = 0.08;
+    params.heads_up_out_of_position_edge = 0.13;
+    params.multiway_in_position_edge = 0.11;
+    params.multiway_out_of_position_edge = 0.17;
+    params.strong_draw_semi_bluff_frequency = SharkFrequency {
+        numerator: 4,
+        denominator: 5,
+    };
+    params.weak_draw_semi_bluff_frequency = SharkFrequency {
+        numerator: 1,
+        denominator: 2,
+    };
+    params.implied_odds_equity_cap = 0.15;
+    params.probe_frequency = SharkFrequency {
+        numerator: 1,
+        denominator: 3,
+    };
+    params.polarized_value_ratio = SharkRatio::new(5, 4);
+    params.value_bet_ratio = SharkRatio::new(3, 4);
+    params.thin_value_ratio = SharkRatio::new(2, 3);
+    params.semi_bluff_ratio = SharkRatio::new(2, 3);
+    params
 }
 
 fn parse_kind(name: &str) -> BenchBot {
@@ -258,6 +342,15 @@ mod tests {
         match alias {
             BenchBot::Shark { params, .. } => assert_eq!(*params, SharkParams::DEFAULT),
             BenchBot::Kind(_) => panic!("expected Shark preset"),
+        }
+    }
+
+    #[test]
+    fn shark_strategy_presets_are_registered() {
+        for name in ["phase1", "nit", "aggro"] {
+            let parsed = parse_kind(&format!("shark:{name}"));
+            assert_eq!(parsed.label(), format!("shark:{name}"));
+            assert!(matches!(parsed, BenchBot::Shark { .. }));
         }
     }
 
