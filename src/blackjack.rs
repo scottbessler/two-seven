@@ -12,24 +12,34 @@ use std::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-/// The stakes offered for a bankroll: a nibble, a real bet, a big one, and
-/// everything you have. Any amount you can cover is legal; these are the four
-/// worth putting on a button.
+pub const CHEAPEST_STARTING_BET_CAP: Cents = 10_000;
+
+pub fn max_starting_bet(balance: Cents) -> Cents {
+    (balance / 2 / 100 * 100)
+        .max(crate::money::MIN_GAME_AMOUNT)
+        .min(balance)
+}
+
+/// The stakes offered for a bankroll: a nibble, a real bet, and a big one.
 pub fn bet_options(balance: Cents) -> Vec<Cents> {
     if balance < crate::money::MIN_GAME_AMOUNT {
         return Vec::new();
     }
-    let mut bets: Vec<Cents> = [balance / 100, balance / 20, balance / 4]
-        .into_iter()
-        // Whole dollars read better on a button, and nothing under a dollar.
-        .map(|bet| {
-            (bet / 100 * 100)
-                .max(crate::money::MIN_GAME_AMOUNT)
-                .min(balance)
-        })
-        .collect();
-    // The last option is the exact balance: betting everything means everything.
-    bets.push(balance);
+    let max_start = max_starting_bet(balance);
+    let mut bets: Vec<Cents> = [
+        (balance / 100).min(CHEAPEST_STARTING_BET_CAP),
+        balance / 20,
+        balance / 4,
+    ]
+    .into_iter()
+    // Whole dollars read better on a button, and nothing under a dollar.
+    .map(|bet| {
+        (bet / 100 * 100)
+            .max(crate::money::MIN_GAME_AMOUNT)
+            .min(max_start)
+    })
+    .collect();
+    bets.push(max_start);
     bets.sort_unstable();
     bets.dedup();
     bets
@@ -169,18 +179,23 @@ impl BlackjackStore {
         Ok(())
     }
 
-    pub async fn view(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
+    pub async fn view(
+        &self,
+        user: Uuid,
+        id: Uuid,
+        balance: Cents,
+    ) -> Result<BlackjackView, BlackjackError> {
         let guard = self.inner.lock().await;
         let game = guard.get(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        Ok(game.view(false))
+        Ok(game.view(false, balance))
     }
-    pub async fn resume(&self, user: Uuid) -> Option<BlackjackView> {
+    pub async fn resume(&self, user: Uuid, balance: Cents) -> Option<BlackjackView> {
         let guard = self.inner.lock().await;
         guard
             .values()
             .find(|game| game.user == user && game.status == BlackjackStatus::Playing)
-            .map(|game| game.view(false))
+            .map(|game| game.view(false, balance))
     }
 
     pub async fn start(
@@ -188,6 +203,7 @@ impl BlackjackStore {
         user: Uuid,
         bet: Cents,
         id: Uuid,
+        balance: Cents,
     ) -> Result<BlackjackView, BlackjackError> {
         if !valid_game_amount(bet) {
             return Err(BlackjackError::IllegalAction("bet must be at least $1"));
@@ -225,22 +241,27 @@ impl BlackjackStore {
                 split_aces: false,
             }],
         };
-        if !game.can_insure() {
+        if !game.can_insure(balance) {
             game.peek();
         }
-        let view = game.view(false);
+        let view = game.view(false, balance);
         guard.insert(id, game);
         Ok(view)
     }
 
-    pub async fn hit(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
+    pub async fn hit(
+        &self,
+        user: Uuid,
+        id: Uuid,
+        balance: Cents,
+    ) -> Result<BlackjackView, BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        game.wager(Action::Hit)?;
+        game.wager(Action::Hit, balance)?;
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok(game.view(false));
+            return Ok(game.view(false, balance));
         }
         let i = game.active_index();
         game.hands[i].cards.push(game.deck.deal().expect("card"));
@@ -248,36 +269,42 @@ impl BlackjackStore {
             game.hands[i].status = BlackjackHandStatus::Bust;
             game.advance();
         }
-        Ok(game.view(false))
+        Ok(game.view(false, balance))
     }
 
-    pub async fn stand(&self, user: Uuid, id: Uuid) -> Result<BlackjackView, BlackjackError> {
+    pub async fn stand(
+        &self,
+        user: Uuid,
+        id: Uuid,
+        balance: Cents,
+    ) -> Result<BlackjackView, BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        game.wager(Action::Stand)?;
+        game.wager(Action::Stand, balance)?;
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok(game.view(true));
+            return Ok(game.view(true, balance));
         }
         let i = game.active_index();
         game.hands[i].status = BlackjackHandStatus::Stand;
         game.advance();
-        Ok(game.view(true))
+        Ok(game.view(true, balance))
     }
 
     pub async fn double(
         &self,
         user: Uuid,
         id: Uuid,
+        balance: Cents,
     ) -> Result<(BlackjackView, Cents), BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        let wager = game.wager(Action::Double)?;
+        let wager = game.wager(Action::Double, balance)?;
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok((game.view(false), 0));
+            return Ok((game.view(false, balance), 0));
         }
         let i = game.active_index();
         game.hands[i].bet += wager;
@@ -288,21 +315,22 @@ impl BlackjackStore {
             BlackjackHandStatus::Stand
         };
         game.advance();
-        Ok((game.view(true), wager))
+        Ok((game.view(true, balance), wager))
     }
 
     pub async fn split(
         &self,
         user: Uuid,
         id: Uuid,
+        balance: Cents,
     ) -> Result<(BlackjackView, Cents), BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        let wager = game.wager(Action::Split)?;
+        let wager = game.wager(Action::Split, balance)?;
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok((game.view(false), 0));
+            return Ok((game.view(false, balance), 0));
         }
         let i = game.active_index();
         let first = game.hands[i].cards.remove(1);
@@ -326,21 +354,22 @@ impl BlackjackStore {
             game.hands[i + 1].status = BlackjackHandStatus::Stand;
             game.advance();
         }
-        Ok((game.view(false), wager))
+        Ok((game.view(false, balance), wager))
     }
 
     pub async fn insure(
         &self,
         user: Uuid,
         id: Uuid,
+        balance: Cents,
     ) -> Result<(BlackjackView, Cents), BlackjackError> {
         let mut guard = self.inner.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        let wager = game.wager(Action::Insure)?;
+        let wager = game.wager(Action::Insure, balance)?;
         game.insurance = wager;
         game.peek_if_needed();
-        Ok((game.view(false), wager))
+        Ok((game.view(false, balance), wager))
     }
 }
 #[derive(Clone, Copy)]
@@ -365,7 +394,7 @@ impl BlackjackGame {
             .unwrap_or(self.hands.len())
     }
 
-    fn wager(&self, a: Action) -> Result<Cents, BlackjackError> {
+    fn wager(&self, a: Action, balance: Cents) -> Result<Cents, BlackjackError> {
         if self.status != BlackjackStatus::Playing {
             return Err(BlackjackError::Finished);
         }
@@ -374,17 +403,19 @@ impl BlackjackGame {
         let legal = match a {
             Action::Hit => self.can_hit(),
             Action::Stand => self.can_stand(),
-            Action::Double => self.can_double(),
-            Action::Split => self.can_split(),
-            Action::Insure => self.can_insure(),
+            Action::Double => self.can_double(balance),
+            Action::Split => self.can_split(balance),
+            Action::Insure => self.can_insure(balance),
         };
         if !legal {
             return Err(BlackjackError::IllegalAction(match a {
                 Action::Hit => "hit is not legal",
                 Action::Stand => "stand is not legal",
-                Action::Double => "double is only legal on the first two cards",
-                Action::Split => "hand cannot be split",
-                Action::Insure => "insurance is not legal",
+                Action::Double => "double is not legal or you cannot afford the additional wager",
+                Action::Split => "hand cannot be split or you cannot afford the additional wager",
+                Action::Insure => {
+                    "insurance is not legal or you cannot afford the additional wager"
+                }
             }));
         }
         let wager = match a {
@@ -409,16 +440,17 @@ impl BlackjackGame {
         self.status == BlackjackStatus::Playing && self.active_index() < self.hands.len()
     }
 
-    fn can_double(&self) -> bool {
+    fn can_double(&self, balance: Cents) -> bool {
         let i = self.active_index();
         self.status == BlackjackStatus::Playing
             && i < self.hands.len()
             && self.hands[i].cards.len() == 2
             && !self.hands[i].split_aces
             && valid_game_amount(self.hands[i].bet)
+            && balance >= self.hands[i].bet
     }
 
-    fn can_split(&self) -> bool {
+    fn can_split(&self, balance: Cents) -> bool {
         let i = self.active_index();
         self.status == BlackjackStatus::Playing
             && i < self.hands.len()
@@ -426,9 +458,10 @@ impl BlackjackGame {
             && self.hands[i].cards[0].rank == self.hands[i].cards[1].rank
             && self.hands.len() < MAX_HANDS
             && valid_game_amount(self.hands[i].bet)
+            && balance >= self.hands[i].bet
     }
 
-    fn can_insure(&self) -> bool {
+    fn can_insure(&self, balance: Cents) -> bool {
         self.status == BlackjackStatus::Playing
             && !self.dealer_peeked
             && self.insurance == 0
@@ -438,6 +471,7 @@ impl BlackjackGame {
             && self.hands[0].status == BlackjackHandStatus::Playing
             && self.dealer[0].rank as u8 == 14
             && valid_game_amount(self.hands[0].bet / 2)
+            && balance >= self.hands[0].bet / 2
     }
 
     fn peek_if_needed(&mut self) {
@@ -546,7 +580,7 @@ impl BlackjackGame {
         }
     }
 
-    fn view(&self, reveal: bool) -> BlackjackView {
+    fn view(&self, reveal: bool, balance: Cents) -> BlackjackView {
         let finished = self.status != BlackjackStatus::Playing;
         let dealer = if reveal || finished {
             self.dealer.clone()
@@ -578,9 +612,9 @@ impl BlackjackGame {
             payout: self.payout,
             can_hit: self.can_hit(),
             can_stand: self.can_stand(),
-            can_double: self.can_double(),
-            can_split: self.can_split(),
-            can_insure: self.can_insure(),
+            can_double: self.can_double(balance),
+            can_split: self.can_split(balance),
+            can_insure: self.can_insure(balance),
             insurance: self.insurance,
             hands,
             active_hand: active,
@@ -684,11 +718,11 @@ mod tests {
             )],
             vec![card(Rank::Ace), card(Rank::Seven)],
         );
-        assert!(!game.can_insure());
+        assert!(!game.can_insure(0));
         game.hands[0].bet = 200;
-        assert!(game.can_insure());
+        assert!(game.can_insure(100));
         game.hands[0].cards.push(card(Rank::Two));
-        assert!(!game.can_insure());
+        assert!(!game.can_insure(100));
     }
 
     #[test]
@@ -701,9 +735,15 @@ mod tests {
             )],
             vec![card(Rank::Nine), card(Rank::Seven)],
         );
-        assert!(game.can_double());
-        assert!(game.can_split());
-        assert_eq!(game.wager(Action::Double).unwrap(), 100);
+        assert!(game.can_double(100));
+        assert!(game.can_split(100));
+        assert!(!game.can_double(99));
+        assert!(!game.can_split(99));
+        assert_eq!(game.wager(Action::Double, 100).unwrap(), 100);
+        assert!(matches!(
+            game.wager(Action::Double, 99),
+            Err(BlackjackError::IllegalAction(message)) if message.contains("afford")
+        ));
     }
 
     #[test]
@@ -730,7 +770,7 @@ mod tests {
             )],
             vec![card(Rank::Nine), card(Rank::Seven)],
         );
-        assert!(!game.view(false).hands[0].blackjack);
+        assert!(!game.view(false, 0).hands[0].blackjack);
     }
 
     #[test]
@@ -755,16 +795,16 @@ mod tests {
     }
 
     #[test]
-    fn stakes_follow_the_bankroll_up_to_all_of_it() {
-        // A thousand dollars offers a nibble through to everything.
-        assert_eq!(bet_options(100_000), vec![1_000, 5_000, 25_000, 100_000]);
-        // A million-dollar roll scales the same way.
+    fn stakes_leave_room_for_an_additional_wager() {
+        assert_eq!(bet_options(100_000), vec![1_000, 5_000, 25_000, 50_000]);
+        // A million-dollar roll caps the starting bet at half the bankroll.
         assert_eq!(
             bet_options(100_000_000),
-            vec![1_000_000, 5_000_000, 25_000_000, 100_000_000]
+            vec![10_000, 5_000_000, 25_000_000, 50_000_000]
         );
-        // Small rolls collapse toward a dollar rather than offering nothing.
-        assert_eq!(bet_options(300), vec![100, 300]);
+        assert_eq!(bet_options(100_000_000).first(), Some(&10_000));
+        // Small rolls collapse toward a dollar while preserving room to double.
+        assert_eq!(bet_options(300), vec![100]);
         assert_eq!(bet_options(100), vec![100]);
         assert!(bet_options(99).is_empty(), "you cannot bet what you lack");
         for balance in [100, 137, 900, 12_345, 1_000_000] {
@@ -777,11 +817,7 @@ mod tests {
                 bets.windows(2).all(|pair| pair[0] < pair[1]),
                 "sorted, no repeats"
             );
-            assert_eq!(
-                *bets.last().unwrap(),
-                balance.min(balance),
-                "all-in is offered"
-            );
+            assert_eq!(*bets.last().unwrap(), max_starting_bet(balance));
         }
     }
 
@@ -796,7 +832,7 @@ mod tests {
             let mut live = None;
             for _ in 0..50 {
                 let candidate = Uuid::new_v4();
-                let view = store.start(user, 500, candidate).await.unwrap();
+                let view = store.start(user, 500, candidate, 0).await.unwrap();
                 if view.status == BlackjackStatus::Playing {
                     live = Some(candidate);
                     break;
@@ -808,7 +844,7 @@ mod tests {
         store.persist().await.unwrap();
 
         let restored = BlackjackStore::load(&root).await.unwrap();
-        assert_eq!(restored.resume(user).await.unwrap().id, id);
+        assert_eq!(restored.resume(user, 0).await.unwrap().id, id);
 
         {
             let mut guard = restored.inner.lock().await;
@@ -816,6 +852,6 @@ mod tests {
         }
         restored.persist().await.unwrap();
         let restored_again = BlackjackStore::load(&root).await.unwrap();
-        assert!(restored_again.resume(user).await.is_none());
+        assert!(restored_again.resume(user, 0).await.is_none());
     }
 }

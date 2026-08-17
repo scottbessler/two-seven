@@ -5,14 +5,17 @@ import { money, responseError, wholeDollarMoney } from "/public/shared.js";
 // Shared renderer contract: card-corner rank over suit.
 
 const root = document.getElementById("blackjack-app");
+const CHEAPEST_STARTING_BET_CAP = 10000;
 
-// Mirrors bet_options in src/blackjack.rs: a nibble, a real bet, a big one,
-// and the whole roll. Anything you can cover is legal; these are the buttons.
+// Mirrors bet_options and max_starting_bet in src/blackjack.rs: a nibble, a
+// real bet, and a big one, capped at half the bankroll so a double or split
+// remains affordable.
 function betOptions(balance) {
   if (balance < 100) return [];
-  const rounded = [balance / 100, balance / 20, balance / 4]
-    .map((bet) => Math.min(balance, Math.max(100, Math.floor(bet / 100) * 100)));
-  return [...new Set([...rounded, balance])].toSorted((left, right) => left - right);
+  const maxStart = Math.min(balance, Math.max(100, Math.floor(balance / 2 / 100) * 100));
+  const rounded = [Math.min(balance / 100, CHEAPEST_STARTING_BET_CAP), balance / 20, balance / 4]
+    .map((bet) => Math.min(maxStart, Math.max(100, Math.floor(bet / 100) * 100)));
+  return [...new Set([...rounded, maxStart])].toSorted((left, right) => left - right);
 }
 
 function Hand({ title, cards, score, hidden }) {

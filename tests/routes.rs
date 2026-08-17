@@ -13,6 +13,7 @@ use tower::ServiceExt;
 use two_seven::{
     app,
     bank::{AccountOwner, BankStore, LedgerKind},
+    blackjack::max_starting_bet,
     cards::Card,
     eval::evaluate,
     users::{User, UserSettings, UserStore},
@@ -605,7 +606,7 @@ async fn the_house_plays_its_way_onto_the_leaderboard() {
 }
 
 #[tokio::test]
-async fn blackjack_lets_you_bet_the_whole_bankroll_but_no_more() {
+async fn blackjack_caps_starting_bet_at_half_the_bankroll() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -640,9 +641,13 @@ async fn blackjack_lets_you_bet_the_whole_bankroll_but_no_more() {
                 .status()
         }
     };
-    // A dollar over the balance is refused; the balance itself is not.
+    // A dollar over the balance is refused, and the full balance is too high.
     assert_eq!(deal(account.balance + 1).await, StatusCode::BAD_REQUEST);
-    assert_eq!(deal(account.balance).await, StatusCode::OK);
+    assert_eq!(deal(account.balance).await, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        deal(max_starting_bet(account.balance)).await,
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]
