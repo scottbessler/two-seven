@@ -17,7 +17,7 @@ use crate::{
 use axum::{
     Form, Json,
     extract::{Path, State},
-    http::header,
+    http::{HeaderValue, header},
     response::{
         Html, IntoResponse,
         sse::{Event, Sse},
@@ -765,26 +765,54 @@ pub async fn table_history(
     };
     let hands = s.history.recent(id, crate::history::HISTORY_PAGE).await;
     let total = s.history.count(id).await;
-    let wants_json = query.format.as_deref() == Some("json")
+    let explicit_json = query.format.as_deref() == Some("json");
+    let wants_json = explicit_json
         || headers
             .get(header::ACCEPT)
             .and_then(|value| value.to_str().ok())
             .is_some_and(|accept| accept.contains("application/json"));
     if wants_json {
-        return Ok(Json(serde_json::json!({
+        let mut response = Json(serde_json::json!({
             "table": id,
             "name": name,
             "hand_no": hand_no,
             "total": total,
             "hands": hands,
         }))
-        .into_response());
+        .into_response();
+        if explicit_json {
+            let filename = history_json_filename(id, &name);
+            let value =
+                HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")).unwrap();
+            response
+                .headers_mut()
+                .insert(header::CONTENT_DISPOSITION, value);
+        }
+        return Ok(response);
     }
     let names = {
         let table = table.lock().await;
         seat_names(&s, &table).await
     };
     Ok(Html(render::table_history(id, &name, total, &hands, &names)).into_response())
+}
+
+fn history_json_filename(id: Uuid, name: &str) -> String {
+    let mut safe_name = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect::<String>();
+    if safe_name.is_empty() {
+        safe_name.push_str("table");
+    }
+    format!("{safe_name}-{id}.json")
 }
 
 pub async fn table_state(

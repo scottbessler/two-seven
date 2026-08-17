@@ -1030,6 +1030,73 @@ async fn every_finished_hand_lands_in_the_table_history() {
     assert!(page.contains("hand-record"));
 }
 
+#[tokio::test]
+async fn table_history_downloads_explicit_json_but_keeps_accept_json_inline() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "history-download".into(),
+            display_name: "History Download".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let id = seat_table(&t, "History\r\nDownload", 2, 10_000, false).await;
+
+    let download = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/history?format=json"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    let disposition = download
+        .headers()
+        .get(header::CONTENT_DISPOSITION)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert_eq!(
+        disposition,
+        format!("attachment; filename=\"History__Download-{id}.json\"")
+    );
+    assert_eq!(
+        download.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
+    let body = to_bytes(download.into_body(), usize::MAX).await.unwrap();
+    let _: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    let inline = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/history"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::ACCEPT, "application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(inline.status(), StatusCode::OK);
+    assert!(inline.headers().get(header::CONTENT_DISPOSITION).is_none());
+    let body = to_bytes(inline.into_body(), usize::MAX).await.unwrap();
+    let _: serde_json::Value = serde_json::from_slice(&body).unwrap();
+}
+
 async fn history_json(t: &T, id: Uuid, cookie_value: &str) -> serde_json::Value {
     let response = t
         .router
