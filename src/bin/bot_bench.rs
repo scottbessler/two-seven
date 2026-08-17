@@ -76,9 +76,10 @@ fn shark_preset(name: &str) -> Option<SharkParams> {
     match name {
         "default" => Some(SharkParams::DEFAULT),
         "phase1" => Some(phase1_params()),
+        "conservative" => Some(conservative_params()),
         "nit" => Some(nit_params()),
         "aggro" => Some(aggro_params()),
-        "loose" => Some(loose_params()),
+        "loose" => Some(SharkParams::DEFAULT),
         "features" => Some(features_params()),
         "aggro_noprobe" => Some(aggro_noprobe_params()),
         "tuned" => Some(tuned_params()),
@@ -88,6 +89,7 @@ fn shark_preset(name: &str) -> Option<SharkParams> {
 
 fn phase1_params() -> SharkParams {
     let mut params = SharkParams::DEFAULT;
+    apply_conservative_thresholds(&mut params);
     let off = SharkFrequency {
         numerator: 0,
         denominator: 1,
@@ -105,6 +107,25 @@ fn phase1_params() -> SharkParams {
     params.passive_value_edge_discount = 0.0;
     params.current_street_aggression_edge_premium = 0.0;
     params.aggressive_bettor_call_equity_premium = 0.0;
+    params
+}
+
+fn apply_conservative_thresholds(params: &mut SharkParams) {
+    params.late_open_score = 4;
+    params.middle_open_score = 5;
+    params.early_open_score = 6;
+    params.big_blind_defense_score = 3;
+    params.small_blind_defense_score = 4;
+    params.other_defense_score = 6;
+    params.heads_up_in_position_edge = 0.10;
+    params.heads_up_out_of_position_edge = 0.16;
+    params.multiway_in_position_edge = 0.14;
+    params.multiway_out_of_position_edge = 0.20;
+}
+
+fn conservative_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    apply_conservative_thresholds(&mut params);
     params
 }
 
@@ -135,19 +156,6 @@ fn nit_params() -> SharkParams {
     params
 }
 
-fn apply_aggro_thresholds(params: &mut SharkParams) {
-    params.late_open_score = 3;
-    params.middle_open_score = 4;
-    params.early_open_score = 5;
-    params.big_blind_defense_score = 2;
-    params.small_blind_defense_score = 3;
-    params.other_defense_score = 5;
-    params.heads_up_in_position_edge = 0.08;
-    params.heads_up_out_of_position_edge = 0.13;
-    params.multiway_in_position_edge = 0.11;
-    params.multiway_out_of_position_edge = 0.17;
-}
-
 fn apply_aggro_features(params: &mut SharkParams) {
     params.strong_draw_semi_bluff_frequency = SharkFrequency {
         numerator: 4,
@@ -170,14 +178,7 @@ fn apply_aggro_features(params: &mut SharkParams) {
 
 fn aggro_params() -> SharkParams {
     let mut params = SharkParams::DEFAULT;
-    apply_aggro_thresholds(&mut params);
     apply_aggro_features(&mut params);
-    params
-}
-
-fn loose_params() -> SharkParams {
-    let mut params = SharkParams::DEFAULT;
-    apply_aggro_thresholds(&mut params);
     params
 }
 
@@ -394,6 +395,7 @@ mod tests {
     fn shark_strategy_presets_are_registered() {
         for name in [
             "phase1",
+            "conservative",
             "nit",
             "aggro",
             "loose",
@@ -405,6 +407,20 @@ mod tests {
             assert_eq!(parsed.label(), format!("shark:{name}"));
             assert!(matches!(parsed, BenchBot::Shark { .. }));
         }
+    }
+
+    #[test]
+    fn shark_threshold_presets_match_their_names() {
+        let default = shark_preset("default").unwrap();
+        let loose = shark_preset("loose").unwrap();
+        let conservative = shark_preset("conservative").unwrap();
+        let phase1 = shark_preset("phase1").unwrap();
+        assert_eq!(default.late_open_score, 3);
+        assert_eq!(loose.late_open_score, default.late_open_score);
+        assert_eq!(conservative.late_open_score, 4);
+        assert_eq!(phase1.late_open_score, conservative.late_open_score);
+        assert_eq!(phase1.heads_up_in_position_edge, 0.10);
+        assert_eq!(default.heads_up_in_position_edge, 0.08);
     }
 
     #[test]

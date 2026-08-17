@@ -319,9 +319,9 @@ mod tests {
         assert_eq!(players_behind(&view, 0), 2);
         assert_eq!(players_behind(&view, 5), 3);
         assert_eq!(players_behind(&view, 3), 5);
-        assert_eq!(opening_threshold(&SharkParams::DEFAULT, &view, 0), 4);
-        assert_eq!(opening_threshold(&SharkParams::DEFAULT, &view, 5), 5);
-        assert_eq!(opening_threshold(&SharkParams::DEFAULT, &view, 3), 6);
+        assert_eq!(opening_threshold(&SharkParams::DEFAULT, &view, 0), 3);
+        assert_eq!(opening_threshold(&SharkParams::DEFAULT, &view, 5), 4);
+        assert_eq!(opening_threshold(&SharkParams::DEFAULT, &view, 3), 5);
         let mut acted = view.clone();
         acted.players[4].acted = true;
         acted.players[4].street_contribution = acted.last_bet;
