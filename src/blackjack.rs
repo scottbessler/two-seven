@@ -889,7 +889,11 @@ mod tests {
         );
         insurance_game.id = insurance_id;
         insurance_game.user = user;
-        store.inner.lock().await.insert(insurance_id, insurance_game);
+        store
+            .inner
+            .lock()
+            .await
+            .insert(insurance_id, insurance_game);
 
         let (view, wager) = store.insure(user, insurance_id, 200).await.unwrap();
         assert_eq!(wager, 100);
