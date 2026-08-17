@@ -1,11 +1,12 @@
-//! Bot-vs-bot benchmark: seats bots at a no-limit table, plays out many
-//! hands with stacks topped up to 100bb each hand, and prints per-bot stats.
+//! Bot-vs-bot benchmark: seats bots at a table, plays out many hands with
+//! stacks topped up to 100bb each hand, and prints per-bot stats.
 //!
-//! Usage: `cargo run --release --bin bot_bench -- [hands] [seed] [lineup]`
+//! Usage: `cargo run --release --bin bot_bench -- [hands] [seed] [lineup] [stakes]`
 //! where `lineup` is a comma-separated list of bot kinds, e.g.
 //! `fish,rock,grinder,shark` (the default). Shark also accepts named
 //! parameter presets as `shark:<preset>`; `shark:default` is an alias for
 //! `shark`. Bench-only `steal` and `steal_check` bots are also available.
+//! `stakes` is optional and accepts `no-limit` (the default) or `limit`.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -407,6 +408,20 @@ fn parse_kind(name: &str) -> BenchBot {
     }
 }
 
+fn parse_stakes(name: &str) -> Stakes {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "no-limit" | "no_limit" | "nolimit" => Stakes::NoLimit {
+            small_blind: 100,
+            big_blind: 200,
+        },
+        "limit" | "fixed-limit" | "fixed_limit" | "fixedlimit" => Stakes::Limit {
+            small_bet: 200,
+            big_bet: 400,
+        },
+        _ => panic!("stakes must be limit or no-limit"),
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let hands: u64 = args
@@ -434,11 +449,10 @@ fn main() {
     );
     let labels = display_labels(&lineup);
 
-    let big_blind = 200;
-    let stakes = Stakes::NoLimit {
-        small_blind: 100,
-        big_blind,
-    };
+    let stakes = args
+        .get(3)
+        .map_or_else(|| parse_stakes("no-limit"), |value| parse_stakes(value));
+    let big_blind = stakes.blinds().1;
     let buy_in = big_blind * 100;
     let stacks: Vec<i64> = vec![buy_in; lineup.len()];
     let mut stats: Vec<SeatStats> = lineup.iter().map(|_| SeatStats::default()).collect();
@@ -512,10 +526,8 @@ fn main() {
     }
 
     println!(
-        "{hands} hands, {}-handed, blinds {}/{} (100bb stacks, topped up each hand), seed {base_seed}",
+        "{hands} hands, {}-handed, stakes {stakes} (100bb stacks, topped up each hand), seed {base_seed}",
         lineup.len(),
-        100,
-        big_blind
     );
     println!();
     println!(
@@ -648,6 +660,19 @@ mod tests {
         assert_eq!(
             steal_action(&view, &legal, false),
             Action::Raise { amount: 500 }
+        );
+
+        let fixed_limit_legal = LegalActions {
+            wager: Some(two_seven::holdem::WagerBounds {
+                min: 400,
+                max: 400,
+                fixed: Some(400),
+            }),
+            ..legal.clone()
+        };
+        assert_eq!(
+            steal_action(&view, &fixed_limit_legal, false),
+            Action::Raise { amount: 400 }
         );
 
         let limped_view = HandView {
@@ -820,6 +845,25 @@ mod tests {
             display_labels(&lineup),
             vec!["shark:default (seat 0)", "shark:default (seat 1)", "steal",]
         );
+    }
+
+    #[test]
+    fn bench_stakes_preserve_the_existing_default_and_limit_convention() {
+        assert_eq!(
+            parse_stakes("no-limit"),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            }
+        );
+        assert_eq!(
+            parse_stakes("limit"),
+            Stakes::Limit {
+                small_bet: 200,
+                big_bet: 400,
+            }
+        );
+        assert_eq!(parse_stakes("limit").blinds(), (100, 200));
     }
 
     #[test]
