@@ -253,14 +253,45 @@ fn samples64_params() -> SharkParams {
 }
 
 fn preflop_is_unraised(view: &HandView) -> bool {
-    view.board.is_empty()
-        && !view.events.iter().any(|event| {
-            event.street == Street::Preflop
-                && !matches!(
-                    event.kind,
-                    HandEventKind::Ante | HandEventKind::SmallBlind | HandEventKind::BigBlind
-                )
-        })
+    if !view.board.is_empty() {
+        return false;
+    }
+    let mut contributions = BTreeMap::new();
+    for event in view
+        .events
+        .iter()
+        .filter(|event| event.street == Street::Preflop)
+    {
+        let Some(seat) = event.seat else {
+            continue;
+        };
+        let before = contributions.get(&seat).copied().unwrap_or(0);
+        let after = before + event.amount;
+        match event.kind {
+            HandEventKind::Bet | HandEventKind::Raise => return false,
+            HandEventKind::AllIn => {
+                let max_other = contributions
+                    .iter()
+                    .filter(|(other_seat, _)| **other_seat != seat)
+                    .map(|(_, contribution)| *contribution)
+                    .max()
+                    .unwrap_or(0);
+                if after > max_other {
+                    return false;
+                }
+            }
+            HandEventKind::Ante
+            | HandEventKind::SmallBlind
+            | HandEventKind::BigBlind
+            | HandEventKind::Call
+            | HandEventKind::Check
+            | HandEventKind::Fold
+            | HandEventKind::Deal
+            | HandEventKind::Award => {}
+        }
+        contributions.insert(seat, after);
+    }
+    true
 }
 
 fn pot_raise_action(view: &HandView, legal: &LegalActions) -> Option<Action> {
@@ -619,6 +650,37 @@ mod tests {
             Action::Raise { amount: 500 }
         );
 
+        let limped_view = HandView {
+            pot: 700,
+            events: vec![
+                two_seven::holdem::HandEvent {
+                    street: Street::Preflop,
+                    seat: Some(1),
+                    kind: HandEventKind::Call,
+                    amount: 200,
+                },
+                two_seven::holdem::HandEvent {
+                    street: Street::Preflop,
+                    seat: Some(2),
+                    kind: HandEventKind::Call,
+                    amount: 200,
+                },
+            ],
+            ..view.clone()
+        };
+        let limped_legal = LegalActions {
+            wager: Some(two_seven::holdem::WagerBounds {
+                min: 400,
+                max: 1_000,
+                fixed: None,
+            }),
+            ..legal.clone()
+        };
+        assert_eq!(
+            steal_action(&limped_view, &limped_legal, false),
+            Action::Raise { amount: 900 }
+        );
+
         let raised_view = HandView {
             events: vec![two_seven::holdem::HandEvent {
                 street: Street::Preflop,
@@ -629,6 +691,28 @@ mod tests {
             ..view.clone()
         };
         assert_eq!(steal_action(&raised_view, &legal, false), Action::Fold);
+
+        let limp_then_raise_view = HandView {
+            events: vec![
+                two_seven::holdem::HandEvent {
+                    street: Street::Preflop,
+                    seat: Some(1),
+                    kind: HandEventKind::Call,
+                    amount: 200,
+                },
+                two_seven::holdem::HandEvent {
+                    street: Street::Preflop,
+                    seat: Some(2),
+                    kind: HandEventKind::Raise,
+                    amount: 400,
+                },
+            ],
+            ..view
+        };
+        assert_eq!(
+            steal_action(&limp_then_raise_view, &legal, false),
+            Action::Fold
+        );
     }
 
     #[test]
