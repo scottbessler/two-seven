@@ -78,6 +78,10 @@ fn shark_preset(name: &str) -> Option<SharkParams> {
         "phase1" => Some(phase1_params()),
         "nit" => Some(nit_params()),
         "aggro" => Some(aggro_params()),
+        "loose" => Some(loose_params()),
+        "features" => Some(features_params()),
+        "aggro_noprobe" => Some(aggro_noprobe_params()),
+        "tuned" => Some(tuned_params()),
         _ => None,
     }
 }
@@ -131,8 +135,7 @@ fn nit_params() -> SharkParams {
     params
 }
 
-fn aggro_params() -> SharkParams {
-    let mut params = SharkParams::DEFAULT;
+fn apply_aggro_thresholds(params: &mut SharkParams) {
     params.late_open_score = 3;
     params.middle_open_score = 4;
     params.early_open_score = 5;
@@ -143,6 +146,9 @@ fn aggro_params() -> SharkParams {
     params.heads_up_out_of_position_edge = 0.13;
     params.multiway_in_position_edge = 0.11;
     params.multiway_out_of_position_edge = 0.17;
+}
+
+fn apply_aggro_features(params: &mut SharkParams) {
     params.strong_draw_semi_bluff_frequency = SharkFrequency {
         numerator: 4,
         denominator: 5,
@@ -160,6 +166,45 @@ fn aggro_params() -> SharkParams {
     params.value_bet_ratio = SharkRatio::new(3, 4);
     params.thin_value_ratio = SharkRatio::new(2, 3);
     params.semi_bluff_ratio = SharkRatio::new(2, 3);
+}
+
+fn aggro_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    apply_aggro_thresholds(&mut params);
+    apply_aggro_features(&mut params);
+    params
+}
+
+fn loose_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    apply_aggro_thresholds(&mut params);
+    params
+}
+
+fn features_params() -> SharkParams {
+    let mut params = SharkParams::DEFAULT;
+    apply_aggro_features(&mut params);
+    params
+}
+
+fn aggro_noprobe_params() -> SharkParams {
+    let mut params = aggro_params();
+    params.probe_frequency = SharkFrequency {
+        numerator: 0,
+        denominator: 1,
+    };
+    params
+}
+
+fn tuned_params() -> SharkParams {
+    let mut params = aggro_params();
+    params.implied_odds_equity_cap = SharkParams::DEFAULT.implied_odds_equity_cap;
+    params.implied_odds_stack_pot_ratio = SharkParams::DEFAULT.implied_odds_stack_pot_ratio;
+    params.polarized_value_ratio = SharkParams::DEFAULT.polarized_value_ratio;
+    params.value_bet_ratio = SharkParams::DEFAULT.value_bet_ratio;
+    params.thin_value_ratio = SharkParams::DEFAULT.thin_value_ratio;
+    params.semi_bluff_ratio = SharkParams::DEFAULT.semi_bluff_ratio;
+    params.thin_value_edge_cap = SharkParams::DEFAULT.thin_value_edge_cap;
     params
 }
 
@@ -347,7 +392,15 @@ mod tests {
 
     #[test]
     fn shark_strategy_presets_are_registered() {
-        for name in ["phase1", "nit", "aggro"] {
+        for name in [
+            "phase1",
+            "nit",
+            "aggro",
+            "loose",
+            "features",
+            "aggro_noprobe",
+            "tuned",
+        ] {
             let parsed = parse_kind(&format!("shark:{name}"));
             assert_eq!(parsed.label(), format!("shark:{name}"));
             assert!(matches!(parsed, BenchBot::Shark { .. }));

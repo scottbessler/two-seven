@@ -148,7 +148,7 @@ pub struct SharkParams {
     pub draw_semi_bluff_max_opponents: usize,
     /// Maximum equity bonus supplied by deep implied odds on a draw call.
     pub implied_odds_equity_cap: f64,
-    /// Behind-pot depth that reaches the full implied-odds bonus.
+    /// Stack-to-pot depth needed to reach the full implied-odds bonus.
     pub implied_odds_stack_pot_ratio: f64,
     /// Pot fraction used for a value bet.
     pub value_bet_ratio: SharkRatio,
@@ -244,7 +244,7 @@ impl SharkParams {
         draw_semi_bluff_out_of_position: true,
         draw_semi_bluff_max_opponents: 2,
         implied_odds_equity_cap: 0.10,
-        implied_odds_stack_pot_ratio: 1.0,
+        implied_odds_stack_pot_ratio: 4.0,
         value_bet_ratio: SharkRatio::new(2, 3),
         polarized_value_ratio: SharkRatio::new(1, 1),
         polarized_value_equity: 0.80,
@@ -253,7 +253,7 @@ impl SharkParams {
             denominator: 2,
         },
         thin_value_ratio: SharkRatio::new(1, 2),
-        thin_value_edge_cap: 0.18,
+        thin_value_edge_cap: 0.10,
         semi_bluff_ratio: SharkRatio::new(1, 2),
         probe_ratio: SharkRatio::new(1, 3),
         probe_frequency: SharkFrequency {
@@ -907,10 +907,11 @@ fn implied_odds_bonus(
     let behind = effective.saturating_sub(legal.to_call);
     let depth = behind as f64 / pot_after_call as f64;
     let scale = params.implied_odds_stack_pot_ratio;
-    if scale <= 0.0 {
+    if scale <= 0.0 || params.strong_draw_outs == 0 {
         return 0.0;
     }
-    params.implied_odds_equity_cap * (depth / scale).min(1.0)
+    let outs_fraction = (draw.outs as f64 / params.strong_draw_outs as f64).min(1.0);
+    params.implied_odds_equity_cap * outs_fraction * (depth / scale).min(1.0)
 }
 
 fn should_fold(
@@ -1266,6 +1267,18 @@ mod tests {
             wagers_capped: false,
         };
         let draw = classify_draw(&SharkParams::DEFAULT, &view);
+        let direct_bonus = implied_odds_bonus(&SharkParams::DEFAULT, draw, &view, &legal, 10_000);
+        let backdoor_view = postflop(&["As", "Kd"], &["2s", "7s", "Qd"]);
+        let backdoor_bonus = implied_odds_bonus(
+            &SharkParams::DEFAULT,
+            classify_draw(&SharkParams::DEFAULT, &backdoor_view),
+            &backdoor_view,
+            &legal,
+            10_000,
+        );
+        assert!(direct_bonus > backdoor_bonus);
+        assert!(direct_bonus > 0.0);
+        assert_eq!(backdoor_bonus, 0.0);
         assert!(!should_fold(
             &SharkParams::DEFAULT,
             0.45,
@@ -1328,7 +1341,7 @@ mod tests {
     fn value_sizing_selects_thin_standard_and_polarized_intents() {
         let mut rng = StdRng::seed_from_u64(1);
         assert_eq!(
-            value_bet_ratio(&SharkParams::DEFAULT, 0.65, 0.12, &mut rng),
+            value_bet_ratio(&SharkParams::DEFAULT, 0.65, 0.08, &mut rng),
             SharkParams::DEFAULT.thin_value_ratio
         );
         assert_eq!(
