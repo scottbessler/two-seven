@@ -81,6 +81,9 @@ fn shark(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
     }
     let mut rng = StdRng::seed_from_u64(seed ^ 0x0053_4841_524b);
     let opponents = active_opponents(view, legal.seat);
+    let behind = players_behind(view, legal.seat);
+    let in_position = behind <= 1;
+    let effective = effective_stack(view, legal.seat);
     let equity = estimate_equity(view, seed, opponents);
     let fair_share = 1.0 / (opponents + 1) as f64;
     let pot_odds = if legal.to_call == 0 {
@@ -88,13 +91,21 @@ fn shark(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
     } else {
         legal.to_call as f64 / (view.pot + legal.to_call) as f64
     };
-    if equity > fair_share + 0.18 || equity > 0.72 {
+    let edge = equity - fair_share;
+    let bet_edge = if opponents == 1 {
+        if in_position { 0.10 } else { 0.16 }
+    } else if in_position {
+        0.14
+    } else {
+        0.20
+    };
+    if edge >= bet_edge || equity > 0.72 {
         let target = legal.to_call + (view.pot * 2) / 3;
-        return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+        return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
     }
-    if equity > fair_share + 0.05 && rng.gen_ratio(1, 4) {
+    if in_position && edge > 0.05 && rng.gen_ratio(1, 4) {
         let target = legal.to_call + view.pot / 2;
-        return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+        return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
     }
     if legal.to_call > 0 && equity < pot_odds {
         return first(legal, Action::Fold);
@@ -105,25 +116,86 @@ fn shark(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
 fn shark_preflop(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
     let mut rng = StdRng::seed_from_u64(seed ^ 0x0050_4645);
     let score = preflop_score(view);
-    let unraised = legal.to_call * 2 <= view.pot;
+    let (small_blind, big_blind) = blind_seats(view);
+    let is_big_blind = big_blind == Some(legal.seat);
+    let is_small_blind = small_blind == Some(legal.seat);
+    let unraised = !view.events.iter().any(|event| {
+        event.street == crate::holdem::Street::Preflop
+            && matches!(
+                event.kind,
+                crate::holdem::HandEventKind::Bet
+                    | crate::holdem::HandEventKind::Raise
+                    | crate::holdem::HandEventKind::AllIn
+            )
+    });
     let pot_odds = if legal.to_call == 0 {
         0.0
     } else {
         legal.to_call as f64 / (view.pot + legal.to_call) as f64
     };
+    let open_behind = if view.button == legal.seat {
+        0
+    } else {
+        players_behind_excluding(view, legal.seat, [small_blind, big_blind])
+    };
+    let open_threshold = if open_behind <= 1 {
+        4
+    } else if open_behind == 2 {
+        5
+    } else {
+        6
+    };
+    let defense_threshold = if is_big_blind {
+        3
+    } else if is_small_blind {
+        5
+    } else {
+        6
+    };
+    let effective = effective_stack(view, legal.seat);
+    let short = effective < view.big_blind * 20;
+    let single_raise = view
+        .players
+        .iter()
+        .filter(|player| player.seat != legal.seat && !player.folded)
+        .filter(|player| {
+            view.events.iter().any(|event| {
+                event.street == crate::holdem::Street::Preflop
+                    && event.seat == Some(player.seat)
+                    && matches!(
+                        event.kind,
+                        crate::holdem::HandEventKind::Bet
+                            | crate::holdem::HandEventKind::Raise
+                            | crate::holdem::HandEventKind::AllIn
+                    )
+            })
+        })
+        .count()
+        == 1;
+    if short && score >= open_threshold && (unraised || score >= defense_threshold) {
+        return all_in_or_wager(legal, effective).unwrap_or_else(|| first_calling(legal));
+    }
     if score >= 10 {
         let target = legal.to_call + view.pot + view.pot / 2;
-        return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+        return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
     }
-    if score >= 6 && (unraised || pot_odds < 0.2) {
-        if legal.to_call == 0 || rng.gen_ratio(2, 3) {
+    if unraised && score >= open_threshold {
+        if legal.to_call == 0 || rng.gen_ratio(4, 5) {
             let target = legal.to_call + view.pot;
-            return sized_wager(legal, target).unwrap_or_else(|| first_calling(legal));
+            return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
         }
         return first_calling(legal);
     }
-    if score >= 4 && pot_odds < 0.15 {
+    if single_raise
+        && (is_big_blind || is_small_blind)
+        && score >= defense_threshold
+        && pot_odds <= if is_big_blind { 0.32 } else { 0.25 }
+    {
         return first_calling(legal);
+    }
+    if score >= 9 && pot_odds < 0.30 {
+        let target = legal.to_call + view.pot;
+        return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
     }
     if legal.to_call == 0 {
         return first_calling(legal);
@@ -137,6 +209,10 @@ fn preflop_score(view: &HandView) -> i32 {
     let Some(cards) = view.your_hole_cards.as_ref() else {
         return 0;
     };
+    preflop_score_cards(cards)
+}
+
+fn preflop_score_cards(cards: &[Card]) -> i32 {
     if cards.len() != 2 {
         return 0;
     }
@@ -170,6 +246,57 @@ fn preflop_score(view: &HandView) -> i32 {
     score
 }
 
+fn live_order(view: &HandView) -> Vec<usize> {
+    let seats: Vec<usize> = view.players.iter().map(|player| player.seat).collect();
+    let start = seats
+        .iter()
+        .position(|seat| *seat == view.button)
+        .unwrap_or(0);
+    (0..seats.len())
+        .map(|offset| seats[(start + offset) % seats.len()])
+        .filter(|seat| {
+            view.players
+                .iter()
+                .find(|player| player.seat == *seat)
+                .is_some_and(|player| !player.folded)
+        })
+        .collect()
+}
+
+fn players_behind(view: &HandView, seat: usize) -> usize {
+    players_behind_excluding(view, seat, [None, None])
+}
+
+fn players_behind_excluding(view: &HandView, seat: usize, excluded: [Option<usize>; 2]) -> usize {
+    let order = live_order(view);
+    let Some(hero) = order.iter().position(|candidate| *candidate == seat) else {
+        return 0;
+    };
+    (1..order.len())
+        .map(|offset| order[(hero + offset) % order.len()])
+        .filter(|candidate| {
+            !excluded.contains(&Some(*candidate))
+                && view
+                    .players
+                    .iter()
+                    .find(|player| player.seat == *candidate)
+                    .is_some_and(|player| !player.all_in)
+        })
+        .count()
+}
+
+fn blind_seats(view: &HandView) -> (Option<usize>, Option<usize>) {
+    let order = live_order(view);
+    if order.len() < 2 {
+        return (None, None);
+    }
+    if order.len() == 2 {
+        (order.first().copied(), order.get(1).copied())
+    } else {
+        (order.get(1).copied(), order.get(2).copied())
+    }
+}
+
 fn active_opponents(view: &HandView, seat: usize) -> usize {
     let live = view
         .players
@@ -179,7 +306,44 @@ fn active_opponents(view: &HandView, seat: usize) -> usize {
     live.max(1)
 }
 
-fn sized_wager(legal: &LegalActions, target: Cents) -> Option<Action> {
+fn effective_stack(view: &HandView, seat: usize) -> Cents {
+    let hero = view
+        .players
+        .iter()
+        .find(|player| player.seat == seat)
+        .map_or(0, |player| player.stack);
+    let largest_opponent = view
+        .players
+        .iter()
+        .filter(|player| player.seat != seat && !player.folded)
+        .map(|player| player.stack)
+        .max()
+        .unwrap_or(hero);
+    hero.min(largest_opponent)
+}
+
+fn all_in_or_wager(legal: &LegalActions, effective: Cents) -> Option<Action> {
+    if legal
+        .actions
+        .iter()
+        .any(|action| matches!(action, Action::AllIn))
+    {
+        Some(Action::AllIn)
+    } else {
+        sized_wager(legal, effective, effective)
+    }
+}
+
+fn sized_wager(legal: &LegalActions, target: Cents, effective: Cents) -> Option<Action> {
+    if target > 0
+        && target * 3 >= effective * 2
+        && legal
+            .actions
+            .iter()
+            .any(|action| matches!(action, Action::AllIn))
+    {
+        return Some(Action::AllIn);
+    }
     legal.actions.iter().find_map(|action| match action {
         Action::Bet { amount } => Some(Action::Bet {
             amount: sized_amount(legal, target, *amount),
@@ -209,17 +373,33 @@ fn estimate_equity(view: &HandView, seed: u64, opponents: usize) -> f64 {
     let mut unseen: Vec<Card> = (0..52).filter_map(|_| deck.deal()).collect();
     unseen.retain(|card| !hero.contains(card) && !view.board.contains(card));
     let opponents = opponents.max(1);
+    let tiers: Vec<OpponentTier> = view
+        .players
+        .iter()
+        .filter(|player| player.seat != view.current_player.unwrap_or(usize::MAX) && !player.folded)
+        .map(|player| opponent_tier(view, player.seat))
+        .collect();
     let mut wins = 0.0;
-    let samples = 64;
+    let street_samples = match view.board.len() {
+        3 => 160,
+        4 => 224,
+        _ => 320,
+    };
+    let samples = match opponents {
+        1 => street_samples,
+        2 => street_samples * 3 / 4,
+        _ => street_samples / 2,
+    };
     let mut rng = StdRng::seed_from_u64(seed ^ 0x0053_4841_524b);
     for _ in 0..samples {
         let mut available = unseen.clone();
         let mut opponent_hands = Vec::with_capacity(opponents);
-        for _ in 0..opponents {
-            let first = rng.gen_range(0..available.len());
-            let first_card = available.swap_remove(first);
-            let second = rng.gen_range(0..available.len());
-            opponent_hands.push(vec![first_card, available.swap_remove(second)]);
+        for index in 0..opponents {
+            opponent_hands.push(sample_opponent(
+                &mut available,
+                &mut rng,
+                tiers.get(index).copied().unwrap_or(OpponentTier::Passive),
+            ));
         }
         let mut board = view.board.clone();
         while board.len() < 5 {
@@ -245,6 +425,72 @@ fn estimate_equity(view: &HandView, seed: u64, opponents: usize) -> f64 {
         }
     }
     wins / samples as f64
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum OpponentTier {
+    Aggressive,
+    Caller,
+    Passive,
+}
+
+fn opponent_tier(view: &HandView, seat: usize) -> OpponentTier {
+    let mut aggressive = false;
+    let mut caller = false;
+    let mut blind = false;
+    for event in view.events.iter().filter(|event| event.seat == Some(seat)) {
+        match event.kind {
+            crate::holdem::HandEventKind::SmallBlind | crate::holdem::HandEventKind::BigBlind => {
+                blind = true
+            }
+            crate::holdem::HandEventKind::Bet
+            | crate::holdem::HandEventKind::Raise
+            | crate::holdem::HandEventKind::AllIn => aggressive = true,
+            crate::holdem::HandEventKind::Call => caller = true,
+            _ => {}
+        }
+    }
+    if aggressive {
+        OpponentTier::Aggressive
+    } else if caller && !blind {
+        OpponentTier::Caller
+    } else {
+        OpponentTier::Passive
+    }
+}
+
+fn range_accepts(tier: OpponentTier, cards: &[Card]) -> bool {
+    match tier {
+        OpponentTier::Aggressive => preflop_score_cards(cards) >= 7,
+        OpponentTier::Caller => preflop_score_cards(cards) >= 4,
+        OpponentTier::Passive => true,
+    }
+}
+
+fn sample_opponent(available: &mut Vec<Card>, rng: &mut StdRng, tier: OpponentTier) -> Vec<Card> {
+    let filtered = !matches!(tier, OpponentTier::Passive);
+    for _ in 0..12 {
+        let (first, second) = pair_indices(available.len(), rng);
+        let cards = vec![available[first], available[second]];
+        if !filtered || range_accepts(tier, &cards) {
+            return take_pair(available, first, second);
+        }
+    }
+    let (first, second) = pair_indices(available.len(), rng);
+    take_pair(available, first, second)
+}
+
+fn pair_indices(len: usize, rng: &mut StdRng) -> (usize, usize) {
+    let first = rng.gen_range(0..len);
+    let offset = rng.gen_range(0..len - 1);
+    let second = if offset >= first { offset + 1 } else { offset };
+    (first, second)
+}
+
+fn take_pair(available: &mut Vec<Card>, first: usize, second: usize) -> Vec<Card> {
+    let first_card = available.swap_remove(first);
+    let second_card = available.swap_remove(if second > first { second - 1 } else { second });
+    vec![first_card, second_card]
 }
 
 fn made_category(view: &HandView) -> Option<Category> {
@@ -292,7 +538,7 @@ mod tests {
         cards::Card,
         holdem::Hand,
         table::Stakes,
-        view::{HandView, hand_view},
+        view::{HandPlayerView, HandView, hand_view},
     };
     use std::str::FromStr;
 
@@ -339,6 +585,8 @@ mod tests {
         let pair_two = Card::from_str("Ad").unwrap();
         let view = HandView {
             street: "Preflop".into(),
+            button: 0,
+            big_blind: 2,
             board: Vec::new(),
             your_hole_cards: Some(vec![trash, trash_two]),
             seats: Vec::new(),
@@ -373,6 +621,8 @@ mod tests {
         let ace_diamonds = Card::from_str("Ad").unwrap();
         let view = HandView {
             street: "Preflop".into(),
+            button: 0,
+            big_blind: 2,
             board: Vec::new(),
             your_hole_cards: Some(vec![ace_clubs, ace_diamonds]),
             seats: Vec::new(),
@@ -447,5 +697,177 @@ mod tests {
         }
         assert!(totals[0] > totals[1], "{totals:?}");
         assert!(totals[1] > totals[2], "{totals:?}");
+    }
+
+    #[test]
+    fn shark_opens_wider_in_late_position() {
+        let cards = vec![Card::from_str("9c").unwrap(), Card::from_str("8c").unwrap()];
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Fold, Action::Call, Action::Raise { amount: 8 }],
+            to_call: 2,
+            wager: Some(crate::holdem::WagerBounds {
+                min: 8,
+                max: 100,
+                fixed: None,
+            }),
+            wagers_capped: false,
+        };
+        let early = HandView {
+            street: "Preflop".into(),
+            button: 3,
+            big_blind: 2,
+            board: Vec::new(),
+            your_hole_cards: Some(cards.clone()),
+            seats: Vec::new(),
+            pot: 5,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: vec![
+                HandPlayerView {
+                    seat: 0,
+                    stack: 100,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+                HandPlayerView {
+                    seat: 1,
+                    stack: 100,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+                HandPlayerView {
+                    seat: 2,
+                    stack: 100,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+                HandPlayerView {
+                    seat: 3,
+                    stack: 100,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+            ],
+            events: Vec::new(),
+            last_bet: 2,
+            to_call: 2,
+        };
+        let late = HandView {
+            button: 0,
+            ..early.clone()
+        };
+        assert!((0..20).any(|seed| {
+            matches!(
+                shark(&late, &legal, seed),
+                Action::Raise { .. } | Action::Bet { .. }
+            )
+        }));
+        assert!(matches!(
+            shark(&early, &legal, 1),
+            Action::Call | Action::Fold
+        ));
+    }
+
+    #[test]
+    fn shark_commits_instead_of_leaving_dust() {
+        let view = HandView {
+            street: "Flop".into(),
+            button: 0,
+            big_blind: 2,
+            board: vec![
+                Card::from_str("As").unwrap(),
+                Card::from_str("Kd").unwrap(),
+                Card::from_str("2c").unwrap(),
+            ],
+            your_hole_cards: Some(vec![
+                Card::from_str("Ah").unwrap(),
+                Card::from_str("Ad").unwrap(),
+            ]),
+            seats: vec![],
+            pot: 100,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: vec![
+                HandPlayerView {
+                    seat: 0,
+                    stack: 50,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+                HandPlayerView {
+                    seat: 1,
+                    stack: 60,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+            ],
+            events: Vec::new(),
+            last_bet: 0,
+            to_call: 0,
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Check, Action::Bet { amount: 10 }, Action::AllIn],
+            to_call: 0,
+            wager: Some(crate::holdem::WagerBounds {
+                min: 10,
+                max: 50,
+                fixed: None,
+            }),
+            wagers_capped: false,
+        };
+        assert_eq!(shark(&view, &legal, 5), Action::AllIn);
+    }
+
+    #[test]
+    fn shark_filters_observed_opponent_ranges() {
+        let strong = vec![Card::from_str("As").unwrap(), Card::from_str("Kh").unwrap()];
+        let trash = vec![Card::from_str("2c").unwrap(), Card::from_str("7d").unwrap()];
+        assert!(range_accepts(OpponentTier::Aggressive, &strong));
+        assert!(!range_accepts(OpponentTier::Aggressive, &trash));
+        assert!(range_accepts(OpponentTier::Passive, &trash));
+        let view = HandView {
+            street: "Flop".into(),
+            button: 0,
+            big_blind: 2,
+            board: Vec::new(),
+            your_hole_cards: None,
+            seats: Vec::new(),
+            pot: 0,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: Vec::new(),
+            events: vec![crate::holdem::HandEvent {
+                street: crate::holdem::Street::Preflop,
+                seat: Some(1),
+                kind: crate::holdem::HandEventKind::BigBlind,
+                amount: 2,
+            }],
+            last_bet: 0,
+            to_call: 0,
+        };
+        assert_eq!(opponent_tier(&view, 1), OpponentTier::Passive);
     }
 }
