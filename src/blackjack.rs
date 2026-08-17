@@ -315,7 +315,8 @@ impl BlackjackStore {
             BlackjackHandStatus::Stand
         };
         game.advance();
-        Ok((game.view(true, balance), wager))
+        // The stake just placed is still in the balance the route read.
+        Ok((game.view(true, balance - wager), wager))
     }
 
     pub async fn split(
@@ -354,7 +355,7 @@ impl BlackjackStore {
             game.hands[i + 1].status = BlackjackHandStatus::Stand;
             game.advance();
         }
-        Ok((game.view(false, balance), wager))
+        Ok((game.view(false, balance - wager), wager))
     }
 
     pub async fn insure(
@@ -369,7 +370,7 @@ impl BlackjackStore {
         let wager = game.wager(Action::Insure, balance)?;
         game.insurance = wager;
         game.peek_if_needed();
-        Ok((game.view(false, balance), wager))
+        Ok((game.view(false, balance - wager), wager))
     }
 }
 #[derive(Clone, Copy)]
@@ -853,5 +854,50 @@ mod tests {
         restored.persist().await.unwrap();
         let restored_again = BlackjackStore::load(&root).await.unwrap();
         assert!(restored_again.resume(user, 0).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn charged_wagers_use_remaining_balance_for_action_flags() {
+        let store = BlackjackStore::new();
+        let user = Uuid::new_v4();
+        let split_id = Uuid::new_v4();
+        let mut split_game = game(
+            vec![hand(
+                vec![card(Rank::Eight), card(Rank::Eight)],
+                100,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Nine), card(Rank::Seven)],
+        );
+        split_game.id = split_id;
+        split_game.user = user;
+        store.inner.lock().await.insert(split_id, split_game);
+
+        let (view, wager) = store.split(user, split_id, 100).await.unwrap();
+        assert_eq!(wager, 100);
+        assert!(!view.can_double);
+        assert!(!view.can_split);
+
+        let insurance_id = Uuid::new_v4();
+        let mut insurance_game = game(
+            vec![hand(
+                vec![card(Rank::Eight), card(Rank::Eight)],
+                200,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Ace), card(Rank::Seven)],
+        );
+        insurance_game.id = insurance_id;
+        insurance_game.user = user;
+        store
+            .inner
+            .lock()
+            .await
+            .insert(insurance_id, insurance_game);
+
+        let (view, wager) = store.insure(user, insurance_id, 200).await.unwrap();
+        assert_eq!(wager, 100);
+        assert!(!view.can_double);
+        assert!(!view.can_split);
     }
 }
