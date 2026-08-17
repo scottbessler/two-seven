@@ -3,15 +3,18 @@
 //!
 //! Usage: `cargo run --release --bin bot_bench -- [hands] [seed] [lineup]`
 //! where `lineup` is a comma-separated list of bot kinds, e.g.
-//! `fish,rock,grinder,shark` (the default).
+//! `fish,rock,grinder,shark` (the default). Shark also accepts named
+//! parameter presets as `shark:<preset>`; `shark:default` is an alias for
+//! `shark`.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use two_seven::{
-    holdem::{Action, Hand, Street},
+    bot::{SharkParams, shark_with},
+    holdem::{Action, Hand, LegalActions, Street},
     table::{BotKind, Stakes},
-    view::hand_view,
+    view::{HandView, hand_view},
 };
 
 #[derive(Default)]
@@ -45,13 +48,56 @@ impl SeatStats {
     }
 }
 
-fn parse_kind(name: &str) -> BotKind {
-    match name.trim().to_ascii_lowercase().as_str() {
-        "fish" => BotKind::Fish,
-        "rock" => BotKind::Rock,
-        "grinder" => BotKind::Grinder,
-        "shark" => BotKind::Shark,
-        other => panic!("unknown bot kind: {other}"),
+enum BenchBot {
+    Kind(BotKind),
+    Shark {
+        label: String,
+        params: Box<SharkParams>,
+    },
+}
+
+impl BenchBot {
+    fn act(&self, view: &HandView, legal: &LegalActions, seed: u64) -> Action {
+        match self {
+            Self::Kind(kind) => kind.act(view, legal, seed),
+            Self::Shark { params, .. } => shark_with(params, view, legal, seed),
+        }
+    }
+
+    fn label(&self) -> String {
+        match self {
+            Self::Kind(kind) => kind.to_string(),
+            Self::Shark { label, .. } => label.clone(),
+        }
+    }
+}
+
+fn shark_preset(name: &str) -> Option<SharkParams> {
+    match name {
+        "default" => Some(SharkParams::DEFAULT),
+        _ => None,
+    }
+}
+
+fn parse_kind(name: &str) -> BenchBot {
+    let normalized = name.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "fish" => BenchBot::Kind(BotKind::Fish),
+        "rock" => BenchBot::Kind(BotKind::Rock),
+        "grinder" => BenchBot::Kind(BotKind::Grinder),
+        "shark" => BenchBot::Kind(BotKind::Shark),
+        _ => {
+            let Some(preset) = normalized.strip_prefix("shark:") else {
+                panic!("unknown bot kind: {normalized}");
+            };
+            let Some(params) = shark_preset(preset) else {
+                panic!("unknown Shark preset: {preset}");
+            };
+            BenchBot::Shark {
+                label: normalized,
+                params: Box::new(params),
+            }
+        }
     }
 }
 
@@ -65,15 +111,15 @@ fn main() {
         .get(1)
         .map(|value| u64::from_str(value).expect("seed must be a number"))
         .unwrap_or(27);
-    let lineup: Vec<BotKind> = args
+    let lineup: Vec<BenchBot> = args
         .get(2)
         .map(|value| value.split(',').map(parse_kind).collect())
         .unwrap_or_else(|| {
             vec![
-                BotKind::Fish,
-                BotKind::Rock,
-                BotKind::Grinder,
-                BotKind::Shark,
+                BenchBot::Kind(BotKind::Fish),
+                BenchBot::Kind(BotKind::Rock),
+                BenchBot::Kind(BotKind::Grinder),
+                BenchBot::Kind(BotKind::Shark),
             ]
         });
     assert!(
@@ -169,14 +215,14 @@ fn main() {
         "| bot | net | bb/100 | win% | vpip% | pfr% | wtsd% | w$sd% | bet | raise | call | check | fold | AF |"
     );
     println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
-    for (seat, kind) in lineup.iter().enumerate() {
+    for (seat, bot) in lineup.iter().enumerate() {
         let s = &stats[seat];
         let hands_f = s.hands as f64;
         let pct = |count: u64| 100.0 * count as f64 / hands_f;
         let aggression = (s.bets + s.raises + s.all_ins) as f64 / (s.calls.max(1)) as f64;
         println!(
             "| {} | {} | {:.1} | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {} | {} | {} | {} | {} | {:.2} |",
-            kind,
+            bot.label(),
             s.net,
             100.0 * s.net as f64 / big_blind as f64 / hands_f,
             pct(s.hand_wins),
@@ -195,5 +241,29 @@ fn main() {
             s.folds,
             aggression
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shark_defaults_and_alias_have_distinct_labels() {
+        let default = parse_kind("shark");
+        let alias = parse_kind("shark:default");
+        assert_eq!(default.label(), "shark");
+        assert_eq!(alias.label(), "shark:default");
+        assert!(matches!(default, BenchBot::Kind(BotKind::Shark)));
+        match alias {
+            BenchBot::Shark { params, .. } => assert_eq!(*params, SharkParams::DEFAULT),
+            BenchBot::Kind(_) => panic!("expected Shark preset"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unknown Shark preset: unknown")]
+    fn unknown_shark_preset_is_rejected() {
+        parse_kind("shark:unknown");
     }
 }
