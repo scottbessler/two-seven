@@ -1038,7 +1038,7 @@ mod tests {
                     small_blind: 1,
                     big_blind: 2,
                     ante: 1,
-                    hands: 2,
+                    hands: 1,
                 },
                 BlindLevel {
                     small_blind: 10,
