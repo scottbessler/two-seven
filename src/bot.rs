@@ -113,7 +113,8 @@ fn shark(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
     first_calling(legal)
 }
 
-fn shark_preflop(view: &HandView, legal: &LegalActions, _seed: u64) -> Action {
+fn shark_preflop(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
+    let mut rng = StdRng::seed_from_u64(seed ^ 0x0050_4645);
     let score = preflop_score(view);
     let (small_blind, big_blind) = blind_seats(view);
     let is_big_blind = big_blind == Some(legal.seat);
@@ -168,6 +169,9 @@ fn shark_preflop(view: &HandView, legal: &LegalActions, _seed: u64) -> Action {
         return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
     }
     if unraised && score >= open_threshold {
+        if score == open_threshold && !rng.gen_ratio(4, 5) {
+            return first_calling(legal);
+        }
         let target = legal.to_call + view.pot;
         return sized_wager(legal, target, effective).unwrap_or_else(|| first_calling(legal));
     }
@@ -454,15 +458,18 @@ fn estimate_equity(view: &HandView, hero_seat: usize, seed: u64, opponents: usiz
         _ => street_samples / 2,
     };
     let mut rng = StdRng::seed_from_u64(seed ^ 0x0053_4841_524b);
-    for _ in 0..samples {
+    'sample: for _ in 0..samples {
         let mut available = unseen.clone();
         let mut opponent_hands = Vec::with_capacity(opponents);
         for index in 0..opponents {
-            opponent_hands.push(sample_opponent(
+            let Some(hand) = sample_opponent(
                 &mut available,
                 &mut rng,
                 tiers.get(index).copied().unwrap_or(OpponentTier::Passive),
-            ));
+            ) else {
+                continue 'sample;
+            };
+            opponent_hands.push(hand);
         }
         let mut board = view.board.clone();
         if available.len() < 5 - board.len() {
@@ -533,23 +540,23 @@ fn range_accepts(tier: OpponentTier, cards: &[Card]) -> bool {
     }
 }
 
-fn sample_opponent(available: &mut Vec<Card>, rng: &mut StdRng, tier: OpponentTier) -> Vec<Card> {
+fn sample_opponent(
+    available: &mut Vec<Card>,
+    rng: &mut StdRng,
+    tier: OpponentTier,
+) -> Option<Vec<Card>> {
     if available.len() < 2 {
-        return Vec::new();
+        return None;
     }
     let filtered = !matches!(tier, OpponentTier::Passive);
     for _ in 0..12 {
-        let Some((first, second)) = pair_indices(available.len(), rng) else {
-            return Vec::new();
-        };
+        let (first, second) = pair_indices(available.len(), rng)?;
         let cards = vec![available[first], available[second]];
         if !filtered || range_accepts(tier, &cards) {
-            return take_pair(available, first, second);
+            return Some(take_pair(available, first, second));
         }
     }
-    pair_indices(available.len(), rng).map_or_else(Vec::new, |(first, second)| {
-        take_pair(available, first, second)
-    })
+    pair_indices(available.len(), rng).map(|(first, second)| take_pair(available, first, second))
 }
 
 fn pair_indices(len: usize, rng: &mut StdRng) -> Option<(usize, usize)> {
