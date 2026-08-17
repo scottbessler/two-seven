@@ -321,6 +321,9 @@ Mark each milestone done here as it lands.
 - **V25** Hand Blitz runs expire server-side after their round deadline (with a
   small request grace), each user has at most one live run, and completed runs
   are eventually pruned; starts charge only after successful creation.
+- **V29** Each new Hold'em hand stores its replay seed, but the seed is mixed
+  from fresh entropy plus table id and hand number; it is not equal to, nor
+  predictable from, the table's sequential `hand_no`.
 
 ## §T Build tasks
 
@@ -384,6 +387,7 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - Tournament cash sit-downs could bypass registration, tournament payouts could index elimination order backwards, and post-start departures could stop dealing; fixed with dedicated registration, explicit payout positions, exact pool distribution, and separate seats-sold/start gating.
 - Tournament bots incorrectly used cash table chip limits; fixed by charging the configured money buy-in while assigning starting tournament chips.
 - Driver errors on one table could starve later tables; fixed by sorted per-table sweeps that log and continue.
+- B1|2026-08-16|Hold'em deals reused sequential `hand_no` as shuffle seed, making same-numbered hands across tables share decks|V29
 - Sub-dollar stake display and hidden create-form fields were incorrect; fixed with cent formatting and explicit hidden-label CSS.
 - Deferred departures could cash out tournament chips, and out-of-turn departure folds could bypass engine turn bookkeeping; fixed with mode-aware forfeiture and an engine-level arbitrary-seat fold transition.
 - Bot seating submitted an empty kind from browser option elements, hid 400 responses, allowed human-seat replacement, and ignored cash no-debt rules; fixed with explicit option values, visible table errors, occupant guards, and propagated no-debt enforcement.

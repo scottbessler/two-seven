@@ -3,8 +3,14 @@ use crate::{
     money::{Cents, format_cents},
 };
 use chrono::{DateTime, Utc};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::{
+    collections::hash_map::DefaultHasher,
+    fmt,
+    hash::{Hash, Hasher},
+    str::FromStr,
+};
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -196,6 +202,25 @@ mod bot_kind_tests {
             }
             .to_string(),
             "$1.00/$2.00 no-limit"
+        );
+    }
+
+    #[test]
+    fn deal_seeds_mix_table_hand_and_entropy() {
+        let table = uuid::Uuid::from_u128(1);
+        let other_table = uuid::Uuid::from_u128(2);
+        let first = super::deal_seed(table, 1, 7);
+
+        assert_ne!(first, 1, "the hand number is not the shuffle seed");
+        assert_ne!(
+            first,
+            super::deal_seed(other_table, 1, 7),
+            "same hand number on another table gets another seed"
+        );
+        assert_ne!(
+            first,
+            super::deal_seed(table, 2, 7),
+            "the same table gets another seed next hand"
         );
     }
 
@@ -651,14 +676,23 @@ pub fn maybe_start_hand(table: &mut Table) {
             .map_or(0, |level| level.ante),
         TableMode::Cash { .. } => 0,
     };
+    let seed = deal_seed(table.id, table.hand_no, rand::thread_rng().r#gen());
     table.hand = Some(Hand::new_with_seats_and_ante(
         table.stakes,
         &stacks,
         table.button,
-        table.hand_no,
+        seed,
         ante,
     ));
     table.next_action_at = None;
+}
+
+fn deal_seed(table: Uuid, hand_no: u64, entropy: u64) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    table.hash(&mut hasher);
+    hand_no.hash(&mut hasher);
+    entropy.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Settle a completed hand and hand back its record for the history log.
