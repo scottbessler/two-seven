@@ -473,7 +473,7 @@ pub fn table_history(
         })
         .collect::<String>();
     let body = format!(
-        r#"<section class="history-shell"><header class="history-top"><div><h1>{}</h1><p>{} hand{} recorded · showing the most recent {}</p></div><nav><a href="/tables/{}">Back to table</a> · <a href="/tables/{}/history?format=json">Raw JSON</a></nav></header>{}</section>"#,
+        r#"<section class="history-shell"><header class="history-top"><div><h1>{}</h1><p>{} hand{} recorded · showing the most recent {}</p></div><nav><a href="/tables/{}">Back to table</a> · <a href="/tables/{}/history?format=json" download>Download JSON</a></nav></header>{}</section>"#,
         escape(name),
         total,
         if total == 1 { "" } else { "s" },
