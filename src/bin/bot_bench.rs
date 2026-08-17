@@ -5,14 +5,14 @@
 //! where `lineup` is a comma-separated list of bot kinds, e.g.
 //! `fish,rock,grinder,shark` (the default). Shark also accepts named
 //! parameter presets as `shark:<preset>`; `shark:default` is an alias for
-//! `shark`.
+//! `shark`. Bench-only `steal` and `steal_check` bots are also available.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use two_seven::{
     bot::{SharkFrequency, SharkParams, SharkRatio, shark_with},
-    holdem::{Action, Hand, LegalActions, Street},
+    holdem::{Action, Hand, HandEventKind, LegalActions, Street},
     table::{BotKind, Stakes},
     view::{HandView, hand_view},
 };
@@ -54,6 +54,9 @@ enum BenchBot {
         label: String,
         params: Box<SharkParams>,
     },
+    Steal {
+        check_when_free: bool,
+    },
 }
 
 impl BenchBot {
@@ -61,6 +64,7 @@ impl BenchBot {
         match self {
             Self::Kind(kind) => kind.act(view, legal, seed),
             Self::Shark { params, .. } => shark_with(params, view, legal, seed),
+            Self::Steal { check_when_free } => steal_action(view, legal, *check_when_free),
         }
     }
 
@@ -68,6 +72,13 @@ impl BenchBot {
         match self {
             Self::Kind(kind) => kind.to_string(),
             Self::Shark { label, .. } => label.clone(),
+            Self::Steal { check_when_free } => {
+                if *check_when_free {
+                    "steal_check".into()
+                } else {
+                    "steal".into()
+                }
+            }
         }
     }
 }
@@ -241,6 +252,102 @@ fn samples64_params() -> SharkParams {
     sample_params(64, 64, 64)
 }
 
+fn preflop_is_unraised(view: &HandView) -> bool {
+    view.board.is_empty()
+        && !view.events.iter().any(|event| {
+            event.street == Street::Preflop
+                && !matches!(
+                    event.kind,
+                    HandEventKind::Ante | HandEventKind::SmallBlind | HandEventKind::BigBlind
+                )
+        })
+}
+
+fn pot_raise_action(view: &HandView, legal: &LegalActions) -> Option<Action> {
+    let bounds = legal.wager?;
+    let amount = (legal.to_call + view.pot).clamp(bounds.min, bounds.max);
+    legal.actions.iter().find_map(|action| match action {
+        Action::Bet { .. } => Some(Action::Bet { amount }),
+        Action::Raise { .. } => Some(Action::Raise { amount }),
+        _ => None,
+    })
+}
+
+fn free_action_or_fold(legal: &LegalActions) -> Action {
+    if legal.to_call == 0 {
+        if let Some(action) = legal
+            .actions
+            .iter()
+            .copied()
+            .find(|action| matches!(action, Action::Call))
+        {
+            return action;
+        }
+        if let Some(action) = legal
+            .actions
+            .iter()
+            .copied()
+            .find(|action| matches!(action, Action::Check))
+        {
+            return action;
+        }
+    }
+    legal
+        .actions
+        .iter()
+        .copied()
+        .find(|action| matches!(action, Action::Fold))
+        .unwrap_or(Action::Fold)
+}
+
+fn fold_only(legal: &LegalActions) -> Action {
+    legal
+        .actions
+        .iter()
+        .copied()
+        .find(|action| matches!(action, Action::Fold))
+        .unwrap_or(Action::Fold)
+}
+
+fn postflop_give_up(legal: &LegalActions, check_when_free: bool) -> Action {
+    if check_when_free {
+        if let Some(action) = legal
+            .actions
+            .iter()
+            .copied()
+            .find(|action| matches!(action, Action::Check))
+        {
+            return action;
+        }
+    } else if let Some(action) = legal
+        .actions
+        .iter()
+        .copied()
+        .find(|action| matches!(action, Action::Fold))
+    {
+        return action;
+    }
+    if let Some(action) = legal
+        .actions
+        .iter()
+        .copied()
+        .find(|action| matches!(action, Action::Fold | Action::Check))
+    {
+        return action;
+    }
+    Action::Fold
+}
+
+fn steal_action(view: &HandView, legal: &LegalActions, check_when_free: bool) -> Action {
+    if !view.board.is_empty() {
+        return postflop_give_up(legal, check_when_free);
+    }
+    if !preflop_is_unraised(view) {
+        return fold_only(legal);
+    }
+    pot_raise_action(view, legal).unwrap_or_else(|| free_action_or_fold(legal))
+}
+
 fn parse_kind(name: &str) -> BenchBot {
     let normalized = name.trim().to_ascii_lowercase();
     match normalized.as_str() {
@@ -248,6 +355,12 @@ fn parse_kind(name: &str) -> BenchBot {
         "rock" => BenchBot::Kind(BotKind::Rock),
         "grinder" => BenchBot::Kind(BotKind::Grinder),
         "shark" => BenchBot::Kind(BotKind::Shark),
+        "steal" => BenchBot::Steal {
+            check_when_free: false,
+        },
+        "steal_check" => BenchBot::Steal {
+            check_when_free: true,
+        },
         _ => {
             let Some(preset) = normalized.strip_prefix("shark:") else {
                 panic!("unknown bot kind: {normalized}");
@@ -288,6 +401,7 @@ fn main() {
         (2..=9).contains(&lineup.len()),
         "lineup must have 2-9 seats"
     );
+    let labels = display_labels(&lineup);
 
     let big_blind = 200;
     let stakes = Stakes::NoLimit {
@@ -377,14 +491,14 @@ fn main() {
         "| bot | net | bb/100 | win% | vpip% | pfr% | wtsd% | w$sd% | bet | raise | call | check | fold | AF |"
     );
     println!("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
-    for (seat, bot) in lineup.iter().enumerate() {
+    for (seat, label) in labels.iter().enumerate() {
         let s = &stats[seat];
         let hands_f = s.hands as f64;
         let pct = |count: u64| 100.0 * count as f64 / hands_f;
         let aggression = (s.bets + s.raises + s.all_ins) as f64 / (s.calls.max(1)) as f64;
         println!(
             "| {} | {} | {:.1} | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {:.1}% | {} | {} | {} | {} | {} | {:.2} |",
-            bot.label(),
+            label,
             s.net,
             100.0 * s.net as f64 / big_blind as f64 / hands_f,
             pct(s.hand_wins),
@@ -406,6 +520,25 @@ fn main() {
     }
 }
 
+fn display_labels(lineup: &[BenchBot]) -> Vec<String> {
+    let mut counts = BTreeMap::new();
+    for bot in lineup {
+        *counts.entry(bot.label()).or_insert(0usize) += 1;
+    }
+    lineup
+        .iter()
+        .enumerate()
+        .map(|(seat, bot)| {
+            let label = bot.label();
+            if counts[&label] > 1 {
+                format!("{label} (seat {seat})")
+            } else {
+                label
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,6 +553,7 @@ mod tests {
         match alias {
             BenchBot::Shark { params, .. } => assert_eq!(*params, SharkParams::DEFAULT),
             BenchBot::Kind(_) => panic!("expected Shark preset"),
+            BenchBot::Steal { .. } => panic!("expected Shark preset"),
         }
     }
 
@@ -443,6 +577,165 @@ mod tests {
             assert_eq!(parsed.label(), format!("shark:{name}"));
             assert!(matches!(parsed, BenchBot::Shark { .. }));
         }
+    }
+
+    #[test]
+    fn steal_bots_are_registered() {
+        assert_eq!(parse_kind("steal").label(), "steal");
+        assert_eq!(parse_kind("steal_check").label(), "steal_check");
+    }
+
+    #[test]
+    fn steal_bots_follow_their_preflop_rules() {
+        let view = HandView {
+            street: "Preflop".into(),
+            button: 0,
+            big_blind: 2,
+            board: Vec::new(),
+            your_hole_cards: None,
+            seats: Vec::new(),
+            pot: 300,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: Vec::new(),
+            events: Vec::new(),
+            last_bet: 200,
+            to_call: 200,
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Fold, Action::Call, Action::Raise { amount: 400 }],
+            to_call: 200,
+            wager: Some(two_seven::holdem::WagerBounds {
+                min: 400,
+                max: 1_000,
+                fixed: None,
+            }),
+            wagers_capped: false,
+        };
+        assert_eq!(
+            steal_action(&view, &legal, false),
+            Action::Raise { amount: 500 }
+        );
+
+        let raised_view = HandView {
+            events: vec![two_seven::holdem::HandEvent {
+                street: Street::Preflop,
+                seat: Some(1),
+                kind: HandEventKind::Raise,
+                amount: 400,
+            }],
+            ..view.clone()
+        };
+        assert_eq!(steal_action(&raised_view, &legal, false), Action::Fold);
+    }
+
+    #[test]
+    fn steal_bots_give_up_postflop_differently() {
+        let view = HandView {
+            board: vec![two_seven::cards::Card::new(
+                two_seven::cards::Rank::Ace,
+                two_seven::cards::Suit::Spades,
+            )],
+            ..HandView {
+                street: "Flop".into(),
+                button: 0,
+                big_blind: 2,
+                board: Vec::new(),
+                your_hole_cards: None,
+                seats: Vec::new(),
+                pot: 300,
+                current_player: Some(0),
+                legal_actions: None,
+                summary: None,
+                players: Vec::new(),
+                events: Vec::new(),
+                last_bet: 0,
+                to_call: 0,
+            }
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Fold, Action::Check],
+            to_call: 0,
+            wager: None,
+            wagers_capped: false,
+        };
+        assert_eq!(steal_action(&view, &legal, false), Action::Fold);
+        assert_eq!(steal_action(&view, &legal, true), Action::Check);
+
+        let facing_bet = LegalActions {
+            actions: vec![Action::Fold, Action::Call],
+            to_call: 100,
+            ..legal
+        };
+        assert_eq!(steal_action(&view, &facing_bet, true), Action::Fold);
+    }
+
+    #[test]
+    fn steal_falls_back_without_calling_when_raise_is_unavailable() {
+        let view = HandView {
+            street: "Preflop".into(),
+            button: 0,
+            big_blind: 2,
+            board: Vec::new(),
+            your_hole_cards: None,
+            seats: Vec::new(),
+            pot: 200,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: Vec::new(),
+            events: Vec::new(),
+            last_bet: 0,
+            to_call: 0,
+        };
+        let free_only = LegalActions {
+            seat: 0,
+            actions: vec![Action::Fold, Action::Check],
+            to_call: 0,
+            wager: None,
+            wagers_capped: true,
+        };
+        assert_eq!(
+            steal_action(&view, &free_only, false),
+            Action::Check,
+            "an unraised hand should take the free fallback"
+        );
+
+        let facing_call = LegalActions {
+            actions: vec![Action::Fold, Action::Call],
+            to_call: 100,
+            ..free_only
+        };
+        let called_view = HandView {
+            events: vec![two_seven::holdem::HandEvent {
+                street: Street::Preflop,
+                seat: Some(1),
+                kind: HandEventKind::Call,
+                amount: 100,
+            }],
+            ..view
+        };
+        assert_eq!(
+            steal_action(&called_view, &facing_call, false),
+            Action::Fold,
+            "a facing call must never become a call fallback"
+        );
+    }
+
+    #[test]
+    fn repeated_bench_bots_get_distinct_output_labels() {
+        let lineup = vec![
+            parse_kind("shark:default"),
+            parse_kind("shark:default"),
+            parse_kind("steal"),
+        ];
+        assert_eq!(
+            display_labels(&lineup),
+            vec!["shark:default (seat 0)", "shark:default (seat 1)", "steal",]
+        );
     }
 
     #[test]
