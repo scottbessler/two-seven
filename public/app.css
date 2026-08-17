@@ -112,7 +112,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-shell>*{flex:0 0 auto}
 .tournament-panel{display:flex;align-items:center;justify-content:center;gap:1rem;color:var(--muted);font-size:.8rem}
 .tournament-panel b{color:var(--accent)}
-.table-stage{position:relative;flex:1 1 auto;width:100%;min-height:0;margin:0 auto;--viewer-card-w-fit:min(var(--viewer-card-w),max(2.9rem,calc(17.1vh - 100px)));--viewer-card-h-fit:min(var(--viewer-card-h),max(4rem,calc(24vh - 140px)))}
+.table-stage{position:relative;flex:1 1 auto;width:100%;min-height:0;margin:0 auto;box-sizing:border-box;padding-bottom:calc(var(--viewer-card-h-fit) + .5rem);--viewer-card-w-fit:min(var(--viewer-card-w),max(2.9rem,calc(17.1vh - 100px)));--viewer-card-h-fit:min(var(--viewer-card-h),max(4rem,calc(24vh - 140px)))}
 .table-stage .felt{position:absolute;inset:15% 6% 13%;width:auto;min-height:0;max-width:none;margin:0;border-width:7px;border-radius:40px}
 .table-stage .table-center{top:50%;left:50%;width:72%;transform:translate(-50%,-50%)}
 .table-stage .board{align-items:center;gap:.38rem;min-height:7.25rem}
@@ -365,5 +365,5 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .blitz-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),calc((100dvh - 11rem)/3 * .72));--card-h:min(calc(4.3rem * var(--card-size-scale,1)),calc((100dvh - 11rem)/3))}
 }
 @media(min-width:641px){
-  .table-stage .seat.viewer .seat-cards{top:calc(100% + .15rem);bottom:auto}
+  .table-stage .seat.viewer .seat-cards{left:calc(100% + .4rem);top:-.6rem;bottom:auto;transform:none}
 }
