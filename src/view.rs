@@ -24,6 +24,8 @@ pub struct SeatView {
 #[derive(Clone, Debug, Serialize)]
 pub struct HandView {
     pub street: String,
+    pub button: usize,
+    pub big_blind: Cents,
     pub board: Vec<Card>,
     pub your_hole_cards: Option<Vec<Card>>,
     pub seats: Vec<SeatView>,
@@ -162,6 +164,8 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
         .collect();
     HandView {
         street: format!("{:?}", hand.street),
+        button: hand.button,
+        big_blind: hand.stakes.blinds().1,
         board: hand.board.clone(),
         your_hole_cards,
         seats,

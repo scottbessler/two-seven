@@ -848,6 +848,17 @@ mod tests {
                 pending_departure: false,
             };
         }
+        let initial_table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
+        let mut initial_bank_balances = Vec::new();
+        for kind in kinds.iter().copied() {
+            initial_bank_balances.push(
+                bank.account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+                    .await
+                    .unwrap()
+                    .balance,
+            );
+        }
+        let initial_chips = initial_table_chips + initial_bank_balances.iter().sum::<i64>();
         let id = tables.insert(table).await.unwrap();
         let mut now = Utc::now();
         let mut aggressive_actions = std::collections::HashSet::new();
@@ -878,20 +889,25 @@ mod tests {
             aggressive_actions.len() >= 4,
             "mixed bots should visibly wager across completed hands: {aggressive_actions:?}"
         );
-        assert!(
-            table.seats.iter().map(|seat| seat.stack).sum::<i64>() >= 400,
-            "cash bot rebuys should add chips from bot bankrolls"
-        );
+        let table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
+        drop(table);
+        let mut bank_chips = 0;
         for kind in kinds {
             let account = bank
                 .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
                 .await
                 .unwrap();
+            bank_chips += account.balance;
             assert_eq!(
                 account.entries.iter().map(|entry| entry.delta).sum::<i64>(),
                 account.balance
             );
         }
+        assert_eq!(
+            table_chips + bank_chips,
+            initial_chips,
+            "cash bot chips must be conserved across table and bot bank accounts: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
+        );
     }
 
     #[tokio::test]
@@ -948,6 +964,16 @@ mod tests {
                 pending_departure: false,
             };
         }
+        let initial_table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
+        let mut initial_bank_chips = 0;
+        for kind in kinds {
+            initial_bank_chips += bank
+                .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+                .await
+                .unwrap()
+                .balance;
+        }
+        let initial_chips = initial_table_chips + initial_bank_chips;
         let id = tables.insert(table).await.unwrap();
         let mut now = Utc::now();
         for _ in 0..4_000 {
@@ -958,9 +984,20 @@ mod tests {
         let table = tables.get(id).await.unwrap();
         let table = table.lock().await;
         assert!(table.hand_no > 3);
-        assert!(
-            table.seats.iter().map(|seat| seat.stack).sum::<i64>() >= 400,
-            "cash bot rebuys should add chips from bot bankrolls"
+        let table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
+        drop(table);
+        let mut bank_chips = 0;
+        for kind in kinds {
+            bank_chips += bank
+                .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
+                .await
+                .unwrap()
+                .balance;
+        }
+        assert_eq!(
+            table_chips + bank_chips,
+            initial_chips,
+            "cash bot chips must be conserved across table and bot bank accounts: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
         );
     }
 
