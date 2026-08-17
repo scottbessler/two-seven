@@ -112,7 +112,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-shell>*{flex:0 0 auto}
 .tournament-panel{display:flex;align-items:center;justify-content:center;gap:1rem;color:var(--muted);font-size:.8rem}
 .tournament-panel b{color:var(--accent)}
-.table-stage{position:relative;flex:1 1 auto;width:100%;min-height:0;margin:0 auto;--viewer-card-w-fit:min(var(--viewer-card-w),max(2.9rem,calc(17.1vh - 100px)));--viewer-card-h-fit:min(var(--viewer-card-h),max(4rem,calc(24vh - 140px)))}
+.table-stage{position:relative;flex:1 1 auto;width:100%;min-height:0;margin:0 auto;box-sizing:border-box;padding-bottom:calc(var(--viewer-card-h-fit) + .5rem);--viewer-card-w-fit:min(var(--viewer-card-w),max(2.9rem,calc(17.1vh - 100px)));--viewer-card-h-fit:min(var(--viewer-card-h),max(4rem,calc(24vh - 140px)))}
 .table-stage .felt{position:absolute;inset:15% 6% 13%;width:auto;min-height:0;max-width:none;margin:0;border-width:7px;border-radius:40px}
 .table-stage .table-center{top:50%;left:50%;width:72%;transform:translate(-50%,-50%)}
 .table-stage .board{align-items:center;gap:.38rem;min-height:7.25rem}
@@ -338,4 +338,32 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell .actions{grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-flow:column;gap:.2rem}
   .table-shell .actions button{min-height:2.1rem;font-size:.55rem}
   .table-controls button{padding:.25rem .5rem;font-size:.65rem}
+}
+
+@media(max-width:640px){
+  body:has(.blitz-shell){padding-bottom:0}
+  body:has(.blitz-shell) .page{height:100dvh;overflow:hidden;padding-bottom:0}
+  .blitz-shell{min-height:0;overflow:hidden}
+  .blackjack-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),calc((100dvh - 13rem)/8 * .72));--card-h:min(calc(4.3rem * var(--card-size-scale,1)),calc((100dvh - 13rem)/8))}
+  .blitz-table .playing-card{--card-w:min(calc(3.6rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5));--card-h:min(calc(5rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5 * 1.39))}
+  .table-stage .seat-cards.revealed .playing-card{--card-w:1.9rem;--card-h:2.65rem}
+}
+@media(max-height:520px) and (orientation:landscape){
+  .blackjack-shell>#blackjack-app{justify-content:flex-start;overflow:hidden}
+  .blackjack-table{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:.25rem;row-gap:0;overflow:hidden}
+  .blackjack-table>.card-settings,.blackjack-table>.blitz-score,.blackjack-table>.blitz-feedback,.blackjack-table>.blackjack-actions{grid-column:1/-1}
+  .blackjack-table>.blackjack-hand{gap:.1rem}
+  .blackjack-hand h2{margin:.1rem 0;font-size:.8rem}
+  .blackjack-table>.blackjack-hand:not(:first-of-type){display:flex;flex-direction:column;align-items:center}
+  .blackjack-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),calc((100dvh - 9rem)/3 * .72));--card-h:min(calc(4.3rem * var(--card-size-scale,1)),calc((100dvh - 9rem)/3))}
+  .blackjack-actions{gap:.25rem}
+  .blackjack-actions button{min-height:2rem;height:2rem;box-sizing:border-box;padding:.1rem .25rem}
+  .table-stage .seats .seat{height:auto;min-height:2.2rem;overflow:visible}
+  .table-stage .seat-cards .playing-card{--card-w:1.5rem;--card-h:2.1rem}
+  .table-stage .seat-cards.revealed .playing-card{--card-w:1.9rem;--card-h:2.65rem}
+  .table-stage .seat.viewer .seat-cards .playing-card{--card-w:min(2.35rem,calc((100dvh - 14rem)/3 * .72));--card-h:min(3.2rem,calc((100dvh - 14rem)/3))}
+  .blitz-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),calc((100dvh - 11rem)/3 * .72));--card-h:min(calc(4.3rem * var(--card-size-scale,1)),calc((100dvh - 11rem)/3))}
+}
+@media(min-width:641px){
+  .table-stage .seat.viewer .seat-cards{left:calc(100% + .4rem);top:-.6rem;bottom:auto;transform:none}
 }
