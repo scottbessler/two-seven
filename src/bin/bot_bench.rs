@@ -79,7 +79,6 @@ fn shark_preset(name: &str) -> Option<SharkParams> {
         "conservative" => Some(conservative_params()),
         "nit" => Some(nit_params()),
         "aggro" => Some(aggro_params()),
-        "loose" => Some(SharkParams::DEFAULT),
         "features" => Some(features_params()),
         "aggro_noprobe" => Some(aggro_noprobe_params()),
         "tuned" => Some(tuned_params()),
@@ -130,7 +129,7 @@ fn conservative_params() -> SharkParams {
 }
 
 fn nit_params() -> SharkParams {
-    let mut params = SharkParams::DEFAULT;
+    let mut params = conservative_params();
     params.late_open_score = 5;
     params.middle_open_score = 6;
     params.early_open_score = 7;
@@ -183,7 +182,7 @@ fn aggro_params() -> SharkParams {
 }
 
 fn features_params() -> SharkParams {
-    let mut params = SharkParams::DEFAULT;
+    let mut params = conservative_params();
     apply_aggro_features(&mut params);
     params
 }
@@ -398,7 +397,6 @@ mod tests {
             "conservative",
             "nit",
             "aggro",
-            "loose",
             "features",
             "aggro_noprobe",
             "tuned",
@@ -412,15 +410,39 @@ mod tests {
     #[test]
     fn shark_threshold_presets_match_their_names() {
         let default = shark_preset("default").unwrap();
-        let loose = shark_preset("loose").unwrap();
         let conservative = shark_preset("conservative").unwrap();
         let phase1 = shark_preset("phase1").unwrap();
         assert_eq!(default.late_open_score, 3);
-        assert_eq!(loose.late_open_score, default.late_open_score);
         assert_eq!(conservative.late_open_score, 4);
         assert_eq!(phase1.late_open_score, conservative.late_open_score);
         assert_eq!(phase1.heads_up_in_position_edge, 0.10);
         assert_eq!(default.heads_up_in_position_edge, 0.08);
+    }
+
+    #[test]
+    fn shark_registered_presets_have_unique_parameters() {
+        let names = [
+            "default",
+            "phase1",
+            "conservative",
+            "nit",
+            "aggro",
+            "features",
+            "aggro_noprobe",
+            "tuned",
+        ];
+        let presets: Vec<_> = names
+            .iter()
+            .map(|name| (*name, shark_preset(name).unwrap()))
+            .collect();
+        for (index, (name, params)) in presets.iter().enumerate() {
+            for (other_name, other_params) in presets.iter().skip(index + 1) {
+                assert_ne!(
+                    params, other_params,
+                    "presets {name} and {other_name} unexpectedly match"
+                );
+            }
+        }
     }
 
     #[test]
