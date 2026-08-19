@@ -401,6 +401,7 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
       return {
         left: Math.round(rect.left),
         top: Math.round(rect.top),
+        height: Math.round(rect.height),
         bottom: rect.bottom,
         right: rect.right,
         scrollWidth: node.scrollWidth,
@@ -412,6 +413,7 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
     });
   });
   expect(new Set(layout.map((button) => button.top)).size, "narrow desktop actions must not wrap").toBe(1);
+  expect(new Set(layout.map((button) => button.height)).size, "wrapped action labels must not change individual button heights").toBe(1);
   expect(layout.every((button) => button.insideActionBar), "action buttons must stay inside the action bar").toBe(true);
   expect(layout.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight), "action labels must fit inside their buttons").toBe(true);
   expect(layout.map((button) => button.left)).toEqual([...layout].map((button) => button.left).toSorted((a, b) => a - b));
