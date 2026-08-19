@@ -49,15 +49,21 @@ pub fn escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 pub fn layout(title: &str, body: &str, head: &str) -> String {
-    layout_with_context(title, body, head, None)
+    layout_with_header(title, body, head, None, "")
 }
 
-fn layout_with_context(title: &str, body: &str, head: &str, context: Option<&str>) -> String {
+fn layout_with_header(
+    title: &str,
+    body: &str,
+    head: &str,
+    context: Option<&str>,
+    header_extra: &str,
+) -> String {
     let context = context.map_or_else(String::new, |value| {
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<div class="bank-widget" role="button" tabindex="0" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></div></header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<div class="bank-widget" role="button" tabindex="0" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></div>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
         escape(title),
         asset("/public/manifest.webmanifest"),
         asset("/public/icon.svg"),
@@ -66,6 +72,7 @@ fn layout_with_context(title: &str, body: &str, head: &str, context: Option<&str
         import_map(),
         head,
         context,
+        header_extra,
         body,
         asset("/public/bank.js")
     )
@@ -308,7 +315,7 @@ pub fn table_page(view: &crate::view::TableView) -> String {
         seats,
         app
     );
-    layout_with_context(
+    layout_with_header(
         &view.name,
         &fallback,
         &format!(
@@ -316,6 +323,7 @@ pub fn table_page(view: &crate::view::TableView) -> String {
             asset("/public/table.js")
         ),
         Some(&view.name),
+        r#"<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings">⚙</button>"#,
     )
 }
 

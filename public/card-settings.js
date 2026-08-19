@@ -56,7 +56,7 @@ export function useCardSettings() {
   return [settings, setSettings];
 }
 
-export function CardSettings({ settings: providedSettings, setSettings: providedSetSettings, interactive = false, concealable = false } = {}) {
+export function CardSettings({ settings: providedSettings, setSettings: providedSetSettings, interactive = false, concealable = false, trigger = true } = {}) {
   const [localSettings, localSetSettings] = useCardSettings();
   const settings = providedSettings || localSettings;
   const setSettings = providedSetSettings || localSetSettings;
@@ -70,9 +70,7 @@ export function CardSettings({ settings: providedSettings, setSettings: provided
     setSettings((current) => ({ ...current, [name]: value }));
     localStorage.setItem(key, value ? "on" : "off");
   };
-  return html`<div class="card-settings">
-    <button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>
-    <dialog id="card-config" class="card-config-dialog">
+  const dialog = html`<dialog id="card-config" class="card-config-dialog">
       <form method="dialog">
         <header><h2>Card display</h2><button type="submit" title="Close" aria-label="Close">×</button></header>
         <div class="card-config-preview" aria-label="Card preview"><${Card} card="5c" interactive=${interactive} /><${Card} card="6c" interactive=${interactive} /></div>
@@ -82,6 +80,8 @@ export function CardSettings({ settings: providedSettings, setSettings: provided
         <label class="card-option-toggle"><input name="four-color" type="checkbox" checked=${settings.fourColor} onChange=${toggle("fourColor", CARD_SETTING_KEYS.fourColor)} /><span><b>Four-color suits</b><small>Color clubs blue and diamonds orange</small></span></label>
         ${concealable && html`<label class="card-option-toggle"><input name="paranoid" type="checkbox" checked=${settings.paranoid} onChange=${toggle("paranoid", CARD_SETTING_KEYS.paranoid)} /><span><b>Paranoid mode</b><small>Keep your hole cards face down until you hover or hold them</small></span></label>`}
       </form>
-    </dialog>
-  </div>`;
+    </dialog>`;
+  return trigger
+    ? html`<div class="card-settings"><button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>${dialog}</div>`
+    : dialog;
 }

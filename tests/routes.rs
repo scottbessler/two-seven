@@ -1508,6 +1508,29 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
         t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     }
     let id = seat_table(&t, "Test", 2, 10_000, false).await;
+    let table_page = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}"))
+                .header(header::COOKIE, &cookie_a)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(table_page.status(), StatusCode::OK);
+    let table_html = String::from_utf8(
+        to_bytes(table_page.into_body(), usize::MAX)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    assert!(table_html.contains(r#"<header class="site-header">"#));
+    assert!(table_html.contains(r#"class="table-config-button""#));
+    assert!(table_html.contains(r#"aria-label="Card display settings""#));
     for cookie_value in [&cookie_a, &cookie_b] {
         let response = t
             .router

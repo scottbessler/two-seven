@@ -157,6 +157,16 @@ function useHeaderInfo(tournament) {
   }, [info]);
 }
 
+function useHeaderSettingsButton() {
+  useEffect(() => {
+    const button = document.querySelector(".site-header .table-config-button");
+    if (!button) return undefined;
+    const open = () => document.getElementById("card-config")?.showModal();
+    button.addEventListener("click", open);
+    return () => button.removeEventListener("click", open);
+  }, []);
+}
+
 function eventLabel(event, seats) {
   const seat = event.seat == null ? null : seats.find((candidate) => candidate.index === event.seat);
   const name = seat?.display_name || seat?.occupant || `Seat ${event.seat}`;
@@ -309,6 +319,7 @@ function TableApp() {
     return () => events.close();
   }, []);
   useHeaderInfo(state?.tournament);
+  useHeaderSettingsButton();
   const showdown = state && !state.hand ? state.last_hand : null;
   const resultPause = 1000 * (state?.result_pause_seconds
     ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);
@@ -339,7 +350,7 @@ function TableApp() {
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
-    <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
+    <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} trigger=${false} />
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
       <div class="felt">
