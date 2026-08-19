@@ -312,6 +312,7 @@ async fn game_setup_walks_a_stepped_dialog() {
         })
         .await
         .unwrap();
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let response = t
         .router
         .oneshot(
@@ -329,7 +330,11 @@ async fn game_setup_walks_a_stepped_dialog() {
     // A stepped dialog for tournaments: players, buy-in, then confirm.
     assert_eq!(html.matches("class=\"setup-step\"").count(), 2);
     assert!(html.contains("setup-step setup-confirm"));
-    assert_eq!(html.matches("data-choice=\"buyIn\"").count(), 6);
+    assert_eq!(html.matches("data-choice=\"buyIn\"").count(), 2);
+    assert!(html.contains(r#"data-choice="buyIn" value="20000""#));
+    assert!(html.contains(r#"data-choice="buyIn" value="100000""#));
+    assert!(!html.contains(r#"value="50000""#));
+    assert!(!html.contains(r#"value="200000""#));
     assert!(html.contains("data-choice=\"players\""));
     assert!(
         !html.contains("data-choice=\"betting\""),
@@ -663,7 +668,7 @@ async fn blackjack_caps_starting_bet_at_half_the_bankroll() {
 }
 
 #[tokio::test]
-async fn the_lobby_counts_humans_and_lists_cash_tables_you_can_afford() {
+async fn the_lobby_counts_humans_and_lists_tables_by_affordability() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -680,6 +685,42 @@ async fn the_lobby_counts_humans_and_lists_cash_tables_you_can_afford() {
     t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let cookie_value = cookie(&t.key, user);
     two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    let pricey_config = two_seven::table::TournamentConfig {
+        buy_in: 200_000,
+        seat_count: 6,
+        starting_chips: 1_000_000,
+        levels: vec![two_seven::table::BlindLevel {
+            small_blind: 10_000,
+            big_blind: 20_000,
+            ante: 0,
+            hands: 12,
+        }],
+        payout_percentages: vec![65, 35],
+        no_debt: false,
+    };
+    t.tables
+        .insert(two_seven::table::Table::new(
+            "Pricey tournament".into(),
+            two_seven::table::Stakes::NoLimit {
+                small_blind: 10_000,
+                big_blind: 20_000,
+            },
+            two_seven::table::TableMode::Tournament(two_seven::table::TournamentState {
+                config: pricey_config,
+                current_level: 0,
+                hands_at_level: 0,
+                finish_order: Vec::new(),
+                registered: 0,
+                started: false,
+                prize_pool: 0,
+                finished: false,
+                paid_out: false,
+            }),
+            6,
+            200_000,
+        ))
         .await
         .unwrap();
     for _ in 0..(two_seven::cash::SEATS + 2) {
@@ -705,13 +746,20 @@ async fn the_lobby_counts_humans_and_lists_cash_tables_you_can_afford() {
     // Cash tables and tournaments are listed apart.
     assert!(html.contains("<h2>Cash tables</h2>"));
     assert!(html.contains("<h2>Tournaments</h2>"));
+    assert!(
+        html.contains(
+            r#"<details class="out-of-reach"><summary>Cash tables to spectate</summary>"#
+        )
+    );
+    assert!(
+        html.contains(
+            r#"<details class="out-of-reach"><summary>Tournaments to spectate</summary>"#
+        )
+    );
+    assert!(html.contains("Pricey tournament"));
     for tier in two_seven::cash::TIERS {
         let name = two_seven::cash::name(tier);
-        if tier <= BankStore::RE_UP_AMOUNT {
-            assert!(html.contains(&name), "{name} should be visible");
-        } else {
-            assert!(!html.contains(&name), "{name} should be hidden");
-        }
+        assert!(html.contains(&name), "{name} should be visible");
     }
 }
 
@@ -1140,6 +1188,7 @@ async fn the_lobby_drops_a_finished_tournament() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let create = t
         .router
         .clone()
@@ -1150,7 +1199,7 @@ async fn the_lobby_drops_a_finished_tournament() {
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(
-                    r#"{"name":"Last night","buy_in":50000,"seat_count":2,"starting_chips":1000000,"levels":[{"small_blind":10000,"big_blind":20000,"ante":0,"hands":4}],"payout_percentages":[100]}"#,
+                    r#"{"name":"Last night","buy_in":20000,"seat_count":2,"starting_chips":1000000,"levels":[{"small_blind":10000,"big_blind":20000,"ante":0,"hands":4}],"payout_percentages":[100]}"#,
                 ))
                 .unwrap(),
         )
@@ -1214,9 +1263,10 @@ async fn tournament_accepts_the_full_ten_thousand_chip_ladder() {
         .await
         .unwrap();
     let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     // The T10,000 structure climbs to a 16,000-chip big blind, well past the
     // cash-game entry ceiling, and a level lasts six players' worth of hands.
-    let body = r#"{"name":"Ladder","buy_in":50000,"seat_count":6,"starting_chips":1000000,"levels":[{"small_blind":10000,"big_blind":20000,"ante":0,"hands":12},{"small_blind":20000,"big_blind":40000,"ante":0,"hands":12},{"small_blind":30000,"big_blind":60000,"ante":0,"hands":12},{"small_blind":40000,"big_blind":80000,"ante":0,"hands":12},{"small_blind":50000,"big_blind":100000,"ante":0,"hands":12},{"small_blind":60000,"big_blind":120000,"ante":0,"hands":12},{"small_blind":80000,"big_blind":160000,"ante":0,"hands":12},{"small_blind":100000,"big_blind":200000,"ante":0,"hands":12},{"small_blind":150000,"big_blind":300000,"ante":0,"hands":12},{"small_blind":200000,"big_blind":400000,"ante":0,"hands":12},{"small_blind":300000,"big_blind":600000,"ante":0,"hands":12},{"small_blind":400000,"big_blind":800000,"ante":0,"hands":12},{"small_blind":500000,"big_blind":1000000,"ante":0,"hands":12},{"small_blind":600000,"big_blind":1200000,"ante":0,"hands":12},{"small_blind":800000,"big_blind":1600000,"ante":0,"hands":12}],"payout_percentages":[65,35]}"#;
+    let body = r#"{"name":"Ladder","buy_in":100000,"seat_count":6,"starting_chips":1000000,"levels":[{"small_blind":10000,"big_blind":20000,"ante":0,"hands":12},{"small_blind":20000,"big_blind":40000,"ante":0,"hands":12},{"small_blind":30000,"big_blind":60000,"ante":0,"hands":12},{"small_blind":40000,"big_blind":80000,"ante":0,"hands":12},{"small_blind":50000,"big_blind":100000,"ante":0,"hands":12},{"small_blind":60000,"big_blind":120000,"ante":0,"hands":12},{"small_blind":80000,"big_blind":160000,"ante":0,"hands":12},{"small_blind":100000,"big_blind":200000,"ante":0,"hands":12},{"small_blind":150000,"big_blind":300000,"ante":0,"hands":12},{"small_blind":200000,"big_blind":400000,"ante":0,"hands":12},{"small_blind":300000,"big_blind":600000,"ante":0,"hands":12},{"small_blind":400000,"big_blind":800000,"ante":0,"hands":12},{"small_blind":500000,"big_blind":1000000,"ante":0,"hands":12},{"small_blind":600000,"big_blind":1200000,"ante":0,"hands":12},{"small_blind":800000,"big_blind":1600000,"ante":0,"hands":12}],"payout_percentages":[65,35]}"#;
     let create = t
         .router
         .oneshot(
@@ -1231,6 +1281,47 @@ async fn tournament_accepts_the_full_ten_thousand_chip_ladder() {
         .await
         .unwrap();
     assert_eq!(create.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn tournament_create_requires_affordable_cash_ladder_buy_in() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "stakecheck".into(),
+            display_name: "Stake Check".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let create = |buy_in| {
+        t.router.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tournaments")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"name":"Stake","buy_in":{buy_in},"seat_count":4,"starting_chips":1000000,"levels":[{{"small_blind":10000,"big_blind":20000,"ante":0,"hands":8}}],"payout_percentages":[100]}}"#
+                )))
+                .unwrap(),
+        )
+    };
+    assert_eq!(
+        create(50_000).await.unwrap().status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        create(200_000).await.unwrap().status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(create(100_000).await.unwrap().status(), StatusCode::OK);
 }
 
 #[tokio::test]
@@ -1743,7 +1834,7 @@ async fn tournament_registration_uses_configured_buy_in_and_first_open_seat() {
         .unwrap();
     let cookie_value = cookie(&t.key, user);
     t.bank.re_up(AccountOwner::User(user)).await.unwrap();
-    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tournaments").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Sit and Go","buy_in":5000,"seat_count":2,"starting_chips":20000,"levels":[{"small_blind":100,"big_blind":200,"ante":0,"hands":10}],"payout_percentages":[100]}"#)).unwrap()).await.unwrap();
+    let create = t.router.clone().oneshot(Request::builder().method("POST").uri("/tournaments").header(header::COOKIE, &cookie_value).header(header::CONTENT_TYPE, "application/json").body(Body::from(r#"{"name":"Sit and Go","buy_in":20000,"seat_count":2,"starting_chips":20000,"levels":[{"small_blind":100,"big_blind":200,"ante":0,"hands":10}],"payout_percentages":[100]}"#)).unwrap()).await.unwrap();
     assert_eq!(create.status(), StatusCode::OK);
     let id: Uuid = serde_json::from_slice::<serde_json::Value>(
         &to_bytes(create.into_body(), usize::MAX).await.unwrap(),
@@ -1790,7 +1881,7 @@ async fn tournament_registration_uses_configured_buy_in_and_first_open_seat() {
             .await
             .unwrap()
             .balance,
-        95_000
+        80_000
     );
 }
 

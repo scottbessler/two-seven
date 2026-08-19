@@ -124,7 +124,7 @@ pub struct CreateTournament {
 }
 
 pub async fn create_tournament(
-    AuthUser(_user): AuthUser,
+    AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Json(input): Json<CreateTournament>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -150,6 +150,9 @@ pub async fn create_tournament(
         return Err(AppError::bad_request(
             "invalid tournament configuration or payouts",
         ));
+    }
+    if !crate::cash::TIERS.contains(&input.buy_in) || input.buy_in > balance_of(&s, user).await {
+        return Err(AppError::bad_request("tournament buy-in is not available"));
     }
     let level = input.levels[0].clone();
     let config = TournamentConfig {
@@ -560,12 +563,6 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
             let your_seat = table.seats.iter().position(
                 |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
             );
-            if matches!(table.mode, TableMode::Cash { .. })
-                && your_seat.is_none()
-                && balance < table.buy_in
-            {
-                continue;
-            }
             let tournament = match &table.mode {
                 TableMode::Tournament(state) => Some(LobbyTournamentView {
                     buy_in: state.config.buy_in,
@@ -595,6 +592,7 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
                     .count(),
                 max_seats: table.max_seats,
                 no_debt,
+                affordable: your_seat.is_some() || balance >= table.buy_in,
                 tournament,
                 your_seat,
             });

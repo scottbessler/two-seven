@@ -137,7 +137,9 @@ test("builds a tournament one question at a time", async ({ page }) => {
   await page.locator('.setup-option[value="9"]').click();
   await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
   await expect(page.locator('.setup-option[value="100000"]')).toBeEnabled();
-  await expect(page.locator('.setup-option[value="1000000"]')).toBeEnabled();
+  await expect(page.locator('.setup-option[value="50000"]')).toHaveCount(0);
+  await expect(page.locator('.setup-option[value="200000"]')).toHaveCount(0);
+  await expect(page.locator('.setup-option[value="1000000"]')).toHaveCount(0);
 
   await page.locator('.setup-option[value="100000"]').click();
   await expect(page.locator("#setup-summary")).toHaveText("$1,000 tournament · 9 players · 10,000 chips · top 3 paid");
@@ -425,6 +427,7 @@ test("keeps compact table header rows from overlapping", async ({ page }) => {
   await page.locator(".header-context").evaluate((context) => {
     context.firstChild.textContent = "Friday Night Hold'em With A Needlessly Long Table Name";
   });
+  await page.locator(".table-shell").waitFor();
   await page.getByRole("button", { name: "Card display settings" }).waitFor();
 
   const geometry = await page.locator(".site-header").evaluate((header) => {

@@ -101,6 +101,7 @@ pub struct LobbyTableView {
     pub humans: usize,
     pub max_seats: usize,
     pub no_debt: bool,
+    pub affordable: bool,
     pub tournament: Option<LobbyTournamentView>,
     pub your_seat: Option<usize>,
 }

@@ -123,15 +123,15 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], _balance: 
     )
 }
 
-pub fn table_create(_balance: Cents) -> String {
-    game_create()
+pub fn table_create(balance: Cents) -> String {
+    game_create(balance)
 }
 
-pub fn tournament_create(_balance: Cents) -> String {
-    game_create()
+pub fn tournament_create(balance: Cents) -> String {
+    game_create(balance)
 }
 
-fn game_create() -> String {
+fn game_create(balance: Cents) -> String {
     // One question per step; lobby.js walks the steps and assembles the config.
     let step = |name: &str, legend: &str, options: &str| {
         format!(
@@ -158,28 +158,28 @@ fn game_create() -> String {
             option("players", "9", "9 players", "Top 3 paid")
         ),
     );
-    let buy_ins = [
-        (20_000, "$200"),
-        (50_000, "$500"),
-        (100_000, "$1,000"),
-        (200_000, "$2,000"),
-        (500_000, "$5,000"),
-        (1_000_000, "$10,000"),
-    ];
+    let buy_ins = crate::cash::TIERS
+        .into_iter()
+        .filter(|amount| *amount <= balance)
+        .collect::<Vec<_>>();
     let buy_in_step = step(
         "buyIn",
         "How much to buy in?",
-        &buy_ins
-            .iter()
-            .map(|(amount, label)| {
-                option(
-                    "buyIn",
-                    &amount.to_string(),
-                    label,
-                    "10,000 chips · blinds climb every few hands",
-                )
-            })
-            .collect::<String>(),
+        &if buy_ins.is_empty() {
+            r#"<p class="setup-note">You need at least $200 to start a tournament.</p>"#.to_string()
+        } else {
+            buy_ins
+                .iter()
+                .map(|amount| {
+                    option(
+                        "buyIn",
+                        &amount.to_string(),
+                        &format_cents(*amount),
+                        "10,000 chips · blinds climb every few hands",
+                    )
+                })
+                .collect::<String>()
+        },
     );
     let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name</legend><p class="setup-summary" id="setup-summary"></p><label>Name<input name="name" required maxlength="48" value="Friday night"></label><button class="setup-create" type="submit">Create tournament</button></fieldset>"#;
     let body = format!(
@@ -627,36 +627,59 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
             }
         )
     };
-    let section = |title: &str, rows: &str, empty: &str| {
+    let section = |title: &str, rows: &str, locked_title: &str, locked: &str, empty: &str| {
         format!(
-            "<section class=\"table-list\"><h2>{title}</h2><ul>{}</ul></section>",
-            if rows.is_empty() { empty } else { rows }
+            "<section class=\"table-list\"><h2>{title}</h2><ul>{}</ul>{}</section>",
+            if rows.is_empty() { empty } else { rows },
+            if locked.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<details class=\"out-of-reach\"><summary>{locked_title}</summary><ul>{locked}</ul></details>"
+                )
+            }
         )
     };
     let mut yours = String::new();
     let mut cash = String::new();
+    let mut cash_locked = String::new();
     let mut tournaments = String::new();
+    let mut tournaments_locked = String::new();
     for table in tables {
         let entry = row(table);
         if include_yours && table.your_seat.is_some() {
             yours.push_str(&entry);
         } else if table.tournament.is_some() {
-            tournaments.push_str(&entry);
-        } else {
+            if table.affordable {
+                tournaments.push_str(&entry);
+            } else {
+                tournaments_locked.push_str(&entry);
+            }
+        } else if table.affordable {
             cash.push_str(&entry);
+        } else {
+            cash_locked.push_str(&entry);
         }
     }
     format!(
         "{}{}{}",
         if include_yours {
-            section("Your seats", &yours, "<li>None yet</li>")
+            section("Your seats", &yours, "", "", "<li>None yet</li>")
         } else {
             String::new()
         },
-        section("Cash tables", &cash, "<li>No tables yet</li>"),
+        section(
+            "Cash tables",
+            &cash,
+            "Cash tables to spectate",
+            &cash_locked,
+            "<li>No tables yet</li>"
+        ),
         section(
             "Tournaments",
             &tournaments,
+            "Tournaments to spectate",
+            &tournaments_locked,
             "<li>None running · <a href=\"/tables/new\">start one</a></li>"
         )
     )
