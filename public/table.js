@@ -377,8 +377,7 @@ function TableApp() {
           ? html`<${DealHouseHand} refresh=${refresh} />`
           : null}</section>
     <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />
-    <p id="table-error" class="error" role="alert"></p>
-    <nav class="table-controls"><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
+    <nav class="table-controls"><p id="table-error" class="error" role="alert"></p><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;
 }
 

@@ -289,6 +289,8 @@ test("shows live hand cues and event log", async ({ page }) => {
       stageHeight: stage.getBoundingClientRect().height,
       viewport: document.documentElement.clientHeight,
       radius: getComputedStyle(stage.querySelector(".felt")).borderRadius,
+      boardViewerGap: stage.querySelector(".seat.viewer").getBoundingClientRect().top
+        - Math.max(...[...stage.querySelectorAll(".board .playing-card")].map((card) => card.getBoundingClientRect().bottom)),
       statusOverlap: [...stage.parentElement.querySelectorAll(".seat")].some((seat) => {
         const status = stage.parentElement.querySelector(".table-status")?.getBoundingClientRect();
         if (!status) return false;
@@ -297,6 +299,7 @@ test("shows live hand cues and event log", async ({ page }) => {
       }),
     }));
     expect(geometry.stageHeight).toBeLessThanOrEqual(geometry.viewport);
+    expect(geometry.boardViewerGap, "V24: board cards must keep a visible row gap above the viewer seat").toBeGreaterThanOrEqual(12);
     expect(geometry.statusOverlap, "V24: seats must not cover the table status").toBe(false);
     expect(geometry.radius).not.toContain("%");
   }
@@ -448,14 +451,29 @@ test("keeps the table log footprint stable as events accumulate", async ({ page 
   await mountTable(page, tableState);
   const log = page.locator(".game-log");
   await log.locator("ol").evaluate((list) => list.replaceChildren(list.firstElementChild));
-  const sparse = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top }));
+  const sparse = await log.evaluate((node) => {
+    const logBox = node.getBoundingClientRect();
+    const controls = document.querySelector(".table-controls").getBoundingClientRect();
+    return { height: logBox.height, controlsTop: controls.top, controlsGap: controls.top - logBox.bottom };
+  });
   await log.locator("ol").evaluate((list) => {
     const row = list.firstElementChild;
     for (let index = 0; index < 30; index += 1) list.append(row.cloneNode(true));
   });
-  const dense = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top, containsEvents: node.scrollHeight >= node.clientHeight }));
+  const dense = await log.evaluate((node) => {
+    const logBox = node.getBoundingClientRect();
+    const controls = document.querySelector(".table-controls").getBoundingClientRect();
+    return {
+      height: logBox.height,
+      controlsTop: controls.top,
+      controlsGap: controls.top - logBox.bottom,
+      containsEvents: node.scrollHeight >= node.clientHeight,
+    };
+  });
   expect(Math.abs(dense.height - sparse.height), "V22: table log height must not meaningfully grow with events").toBeLessThan(1);
   expect(dense.controlsTop, "V22: content below table log must remain fixed").toBe(sparse.controlsTop);
+  expect(sparse.controlsGap, "V22: extra vertical space should belong to the table log, not an empty row above controls").toBeLessThanOrEqual(16);
+  expect(dense.controlsGap, "V22: extra vertical space should belong to the table log, not an empty row above controls").toBeLessThanOrEqual(16);
   expect(dense.containsEvents, "V22: table events must stay inside the fixed log region").toBe(true);
 });
 
