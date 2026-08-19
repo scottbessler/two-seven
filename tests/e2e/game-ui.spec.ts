@@ -192,20 +192,37 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect.poll(cardWidthVariable).toBe("5.4rem");
   const enlargedCardBox = await viewerCard.boundingBox();
   expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.6);
+  await sizeSlider.fill("200");
+  await expect.poll(cardWidthVariable).toBe("10.8rem");
+  const maximumCardBox = await viewerCard.boundingBox();
+  expect(maximumCardBox.width).toBeGreaterThan(enlargedCardBox.width * 1.6);
+  await sizeSlider.fill("100");
+  await expect.poll(cardWidthVariable).toBe("5.4rem");
   expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
   const rankWeightVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--card-rank-weight"));
+  const rankStrokeVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--card-rank-stroke"));
   await rankSlider.fill("50");
   await weightSlider.fill("50");
-  await expect.poll(rankWeightVariable).toBe("450");
-  const initialRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
+  await expect.poll(rankWeightVariable).toBe("400");
+  await expect.poll(rankStrokeVariable).toBe("0.000em");
+  const initialRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight), stroke: getComputedStyle(corner.querySelector("b")).webkitTextStrokeWidth }));
   await rankSlider.fill("100");
   await weightSlider.fill("100");
-  await expect.poll(rankWeightVariable).toBe("900");
-  const tunedRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight) }));
+  await expect.poll(rankWeightVariable).toBe("700");
+  await expect.poll(rankStrokeVariable).toBe("0.000em");
+  const tunedRank = await viewerCard.locator(".card-corner").first().evaluate((corner) => ({ size: parseFloat(getComputedStyle(corner.querySelector("b")).fontSize), suitSize: parseFloat(getComputedStyle(corner.querySelector("i")).fontSize), weight: Number(getComputedStyle(corner.querySelector("b")).fontWeight), stroke: getComputedStyle(corner.querySelector("b")).webkitTextStrokeWidth }));
   expect(tunedRank.size).toBeGreaterThan(initialRank.size);
   expect(tunedRank.suitSize).toBeGreaterThan(initialRank.suitSize);
   expect(tunedRank.weight).toBeGreaterThan(initialRank.weight);
-  expect(tunedRank.weight).toBe(900);
+  expect(tunedRank.weight).toBe(700);
+  expect(tunedRank.stroke).toBe(initialRank.stroke);
+  await weightSlider.fill("200");
+  await expect.poll(rankWeightVariable).toBe("900");
+  await expect.poll(rankStrokeVariable).toBe("0.045em");
+  const heavyRank = await viewerCard.locator(".card-corner b").first().evaluate((rank) => ({ weight: Number(getComputedStyle(rank).fontWeight), stroke: parseFloat(getComputedStyle(rank).webkitTextStrokeWidth) }));
+  expect(heavyRank.weight).toBe(900);
+  expect(heavyRank.stroke).toBeGreaterThan(0);
+  await weightSlider.fill("100");
   expect(await page.evaluate(() => localStorage.getItem("table-rank-size-percent"))).toBe("100");
   expect(await page.evaluate(() => localStorage.getItem("table-rank-weight-percent"))).toBe("100");
   await page.getByRole("button", { name: "Close" }).click();
@@ -708,6 +725,7 @@ test("reflows viewer cards at maximum display settings", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"))).toBe("10.8rem");
   await page.getByRole("button", { name: "Close" }).click();
   const geometry = await page.locator(".table-stage").evaluate((stage) => {
+    const viewerSeat = stage.querySelector(".seat.viewer").getBoundingClientRect();
     const viewerCards = stage.querySelector(".seat.viewer .seat-cards").getBoundingClientRect();
     const viewerWager = stage.querySelector(".seat.viewer .seat-wager")?.getBoundingClientRect();
     const tableCenter = stage.querySelector(".table-center").getBoundingClientRect();
@@ -720,15 +738,18 @@ test("reflows viewer cards at maximum display settings", async ({ page }) => {
     return {
       centerOverlap: overlaps(viewerCards, tableCenter),
       wagerOverlap: viewerWager ? overlaps(viewerWager, tableCenter) : false,
+      cardsEscapeSeat: viewerCards.top < viewerSeat.top || viewerCards.bottom > viewerSeat.bottom || viewerCards.left < viewerSeat.left || viewerCards.right > viewerSeat.right,
       faceOverlap: corners.some((corner, index) => corners.slice(index + 1).some((other) => overlaps(corner, other))),
       faceEscapesCard: corners.some((corner) => corner.top < cardBox.top || corner.bottom > cardBox.bottom || corner.left < cardBox.left || corner.right > cardBox.right),
       viewerCards: { top: viewerCards.top, bottom: viewerCards.bottom },
+      viewerSeat: { top: viewerSeat.top, bottom: viewerSeat.bottom },
       tableCenter: { top: tableCenter.top, bottom: tableCenter.bottom },
       corners: corners.map(({ top, right, bottom, left }) => ({ top, right, bottom, left })),
     };
   });
   expect(geometry.centerOverlap, `V21: max-size viewer cards must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
   expect(geometry.wagerOverlap, `V21: max-size viewer wager must clear table center content ${JSON.stringify(geometry)}`).toBe(false);
+  expect(geometry.cardsEscapeSeat, `V21: max-size viewer cards must stay inside the viewer seat ${JSON.stringify(geometry)}`).toBe(false);
   expect(geometry.faceOverlap, `V21: max-size rank and suit must not collide ${JSON.stringify(geometry)}`).toBe(false);
   expect(geometry.faceEscapesCard, `V21: max-size rank and suit must stay on the card ${JSON.stringify(geometry)}`).toBe(false);
   await expect(page).toHaveScreenshot("max-card-table.png", { fullPage: true });

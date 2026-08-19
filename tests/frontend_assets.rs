@@ -198,6 +198,7 @@ fn shared_card_settings_preserve_storage_contract() {
         "--viewer-card-scale",
         "--viewer-card-w",
         "--card-rank-weight",
+        "--card-rank-stroke",
     ] {
         assert!(
             CARD_SETTINGS_JS.contains(literal),

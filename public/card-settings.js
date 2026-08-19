@@ -25,7 +25,11 @@ export function readCardSettings() {
 }
 
 function rankWeight(percent) {
-  return percent <= 100 ? percent * 9 : 900 + percent - 100;
+  return Math.round(percent <= 100 ? 400 + (percent - 50) * 6 : 700 + (percent - 100) * 2);
+}
+
+function rankStroke(percent) {
+  return `${Math.max(0, (percent - 100) * 0.00045).toFixed(3)}em`;
 }
 
 export function applyCardSettings({ cardSize, rankSize, rankWeight: rankBoldness }) {
@@ -34,12 +38,13 @@ export function applyCardSettings({ cardSize, rankSize, rankWeight: rankBoldness
   root.style.setProperty("--card-size-scale", String(cardSize / 100));
   root.style.setProperty("--card-rank-percent", String(rankSize / 100));
   root.style.setProperty("--card-rank-weight", String(rankWeight(rankBoldness)));
+  root.style.setProperty("--card-rank-stroke", rankStroke(rankBoldness));
   root.style.setProperty("--viewer-card-scale", String(DEFAULT_CARD_SCALE * cardSize));
   root.style.setProperty("--viewer-card-w", `${3 * scale}rem`);
   root.style.setProperty("--viewer-card-h", `${4.2 * scale}rem`);
   root.style.setProperty("--viewer-card-w-mobile", `${2.1 * scale}rem`);
   root.style.setProperty("--viewer-card-h-mobile", `${2.95 * scale}rem`);
-  root.style.setProperty("--viewer-stage-extra", `${Math.max(0, 8.7 * (scale - DEFAULT_CARD_SCALE))}rem`);
+  root.style.setProperty("--viewer-stage-extra", `${Math.max(0, 6.2 * (scale - DEFAULT_CARD_SCALE))}rem`);
 }
 
 export function useCardSettings() {
