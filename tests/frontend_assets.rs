@@ -69,7 +69,6 @@ fn table_island_has_live_state_and_action_contracts() {
         "SmallBlind",
         "BigBlind",
         "Current bet",
-        "acting-role",
         "seat-wager",
     ] {
         assert!(
@@ -105,7 +104,7 @@ fn table_css_is_mobile_poker_layout() {
         ".table-stage",
         ".showdown-result",
         ".showdown-progress",
-        ".seat.winner",
+        ".winner-role",
         ".table-pot",
         ".table-metrics",
         ".game-log",

@@ -107,7 +107,7 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
     <span class="seat-stack">${money(stack)}</span>
-    <span class="seat-badges">${current && html`<i class="seat-role acting-role">ACT</i>`}</span>
+    <span class="seat-badges"></span>
     ${player?.folded && !viewer
       ? html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`
       : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}

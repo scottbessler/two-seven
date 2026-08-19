@@ -233,6 +233,8 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(tooltipBox.y + tooltipBox.height, "V20: top-seat tooltip bottom edge must remain visible").toBeLessThanOrEqual(viewport.height);
   await page.locator(".brand").hover();
   await expect(page.locator(".seat.acting")).toHaveCount(1);
+  await expect(page.locator(".seat.acting")).not.toContainText("ACT");
+  await expect(page.locator(".seat.acting")).toHaveCSS("border-top-color", "rgb(217, 173, 85)");
   // Every seat keeps a wager slot so it does not resize when a bet lands.
   await expect(page.locator(".seat-wager")).toHaveCount(6);
   await expect(page.locator(".seat-wager:not(.no-wager)")).toHaveCount(3);
@@ -708,7 +710,7 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
   const opponentCard = page.locator(".seat:not(.viewer) .seat-cards.revealed .playing-card").first();
   expect((await opponentCard.boundingBox()).width).toBeGreaterThan(40);
-  await expect(page.locator(".seat.winner")).toHaveCSS("border-top-width", "2px");
+  await expect(page.locator(".seat.winner .winner-role")).toHaveText("WINNER");
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 6s");
   await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
   await expect(page.locator(".last-hand")).toHaveCount(0);
