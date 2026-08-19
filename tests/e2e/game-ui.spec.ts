@@ -106,7 +106,7 @@ async function mountTable(page, state) {
     context.className = "header-context";
     context.textContent = "Friday Night Hold'em";
     header?.insertBefore(context, header.querySelector(".bank-widget"));
-    header?.insertAdjacentHTML("beforeend", '<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings">⚙</button>');
+    header?.insertAdjacentHTML("beforeend", '<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" commandfor="card-config" command="show-modal">⚙</button>');
     main.insertAdjacentHTML("beforeend", '<div id="table-app" data-table-id="mock"></div>');
   });
   await page.evaluate(() => import(`/public/table.js?e2e=${Date.now()}`));

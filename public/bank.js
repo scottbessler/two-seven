@@ -2,20 +2,12 @@ import { wholeDollarMoney as money } from "/public/shared.js";
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
-// Signing out asks first: the trigger only opens the dialog, and the form is
-// submitted by the confirming button inside it.
-const signOut = document.querySelector(".sign-out");
-if (signOut) {
-  const dialog = signOut.querySelector("#sign-out");
-  signOut.querySelector(".sign-out-trigger")?.addEventListener("click", () => dialog?.showModal());
-  signOut.querySelector(".sign-out-cancel")?.addEventListener("click", () => dialog?.close());
-}
-
 const balance = document.getElementById("bank-balance");
 const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
+const panel = document.getElementById("bank-panel");
 
-if (balance && widget) {
+if (balance && widget && panel) {
   const loadBank = () => fetch("/api/bank", { headers: { Accept: "application/json" } })
     .then((response) => (response.ok ? response.json() : null))
     .then((account) => {
@@ -25,13 +17,6 @@ if (balance && widget) {
       delta.textContent = latest ? ` (${latest.delta >= 0 ? "+" : ""}${money(latest.delta)})` : "";
       for (const button of document.querySelectorAll(".re-up-form button")) {
         button.disabled = account.balance >= 10_000;
-      }
-      let panel = widget.querySelector(".bank-panel");
-      if (!panel) {
-        panel = document.createElement("span");
-        panel.className = "bank-panel";
-        panel.setAttribute("role", "status");
-        widget.append(panel);
       }
       panel.replaceChildren();
       const heading = document.createElement("strong");
@@ -82,14 +67,4 @@ if (balance && widget) {
       }).then(() => loadBank());
     });
   }
-  widget.addEventListener("click", () => {
-    const expanded = widget.getAttribute("aria-expanded") === "true";
-    widget.setAttribute("aria-expanded", String(!expanded));
-  });
-  widget.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    const expanded = widget.getAttribute("aria-expanded") === "true";
-    widget.setAttribute("aria-expanded", String(!expanded));
-  });
 }

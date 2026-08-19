@@ -157,16 +157,6 @@ function useHeaderInfo(tournament) {
   }, [info]);
 }
 
-function useHeaderSettingsButton() {
-  useEffect(() => {
-    const button = document.querySelector(".site-header .table-config-button");
-    if (!button) return undefined;
-    const open = () => document.getElementById("card-config")?.showModal();
-    button.addEventListener("click", open);
-    return () => button.removeEventListener("click", open);
-  }, []);
-}
-
 function eventLabel(event, seats) {
   const seat = event.seat == null ? null : seats.find((candidate) => candidate.index === event.seat);
   const name = seat?.display_name || seat?.occupant || `Seat ${event.seat}`;
@@ -229,8 +219,6 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
   }}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
 }
 
-const forfeitDialog = () => document.getElementById("forfeit-entry");
-
 function TableCommand({ label, endpoint, disabled, forfeits, buyIn, refresh }) {
   const submit = async () => {
     const response = await fetch(endpoint, {
@@ -244,14 +232,14 @@ function TableCommand({ label, endpoint, disabled, forfeits, buyIn, refresh }) {
   // Walking out of a tournament is not a cash-out: the entry is gone, so ask first.
   if (forfeits) {
     return html`<span class="table-command-confirm">
-      <button class="table-command" type="button" onClick=${() => forfeitDialog()?.showModal()}>${label}</button>
+      <button class="table-command" type="button" commandfor="forfeit-entry" command="show-modal">${label}</button>
       <dialog id="forfeit-entry" class="confirm-dialog">
         <form method="dialog">
           <header><h2>Leave the tournament?</h2></header>
           <p>You forfeit your entry. The ${money(buyIn)} buy-in stays in the prize pool, your chips leave the table, and you finish in your current place.</p>
           <footer>
             <button type="submit" value="stay">Keep playing</button>
-            <button class="danger" type="button" onClick=${() => { forfeitDialog()?.close(); submit(); }}>Forfeit and leave</button>
+            <button class="danger" type="button" commandfor="forfeit-entry" command="close" onClick=${submit}>Forfeit and leave</button>
           </footer>
         </form>
       </dialog>
@@ -319,7 +307,6 @@ function TableApp() {
     return () => events.close();
   }, []);
   useHeaderInfo(state?.tournament);
-  useHeaderSettingsButton();
   const showdown = state && !state.hand ? state.last_hand : null;
   const resultPause = 1000 * (state?.result_pause_seconds
     ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);

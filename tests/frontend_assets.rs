@@ -110,7 +110,7 @@ fn table_css_is_mobile_poker_layout() {
         ".seat.acting",
         ".seat.folded",
         ".seat-wager",
-        ".bank-widget[aria-expanded=true]",
+        ".bank-widget[open]",
         "position:absolute",
         "label[hidden]{display:none}",
     ] {
@@ -127,7 +127,8 @@ fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("bank-balance"));
     assert!(BANK_JS.contains("textContent"));
     assert!(BANK_JS.contains("bank-delta"));
-    assert!(BANK_JS.contains("aria-expanded"));
+    assert!(BANK_JS.contains("bank-panel"));
+    assert!(!BANK_JS.contains("aria-expanded"));
 }
 
 #[test]
@@ -204,6 +205,7 @@ fn shared_card_settings_preserve_storage_contract() {
         "--card-rank-weight",
         "--card-rank-stroke",
         "four-color-suits",
+        r#"command="show-modal""#,
     ] {
         assert!(
             CARD_SETTINGS_JS.contains(literal),

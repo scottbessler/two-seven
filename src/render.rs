@@ -33,10 +33,10 @@ fn import_map() -> String {
 fn sign_out() -> &'static str {
     concat!(
         r#"<form class="sign-out" method="post" action="/auth/logout">"#,
-        r#"<button class="sign-out-trigger" type="button">Sign out</button>"#,
+        r#"<button class="sign-out-trigger" type="button" commandfor="sign-out" command="show-modal">Sign out</button>"#,
         r#"<dialog id="sign-out" class="confirm-dialog"><div><header><h2>Sign out?</h2></header>"#,
         r#"<p>You will have to sign in again. Any table you are sitting at keeps your seat.</p>"#,
-        r#"<footer><button class="sign-out-cancel" type="button">Stay signed in</button>"#,
+        r#"<footer><button class="sign-out-cancel" type="button" commandfor="sign-out" command="close">Stay signed in</button>"#,
         r#"<button class="danger" type="submit">Sign out</button></footer></div></dialog></form>"#
     )
 }
@@ -63,7 +63,7 @@ fn layout_with_header(
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<div class="bank-widget" role="button" tabindex="0" title="Account balance" aria-expanded="false">🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></div>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<details class="bank-widget" title="Account balance"><summary>🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></summary><div id="bank-panel" class="bank-panel" role="status"></div></details>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
         escape(title),
         asset("/public/manifest.webmanifest"),
         asset("/public/icon.svg"),
@@ -323,7 +323,7 @@ pub fn table_page(view: &crate::view::TableView) -> String {
             asset("/public/table.js")
         ),
         Some(&view.name),
-        r#"<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings">⚙</button>"#,
+        r#"<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" commandfor="card-config" command="show-modal">⚙</button>"#,
     )
 }
 

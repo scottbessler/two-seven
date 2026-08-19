@@ -914,7 +914,9 @@ async fn signing_out_is_quiet_and_asks_first() {
         // The trigger only opens a dialog; the form is submitted from inside it.
         assert!(html.contains("sign-out-trigger"), "{path} needs a trigger");
         assert!(
-            html.contains(r#"<button class="sign-out-trigger" type="button">"#),
+            html.contains(
+                r#"<button class="sign-out-trigger" type="button" commandfor="sign-out" command="show-modal">"#
+            ),
             "{path}: the trigger must not submit the form"
         );
         assert!(
@@ -1531,6 +1533,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
     assert!(table_html.contains(r#"<header class="site-header">"#));
     assert!(table_html.contains(r#"class="table-config-button""#));
     assert!(table_html.contains(r#"aria-label="Card display settings""#));
+    assert!(table_html.contains(r#"commandfor="card-config" command="show-modal""#));
     for cookie_value in [&cookie_a, &cookie_b] {
         let response = t
             .router

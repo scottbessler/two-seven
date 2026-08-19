@@ -82,6 +82,6 @@ export function CardSettings({ settings: providedSettings, setSettings: provided
       </form>
     </dialog>`;
   return trigger
-    ? html`<div class="card-settings"><button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" onClick=${() => document.getElementById("card-config")?.showModal()}>⚙</button>${dialog}</div>`
+    ? html`<div class="card-settings"><button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" commandfor="card-config" command="show-modal">⚙</button>${dialog}</div>`
     : dialog;
 }
