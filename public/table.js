@@ -45,44 +45,7 @@ function blindRole(events, seat) {
   return null;
 }
 
-function seatPosition(order, total) {
-  const halfWidth = 45;
-  const halfHeight = 42;
-  const perimeter = 4 * (halfWidth + halfHeight);
-  let distance = (order / total) * perimeter;
-  let x;
-  let y;
-  if (distance <= halfWidth) {
-    x = -distance;
-    y = halfHeight;
-  } else if ((distance -= halfWidth) <= 2 * halfHeight) {
-    x = -halfWidth;
-    y = halfHeight - distance;
-  } else if ((distance -= 2 * halfHeight) <= 2 * halfWidth) {
-    x = -halfWidth + distance;
-    y = -halfHeight;
-  } else if ((distance -= 2 * halfWidth) <= 2 * halfHeight) {
-    x = halfWidth;
-    y = -halfHeight + distance;
-  } else {
-    distance -= 2 * halfHeight;
-    x = halfWidth - distance;
-    y = halfHeight;
-  }
-  // Rail coordinates ride on custom properties so the mobile grid layout can
-  // ignore them without fighting inline styles.
-  return { "--seat-left": `${50 + x}%`, "--seat-top": `${50 + y}%` };
-}
-
-function Seat({ seat, player, events, current, button, order, total, viewer, viewerCards, showdown, leading, settled }) {
-  const position = seatPosition(order, total);
-  const seatTop = Number.parseFloat(position["--seat-top"]);
-  const tooltipBelow = seatTop < 35;
-  // Cards hang toward the middle of the table; hanging outward would push a
-  // bottom seat's hand off the stage entirely.
-  const cardsAbove = seatTop > 55;
-  const positionLeft = Number.parseFloat(position["--seat-left"]);
-  const tooltipHorizontal = positionLeft < 25 ? "tooltip-right" : positionLeft > 75 ? "tooltip-left" : null;
+function Seat({ seat, player, events, current, button, viewer, viewerCards, showdown, leading, settled }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
@@ -99,15 +62,14 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
     ? (player?.stack ?? seat.stack)
     : beforeAwards;
   const winner = settled && awarded > 0;
-  const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", cardsAbove && "cards-above", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
-  return html`<article class=${classes} style=${position} data-seat-order=${order}>
+  const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
+  return html`<article class=${classes}>
     <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
     <span class="seat-stack">${money(stack)}</span>
-    <span class="seat-badges"></span>
     ${player?.folded && !viewer
       ? html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`
       : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
@@ -347,7 +309,7 @@ function TableApp() {
   // has had its moment, hand the table back to whoever is watching.
   const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
   const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
-  const renderSeat = (seat, order, seats) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${seats.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
     <p class=${`table-status ${hand ? "" : "waiting-status"}`}>${showdown
@@ -359,7 +321,7 @@ function TableApp() {
           : "Waiting for players"}</p>
     <section class="table-stage" aria-label="Poker table">
       <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
-      <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map((seat, order) => renderSeat(seat, order, otherSeats))}</div>
+      <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
@@ -367,7 +329,7 @@ function TableApp() {
           ${showdown && html`<p class="showdown-result">${result}</p>`}
         </div>
       </div>
-      ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat, 0, [viewerSeat])}</div>`}
+      ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}
     </section>
     <section class="decision-area">${showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
