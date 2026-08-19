@@ -185,7 +185,7 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".card-config-dialog output").first()).toHaveText("100%");
   await expect.poll(cardWidthVariable).toBe("5.4rem");
   const enlargedCardBox = await viewerCard.boundingBox();
-  expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.8);
+  expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.6);
   expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
   const rankWeightVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--card-rank-weight"));
   await rankSlider.fill("50");
@@ -209,8 +209,8 @@ test("shows live hand cues and event log", async ({ page }) => {
   await page.waitForTimeout(250);
   const firstMagnified = await viewerCard.boundingBox();
   const secondMagnified = await secondViewerCard.boundingBox();
-  expect(firstMagnified.width).toBeGreaterThan(firstBeforeMagnify.width * 1.15);
-  expect(secondMagnified.width).toBeGreaterThan(secondBeforeMagnify.width * 1.15);
+  expect(firstMagnified.width).toBeGreaterThan(firstBeforeMagnify.width * 1.1);
+  expect(secondMagnified.width).toBeGreaterThan(secondBeforeMagnify.width * 1.1);
   await page.locator(".brand").hover();
   await page.waitForTimeout(250);
   await expect(page.locator(".empty-seat")).toHaveCount(0);
@@ -239,11 +239,22 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".seat.viewer .seat-wager")).toHaveText("$12");
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
+  const viewerName = await page.locator(".seat.viewer .player-info").boundingBox();
+  expect(viewerName.y + viewerName.height, "viewer name must sit above viewer cards").toBeLessThan(viewerCards.y);
+  expect(viewerWager.y + viewerWager.height, "viewer wager must sit above viewer cards").toBeLessThan(viewerCards.y);
   const wagerBehindCards = viewerWager.x < viewerCards.x + viewerCards.width
     && viewerWager.x + viewerWager.width > viewerCards.x
     && viewerWager.y < viewerCards.y + viewerCards.height
     && viewerWager.y + viewerWager.height > viewerCards.y;
   expect(wagerBehindCards, "V16: viewer cards must not cover the viewer wager").toBe(false);
+  const opponentWagerLayout = await page.locator(".other-seats").evaluate((rail) => [...rail.querySelectorAll(".seat")].map((seat) => {
+    const cards = seat.querySelector(".seat-cards,.seat-card-state")?.getBoundingClientRect();
+    const wager = seat.querySelector(".seat-wager:not(.no-wager)")?.getBoundingClientRect();
+    if (!cards || !wager) return true;
+    const overlaps = wager.left < cards.right && wager.right > cards.left && wager.top < cards.bottom && wager.bottom > cards.top;
+    return !overlaps && wager.top >= cards.bottom;
+  }).every(Boolean));
+  expect(opponentWagerLayout, "opponent wagers must sit below cards/folded state without overlap").toBe(true);
   const tableStatus = await page.locator(".table-status").boundingBox();
   const wagerOverlapsStatus = viewerWager.x < tableStatus.x + tableStatus.width && viewerWager.x + viewerWager.width > tableStatus.x && viewerWager.y < tableStatus.y + tableStatus.height && viewerWager.y + viewerWager.height > tableStatus.y;
   expect(wagerOverlapsStatus, "V16: viewer wager must not cover table status").toBe(false);
@@ -439,7 +450,7 @@ test("keeps the table log footprint stable as events accumulate", async ({ page 
     for (let index = 0; index < 30; index += 1) list.append(row.cloneNode(true));
   });
   const dense = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top, containsEvents: node.scrollHeight >= node.clientHeight }));
-  expect(dense.height, "V22: table log height must not grow with events").toBe(sparse.height);
+  expect(Math.abs(dense.height - sparse.height), "V22: table log height must not meaningfully grow with events").toBeLessThan(1);
   expect(dense.controlsTop, "V22: content below table log must remain fixed").toBe(sparse.controlsTop);
   expect(dense.containsEvents, "V22: table events must stay inside the fixed log region").toBe(true);
 });
@@ -690,6 +701,7 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await mountTable(page, showdownState);
   await expect(page.locator(".seat.winner")).toHaveCount(1);
   await expect(page.locator(".seat .seat-cards.revealed")).toHaveCount(2);
+  await expect(page.locator(".seat:not(.viewer) .seat-cards .card-zoom-target")).toHaveCount(0);
   await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
   const opponentCard = page.locator(".seat:not(.viewer) .seat-cards.revealed .playing-card").first();

@@ -151,7 +151,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .player-tooltip span,.player-tooltip small{color:var(--muted)}
 .player-info:hover .player-tooltip,.player-info:focus .player-tooltip,.player-info:focus-within .player-tooltip{display:block}
 .seat-stack{color:var(--accent)!important;font-size:.8rem!important;font-weight:800}
-.seat-badges{display:flex;min-height:.85rem;align-items:center;justify-content:center;gap:.2rem}
+.seat-badges,.seat-corner-badges,.seat-outcome-badges,.seat-card-state{display:flex;min-height:.85rem;align-items:center;justify-content:center;gap:.2rem}
 .seat.leading{border-color:#7fd4a8;box-shadow:0 0 0 3px #7fd4a855,0 8px 20px #0007}
 .seat .leading-role{border-color:#7fd4a8;background:#7fd4a8;color:#0d2419}
 .seat.winner{border:2px solid #f1d56e;background:#245941;box-shadow:0 0 0 5px #f1d56e70,0 0 28px #f1d56e70,0 8px 24px #0008}
@@ -243,34 +243,36 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell>.game-log{grid-row:5}
   .table-shell>#table-error{grid-row:6}
   .table-shell>.table-controls{grid-row:7}
-  .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:27rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.9rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.8rem)}
+  .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:30rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.45rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.2rem)}
   .table-stage .felt{position:static;inset:auto;width:100%;min-height:0;max-width:none;margin:0;padding:.25rem 0;border:0;border-radius:0;background:none;box-shadow:none}
-  .table-stage .table-center{position:static;width:auto;transform:none;text-align:center}
+  .table-stage .table-center{position:static;display:grid;justify-items:center;gap:.4rem;width:auto;transform:none;text-align:center}
   .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
   .table-stage .playing-card{--card-w:min(3.65rem,calc((100vw - 15rem)/5));--card-h:min(5.1rem,calc((100vw - 15rem)/5 * 1.4));--corner-gap:.18rem}
   .table-metrics{position:static;display:flex;flex-direction:row;justify-content:center;gap:.5rem;margin:0 0 .35rem;transform:none}
   .table-metrics span{min-width:6.2rem;padding:.24rem .55rem;background:#10241fe8}
   .table-status,.showdown-result{margin:0;color:var(--muted);font-size:.82rem;text-align:center;white-space:normal}
   .table-shell>.table-status{min-height:1.35rem;padding:0}
-  .showdown-result{margin-top:.25rem;color:#f1d56e;font-weight:800}
+  .showdown-result{margin:0;color:#f1d56e;font-weight:800}
 
   .table-stage .seats{position:static;inset:auto;display:grid;gap:.4rem;pointer-events:auto}
   .table-stage .other-seats{grid-template-columns:repeat(auto-fit,minmax(7.2rem,1fr))}
   .table-stage .viewer-seats{grid-template-columns:minmax(0,1fr)}
-  .table-stage .seat{position:relative;left:auto;top:auto;transform:none;display:grid;grid-template-rows:auto auto .95rem 1.25rem minmax(0,1fr);align-items:start;min-width:0;height:6.8rem;min-height:0;overflow:hidden;gap:.08rem;padding:.38rem .45rem;border-radius:7px;pointer-events:auto}
-  .table-stage .viewer-seats .seat{height:7.9rem;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-rows:auto auto 1rem auto;column-gap:.65rem;align-items:center}
-  .table-stage .viewer-seats .player-info,.table-stage .viewer-seats .seat-stack,.table-stage .viewer-seats .seat-badges,.table-stage .viewer-seats .seat-wager{grid-column:1}
+  .table-stage .seat{position:relative;left:auto;top:auto;transform:none;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(2.85rem,1fr) auto;align-items:start;justify-items:center;min-width:0;height:8rem;min-height:0;overflow:hidden;gap:.08rem;padding:.4rem .45rem;border-radius:7px;pointer-events:auto}
+  .table-stage .viewer-seats .seat{height:11.2rem;grid-template-rows:auto auto auto auto minmax(0,1fr)}
   .player-info>strong{max-width:100%;min-width:0}
-  .seat-badges{min-height:.9rem;overflow:hidden}
+  .seat-corner-badges{position:absolute;right:.2rem;top:.2rem;z-index:6;min-height:0;max-width:calc(100% - .4rem);overflow:hidden;justify-content:flex-end}
+  .seat-badges{position:absolute;left:.2rem;top:.2rem;z-index:6;min-height:0;max-width:calc(100% - 2.6rem);overflow:hidden;justify-content:flex-start}
+  .seat-card-state{align-self:center;min-height:0}
+  .seat-outcome-badges{position:absolute;right:-.15rem;bottom:-.15rem;z-index:8;min-height:0;justify-content:flex-end}
   .seat .seat-role{font-size:.53rem;white-space:nowrap}
   .seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;max-width:100%;margin:0 auto;padding:.1rem .3rem;font-size:.62rem;transform:none}
-  .seat-cards,.seat.cards-above .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;left:auto;display:flex;justify-content:center;align-self:end;max-width:100%;margin:.1rem auto 0;transform:none}
+  .seat-cards,.seat.cards-above .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;left:auto;display:flex;justify-content:center;align-self:center;max-width:100%;margin:.08rem auto 0;transform:none}
   .seat-cards .playing-card{--card-w:2rem;--card-h:2.8rem;--corner-gap:.08rem;margin-left:-.15rem;border-radius:3px}
   .seat-cards.revealed .playing-card{--card-w:2.45rem;--card-h:3.4rem;--corner-gap:.1rem}
-  .seat.viewer .seat-cards{grid-column:2;grid-row:1/-1;align-self:center;margin:0}
+  .seat.viewer .seat-cards{grid-column:1;grid-row:5;align-self:start;margin:.25rem auto 0}
   .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.15rem}
-  .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{transform:scale(1.2)}
-  .button-marker{left:auto;right:.2rem;top:.2rem;transform:none}
+  .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{transform:scale(1.12);transform-origin:center top}
+  .seat:not(.viewer) .seat-cards:hover,.seat:not(.viewer) .seat-cards:focus-within{z-index:7;transform:scale(1.08);transform-origin:center top}
   .seat .player-tooltip,.seat.tooltip-right .player-tooltip,.seat.tooltip-left .player-tooltip{position:fixed;left:50%;right:auto;top:auto;bottom:auto;width:min(15rem,calc(100vw - 1rem));transform:translate(-50%,-100%)}
 
   .decision-area{min-height:3.4rem;padding:.45rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
@@ -334,6 +336,11 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-stage .seats{position:static;inset:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.3rem;pointer-events:auto}
   .table-stage .seats .seat{position:relative;left:auto;top:auto;gap:.1rem;min-width:0;min-height:0;padding:.28rem .2rem;font-size:.62rem;transform:none}
   .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;padding:.35rem}
+  .table-stage .seats .seat.viewer{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto auto;justify-items:center}
+  .seat-corner-badges{position:absolute;right:.1rem;top:.1rem;z-index:6;min-height:0;max-width:calc(100% - .2rem);overflow:hidden;justify-content:flex-end}
+  .seat-badges{position:absolute;left:.1rem;top:1.05rem;z-index:6;min-height:0;max-width:calc(100% - 2.4rem);overflow:hidden;justify-content:flex-start}
+  .seat-badges .seat-role{padding:.04rem .12rem;font-size:.44rem}
+  .seat-outcome-badges{position:absolute;right:-.1rem;bottom:-.1rem;z-index:8;min-height:0;justify-content:flex-end}
   .seat span{font-size:.6rem}
   .player-info>strong{max-width:100%}
   /* Grid seats give no room to either side, so tooltips leave the seat
@@ -342,6 +349,8 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;margin:0 auto;padding:.1rem .3rem;font-size:.6rem;transform:none}
   .seat .seat-state{position:static;top:auto;bottom:auto;margin:0 auto;transform:none}
   .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;justify-content:center;margin-top:.15rem;transform:none}
+  .seat.viewer .seat-wager{grid-column:1;grid-row:3}
+  .seat.viewer .seat-cards{grid-column:1;grid-row:4}
   .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{transform:scale(1.3)}
   .button-marker{left:auto;right:.1rem;top:.1rem;transform:none}
 
