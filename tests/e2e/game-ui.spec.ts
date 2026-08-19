@@ -344,6 +344,35 @@ test("hides your own cards until you reach for them in paranoid mode", async ({ 
   expect(await page.evaluate(() => localStorage.getItem("table-paranoid-cards"))).toBe("on");
 });
 
+test("keeps desktop action buttons in one row at narrow widths", async ({ page }) => {
+  await page.setViewportSize({ width: 702, height: 900 });
+  await mountTable(page, tableState);
+
+  const buttons = page.locator(".actions button");
+  await expect(buttons).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In"]);
+  const layout = await buttons.evaluateAll((nodes) => {
+    const area = nodes[0].closest(".decision-area")?.getBoundingClientRect();
+    return nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        left: Math.round(rect.left),
+        top: Math.round(rect.top),
+        bottom: rect.bottom,
+        right: rect.right,
+        scrollWidth: node.scrollWidth,
+        clientWidth: node.clientWidth,
+        scrollHeight: node.scrollHeight,
+        clientHeight: node.clientHeight,
+        insideActionBar: area ? rect.left >= area.left - 1 && rect.right <= area.right + 1 && rect.top >= area.top - 1 && rect.bottom <= area.bottom + 1 : false,
+      };
+    });
+  });
+  expect(new Set(layout.map((button) => button.top)).size, "narrow desktop actions must not wrap").toBe(1);
+  expect(layout.every((button) => button.insideActionBar), "action buttons must stay inside the action bar").toBe(true);
+  expect(layout.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight), "action labels must fit inside their buttons").toBe(true);
+  expect(layout.map((button) => button.left)).toEqual([...layout].map((button) => button.left).toSorted((a, b) => a - b));
+});
+
 test("keeps a player tooltip inside a narrow desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 702, height: 832 });
   await mountTable(page, tableState);
