@@ -130,9 +130,31 @@ function DealHouseHand({ refresh }) {
   }}><b>Deal a hand</b></button></div>`;
 }
 
-function TournamentPanel({ tournament }) {
-  if (!tournament) return null;
-  return html`<section class="tournament-panel"><b>Level ${tournament.level}</b><span>Blinds ${money(tournament.small_blind)}/${money(tournament.big_blind)}</span><span>Ante ${money(tournament.ante)}</span><span>${tournament.hands_at_level}/${tournament.hands_per_level} hands</span></section>`;
+function tournamentInfoText(tournament) {
+  if (!tournament) return "";
+  return `Level ${tournament.level} · Blinds ${money(tournament.small_blind)}/${money(tournament.big_blind)} · Ante ${money(tournament.ante)} · ${tournament.hands_at_level}/${tournament.hands_per_level} hands`;
+}
+
+function useHeaderInfo(tournament) {
+  const info = tournamentInfoText(tournament);
+  useEffect(() => {
+    const context = document.querySelector(".header-context");
+    if (!context) return undefined;
+    context.querySelector(".header-info")?.remove();
+    if (!info) return undefined;
+    const trigger = document.createElement("span");
+    trigger.className = "header-info";
+    trigger.tabIndex = 0;
+    trigger.setAttribute("aria-label", info);
+    trigger.textContent = "ⓘ";
+    const tooltip = document.createElement("span");
+    tooltip.className = "header-info-tooltip";
+    tooltip.role = "tooltip";
+    tooltip.textContent = info;
+    trigger.append(tooltip);
+    context.append(" ", trigger);
+    return () => trigger.remove();
+  }, [info]);
 }
 
 function eventLabel(event, seats) {
@@ -165,11 +187,11 @@ function winnerLines(summary, seats) {
   });
 }
 
-function TableLog({ events, seats, summary, settled }) {
+function TableLog({ events, seats, summary, settled, status }) {
   const results = settled ? winnerLines(summary, seats) : [];
   // Awards are the punchline; they wait for the last card like everything else.
   const shown = settled ? events : events.filter((event) => event.kind !== "Award");
-  return html`<section class="game-log" aria-live="polite"><h2>Table log</h2><ol>${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
+  return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
 }
 
 // One clock for the whole result: it paces the runout and the countdown.
@@ -286,6 +308,7 @@ function TableApp() {
     events.addEventListener("error", refresh);
     return () => events.close();
   }, []);
+  useHeaderInfo(state?.tournament);
   const showdown = state && !state.hand ? state.last_hand : null;
   const resultPause = 1000 * (state?.result_pause_seconds
     ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);
@@ -309,16 +332,13 @@ function TableApp() {
   // has had its moment, hand the table back to whoever is watching.
   const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
   const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
+  const status = showdown
+    ? null
+    : hand
+      ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
+      : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
-    <${TournamentPanel} tournament=${state.tournament} />
-    <p class=${`table-status ${hand ? "" : "waiting-status"}`}>${showdown
-      ? ""
-      : hand
-        ? `${streetName(hand.street)} · ${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}`
-        : state.can_deal
-          ? "Nobody seated · deal a hand"
-          : "Waiting for players"}</p>
     <section class="table-stage" aria-label="Poker table">
       <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
@@ -338,7 +358,7 @@ function TableApp() {
         : state.can_deal
           ? html`<${DealHouseHand} refresh=${refresh} />`
           : null}</section>
-    <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} />
+    <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} status=${status} />
     <nav class="table-controls"><p id="table-error" class="error" role="alert"></p><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
   </div>`;
 }

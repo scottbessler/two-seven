@@ -92,7 +92,7 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100%;overflow:hidde
 .blackjack-table{align-items:stretch}.blackjack-hand{display:grid;gap:.4rem}.blackjack-hand h2{margin:.3rem 0}.blackjack-actions{position:static;padding:0;background:transparent;border:0;box-shadow:none}
 .board{display:flex;justify-content:center;gap:.55rem;min-height:9rem}.playing-card{--card-w:calc(6.4rem * var(--card-size-scale,1));--card-h:calc(8.9rem * var(--card-size-scale,1));--corner-gap:calc(.34rem * var(--card-size-scale,1));position:relative;display:inline-grid;place-items:center;flex:0 0 auto;width:var(--card-w);height:var(--card-h);overflow:hidden;border-radius:calc(var(--card-w)*.08);background:#faf9f2;color:#111;font-family:"Arial Narrow","Roboto Condensed",Arial,sans-serif;font-weight:700;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 3px 8px #0006}.playing-card.red{color:#d5291f}.playing-card.black{color:#20231f}.empty-card{background:#17362e;color:transparent;border:1px solid #31594c;box-shadow:inset 0 0 0 2px #102820}
 .seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid #6caa91;border-radius:10px;background:#10241ff2;min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat b{color:var(--accent)}.seat span{color:var(--muted);font-size:.8rem}
-.hand-info{display:grid;gap:.7rem}.actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions input{max-width:10rem}.wager-control{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}.pot-shortcuts button{padding:.45rem}.fixed-wager{color:var(--muted);padding:.7rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}.showdown-row{display:grid;grid-template-columns:6rem 1fr 8rem;gap:.7rem;border-top:1px solid #346252;padding:.5rem 0}.award-list{display:grid;gap:.35rem}.tournament-panel{padding:.8rem}.join-card form{display:flex;flex-wrap:wrap}.join-card input{min-width:8rem;flex:1}
+.hand-info{display:grid;gap:.7rem}.actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions input{max-width:10rem}.wager-control{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}.pot-shortcuts button{padding:.45rem}.fixed-wager{color:var(--muted);padding:.7rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}.showdown-row{display:grid;grid-template-columns:6rem 1fr 8rem;gap:.7rem;border-top:1px solid #346252;padding:.5rem 0}.award-list{display:grid;gap:.35rem}.join-card form{display:flex;flex-wrap:wrap}.join-card input{min-width:8rem;flex:1}
 @media(max-width:640px){body{padding-bottom:5.5rem}.page{padding:.65rem}.blitz-top{align-items:flex-start;flex-direction:column}.blitz-stat-grid,.blitz-score,.difficulty-grid{grid-template-columns:1fr}.blitz-hands{grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}.blitz-hands button{min-height:7rem;padding:.3rem}.blitz-hands .board{min-height:4rem}.card-test-grid{--card-w:3.6rem;gap:.45rem;padding:.55rem}.playing-card{--card-w:calc(3.6rem * var(--card-size-scale,1));--card-h:calc(5rem * var(--card-size-scale,1));--corner-gap:calc(.2rem * var(--card-size-scale,1));border-radius:5px}.showdown-row{grid-template-columns:1fr;gap:.2rem}fieldset>div{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.blackjack-actions button{flex:1 1 calc(50% - .5rem);min-width:0;padding-inline:.2rem;font-size:.78rem}}
 
@@ -100,18 +100,17 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100%;overflow:hidde
 html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .page:has(.table-shell)>#table-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .page:has(.table-shell) .site-header{height:2.75rem;margin-bottom:.25rem;white-space:nowrap}
-.header-context{min-width:0;overflow:hidden;color:var(--muted);font-size:.9rem;font-weight:700;text-overflow:ellipsis}
+.header-context{position:relative;display:inline-flex;align-items:center;gap:.25rem;min-width:0;max-width:min(42vw,34rem);overflow:visible;color:var(--muted);font-size:.9rem;font-weight:700}
+.header-info{position:relative;display:inline-grid;place-items:center;flex:0 0 auto;color:var(--muted);font-size:.72rem;cursor:help}
+.header-info-tooltip{position:absolute;left:50%;top:calc(100% + .45rem);z-index:30;display:none;width:max-content;max-width:min(22rem,calc(100vw - 1rem));padding:.45rem .55rem;border:1px solid #527d6c;border-radius:6px;background:#091713;color:var(--ink);font-size:.68rem;line-height:1.35;white-space:normal;text-align:left;transform:translateX(-50%);box-shadow:0 8px 24px #000a}
+.header-info:hover .header-info-tooltip,.header-info:focus .header-info-tooltip{display:block}
 .page:has(.table-shell) .brand{font-size:1.05rem}
 .page:has(.table-shell) .bank-widget{margin-left:auto;font-size:.85rem}
-.table-shell{display:grid;grid-template-rows:auto auto auto auto minmax(0,1fr) auto;gap:1rem;flex:1 1 auto;height:100%;min-height:0;overflow:hidden}
-.table-shell>.tournament-panel{grid-row:1}
-.table-shell>.table-status{grid-row:2}
-.table-shell>.table-stage{grid-row:3}
-.table-shell>.decision-area{grid-row:4}
-.table-shell>.game-log{grid-row:5}
-.table-shell>.table-controls{grid-row:6}
-.tournament-panel{display:flex;align-items:center;justify-content:center;gap:1rem;color:var(--muted);font-size:.8rem}
-.tournament-panel b{color:var(--accent)}
+.table-shell{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:1rem;flex:1 1 auto;height:100%;min-height:0;overflow:hidden}
+.table-shell>.table-stage{grid-row:1}
+.table-shell>.decision-area{grid-row:2}
+.table-shell>.game-log{grid-row:3}
+.table-shell>.table-controls{grid-row:4}
 .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;min-height:0;width:100%;margin:0 auto;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.45rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.2rem)}
 .table-stage .felt{width:100%;min-height:0;margin:0;padding:0 0 1.35rem;border:0;border-radius:0;background:none;box-shadow:none}
 .table-center{display:grid;justify-items:center;gap:.4rem;text-align:center}
@@ -175,8 +174,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-metrics small{color:var(--muted);font-size:.62rem;text-transform:uppercase}
 .table-metrics b{color:var(--accent)}
 .table-metrics b{font-size:.9rem}
-.table-status,.showdown-result{margin:0;color:var(--muted);font-size:.82rem;text-align:center;white-space:normal}
-.table-shell>.table-status{min-height:0;padding:0;line-height:1.2}
+.showdown-result{margin:0;color:var(--muted);font-size:.82rem;text-align:center;white-space:normal}
 .showdown-result{color:#f1d56e;font-weight:800}
 .seat.acting{border-color:var(--accent)}
 .seat.folded{opacity:.58;filter:saturate(.35)}
@@ -194,12 +192,12 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .actions .wager-action{background:#245a49;color:var(--ink)}
 .actions .all-in-action{border-color:#d9ad55}
 .blackjack-table .blackjack-actions{display:flex;grid-template-columns:none}
-.game-log{display:grid;grid-template-columns:6rem 1fr;gap:.8rem;height:8.5rem;overflow:auto;align-content:start;padding:.6rem 0;border-top:1px solid #346252;border-bottom:1px solid #346252}
-.game-log h2{margin:.1rem 0;font-size:1rem}
+.game-log{display:grid;height:8.5rem;overflow:auto;align-content:start;padding:.6rem 0;border-top:1px solid #346252;border-bottom:1px solid #346252}
 .game-log ol{display:grid;grid-template-columns:1fr;gap:.3rem .8rem;align-content:start;margin:0;padding:0;list-style:none}
 .game-log li{display:grid;grid-template-columns:4.25rem 1fr;gap:.45rem;min-width:0;font-size:.76rem}
 .game-log li span{color:var(--muted)}
 .game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:600}
+.game-log .status-log b{color:var(--accent)}
 .game-log .result-log b{color:#f1d56e}
 .table-controls{justify-content:flex-end}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -281,8 +279,6 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .page:has(.table-shell)>#table-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden}
   .table-shell{display:flex;flex-direction:column;flex:1 1 auto;gap:.3rem;min-height:0;overflow:hidden}
   .table-shell>*{flex:0 0 auto}
-  .tournament-panel{gap:.45rem;padding:.25rem;overflow:hidden;font-size:.62rem;white-space:nowrap}
-
   .table-stage{display:flex;flex-direction:column;flex:1 1 auto;gap:.35rem;height:auto;min-height:0;padding:0;overflow-x:hidden;overflow-y:auto}
   .table-stage>*{flex:0 0 auto}
   .table-stage .felt{width:auto;padding:0}
@@ -290,7 +286,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-metrics{gap:.35rem;margin:0 0 .3rem}
   .table-metrics span{min-width:4.4rem;padding:.15rem .4rem}
   .table-stage .board{gap:.25rem;min-height:4rem}
-  .table-status,.showdown-result{margin:.1rem 0 0;font-size:.68rem;text-align:center;transform:none}
+  .showdown-result{margin:.1rem 0 0;font-size:.68rem;text-align:center;transform:none}
 
   .table-stage .seats{grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.3rem}
   .table-stage .seats .seat{gap:.1rem;min-width:0;min-height:0;padding:.28rem .2rem;font-size:.62rem}
@@ -299,7 +295,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .seat-outcome-badges{position:absolute;right:-.1rem;bottom:-.1rem;z-index:8;min-height:0;justify-content:flex-end}
   .seat span{font-size:.6rem}
   .player-info>strong{max-width:100%}
-  .seat .player-tooltip{margin-top:-.35rem}
+  .seat .player-tooltip{top:.3rem;transform:translateX(-50%)}
   .seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;margin:0 auto;padding:.1rem .3rem;font-size:.6rem;transform:none}
   .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;justify-content:center;margin-top:.15rem;transform:none}
   .seat.viewer .seat-wager{grid-column:1;grid-row:3}
@@ -318,7 +314,6 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell .actions button{min-height:2.5rem;min-width:0;padding:.25rem .1rem;font-size:.62rem;white-space:normal;line-height:1.05}
   .table-shell .actions .capped-note{grid-column:1/-1;grid-row:2}
   .game-log{height:5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
-  .game-log h2{font-size:.8rem}
   .game-log li{font-size:.66rem}
   .table-controls{padding-bottom:0}
   .table-controls button{padding:.35rem .6rem;font-size:.72rem}

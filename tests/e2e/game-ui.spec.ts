@@ -145,12 +145,18 @@ test("builds a tournament one question at a time", async ({ page }) => {
   await page.fill('input[name="name"]', "Sunday deep");
   await page.locator(".setup-create").click();
   await page.waitForURL(/\/tables\/[0-9a-f-]+$/);
-  await expect(page.locator(".tournament-panel")).toContainText("Level 1");
+  await expect(page.locator(".tournament-panel")).toHaveCount(0);
+  await expect(page.locator(".header-info")).toHaveAttribute("aria-label", /Level 1/);
+  await expect(page.locator(".header-info")).toHaveAttribute("aria-label", /Blinds \$100\/\$200/);
 });
 
 test("shows live hand cues and event log", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".game-log")).toBeVisible();
+  await expect(page.locator(".game-log h2")).toHaveCount(0);
+  await expect(page.locator(".table-status")).toHaveCount(0);
+  await expect(page.locator(".game-log .status-log")).toContainText("Flop");
+  await expect(page.locator(".game-log .status-log")).toContainText("You to act · $12 to call");
   await expect(page.locator(".seat.viewer .seat-cards .playing-card")).toHaveCount(2);
   const viewerCard = page.locator(".seat.viewer .seat-cards .playing-card").first();
   const secondViewerCard = page.locator(".seat.viewer .seat-cards .playing-card").nth(1);
@@ -257,9 +263,6 @@ test("shows live hand cues and event log", async ({ page }) => {
     return !overlaps && wager.top >= cards.bottom;
   }).every(Boolean));
   expect(opponentWagerLayout, "opponent wagers must sit below cards/folded state without overlap").toBe(true);
-  const tableStatus = await page.locator(".table-status").boundingBox();
-  const wagerOverlapsStatus = viewerWager.x < tableStatus.x + tableStatus.width && viewerWager.x + viewerWager.width > tableStatus.x && viewerWager.y < tableStatus.y + tableStatus.height && viewerWager.y + viewerWager.height > tableStatus.y;
-  expect(wagerOverlapsStatus, "V16: viewer wager must not cover table status").toBe(false);
   await expect(page.locator(".seat.folded")).toHaveCount(1);
   await expect(page.locator(".seat.all-in")).toHaveCount(1);
   await expect(page.locator(".seat.all-in .seat-wager")).toHaveText("ALL IN");
@@ -290,16 +293,9 @@ test("shows live hand cues and event log", async ({ page }) => {
       radius: getComputedStyle(stage.querySelector(".felt")).borderRadius,
       boardViewerGap: stage.querySelector(".seat.viewer").getBoundingClientRect().top
         - Math.max(...[...stage.querySelectorAll(".board .playing-card")].map((card) => card.getBoundingClientRect().bottom)),
-      statusOverlap: [...stage.parentElement.querySelectorAll(".seat")].some((seat) => {
-        const status = stage.parentElement.querySelector(".table-status")?.getBoundingClientRect();
-        if (!status) return false;
-        const rect = seat.getBoundingClientRect();
-        return rect.left < status.right && rect.right > status.left && rect.top < status.bottom && rect.bottom > status.top;
-      }),
     }));
     expect(geometry.stageHeight).toBeLessThanOrEqual(geometry.viewport);
     expect(geometry.boardViewerGap, "V24: board cards must keep a visible row gap above the viewer seat").toBeGreaterThanOrEqual(12);
-    expect(geometry.statusOverlap, "V24: seats must not cover the table status").toBe(false);
     expect(geometry.radius).not.toContain("%");
   }
   await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
@@ -594,15 +590,14 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   await mountTable(page, packed);
   await expect(page.locator(".table-controls .table-command")).toHaveCount(0);
 
-  // The bar, the status line and the log all keep their place whether or not
-  // they have anything in them, so the table above does not jump about.
+  // The bar and the log keep their place whether or not they have anything in
+  // them, so the table above does not jump about.
   const bands = async () => {
     await page.locator(".table-stage").waitFor();
     return page.evaluate(() => ({
-    decision: document.querySelectorAll(".decision-area").length,
-    status: document.querySelectorAll(".table-status").length,
-    log: document.querySelectorAll(".game-log").length,
-    stage: Math.round(document.querySelector(".table-stage").getBoundingClientRect().height),
+      decision: document.querySelectorAll(".decision-area").length,
+      log: document.querySelectorAll(".game-log").length,
+      stage: Math.round(document.querySelector(".table-stage").getBoundingClientRect().height),
     }));
   };
   await mountTable(page, houseTable);
@@ -610,14 +605,11 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   await mountTable(page, tableState);
   const playing = await bands();
   expect(idle.decision, "an idle table reserves the action bar").toBe(1);
-  expect(idle.status, "and the status line").toBe(1);
   expect(idle.log, "and the log").toBe(1);
   expect(playing.decision).toBe(1);
-  expect(playing.status).toBe(1);
   expect(playing.log).toBe(1);
-  // Not to the pixel: a phone wraps seven action buttons onto a second row,
-  // which is worth the space. Nowhere near the hundred-odd pixels a whole band
-  // appearing or vanishing used to move it.
+  // Not to the pixel: compact viewports tune controls and card sizes. Nowhere
+  // near the hundred-odd pixels a whole band appearing or vanishing used to move it.
   const slack = (page.viewportSize()?.width || 0) > 640 ? 20 : 48;
   expect(Math.abs(playing.stage - idle.stage), "the table keeps its height").toBeLessThan(slack);
 });
