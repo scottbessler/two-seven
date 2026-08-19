@@ -344,6 +344,8 @@ function TableApp() {
   const occupied = state.seats.filter((seat) => seat.occupant !== "empty");
   const viewerOffset = Math.max(0, occupied.findIndex((seat) => seat.index === state.viewer_seat));
   const ordered = [...occupied.slice(viewerOffset), ...occupied.slice(0, viewerOffset)];
+  const viewerSeat = ordered.find((seat) => seat.index === state.viewer_seat);
+  const otherSeats = ordered.filter((seat) => seat.index !== state.viewer_seat);
   const runout = runoutState(showdown, resultPause - remaining);
   const board = hand?.board || (showdown ? showdown.board.slice(0, runout.cards) : []);
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
@@ -353,19 +355,9 @@ function TableApp() {
   // has had its moment, hand the table back to whoever is watching.
   const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
   const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
+  const renderSeat = (seat, order, seats) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${seats.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${TournamentPanel} tournament=${state.tournament} />
-    <section class="table-stage" aria-label="Poker table">
-      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
-      <div class="felt">
-        <div class="table-center">
-          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
-          <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
-          ${showdown && html`<p class="showdown-result">${result}</p>`}
-        </div>
-      </div>
-      <div class="seats" data-seat-total=${ordered.length}>${ordered.map((seat, order) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} order=${order} total=${ordered.length} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`)}</div>
-    </section>
     <p class=${`table-status ${hand ? "" : "waiting-status"}`}>${showdown
       ? ""
       : hand
@@ -373,6 +365,18 @@ function TableApp() {
         : state.can_deal
           ? "Nobody seated · deal a hand"
           : "Waiting for players"}</p>
+    <section class="table-stage" aria-label="Poker table">
+      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
+      <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map((seat, order) => renderSeat(seat, order, otherSeats))}</div>
+      <div class="felt">
+        <div class="table-center">
+          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
+          <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
+          ${showdown && html`<p class="showdown-result">${result}</p>`}
+        </div>
+      </div>
+      ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat, 0, [viewerSeat])}</div>`}
+    </section>
     <section class="decision-area">${showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions

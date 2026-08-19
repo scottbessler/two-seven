@@ -326,17 +326,17 @@ test("hides your own cards until you reach for them in paranoid mode", async ({ 
   expect(await page.evaluate(() => localStorage.getItem("table-paranoid-cards"))).toBe("on");
 });
 
-test("keeps a top-rail tooltip inside a narrow desktop viewport", async ({ page }) => {
+test("keeps a player tooltip inside a narrow desktop viewport", async ({ page }) => {
   await page.setViewportSize({ width: 702, height: 832 });
   await mountTable(page, tableState);
-  const playerInfo = page.locator(".seat.tooltip-below.tooltip-right .player-info").filter({ hasText: "Sam" });
+  const playerInfo = page.locator(".other-seats .seat .player-info").filter({ hasText: "Sam" });
   await expect(playerInfo).toHaveCount(1);
   await playerInfo.hover();
   const tooltipBox = await playerInfo.locator(".player-tooltip").boundingBox();
-  expect(tooltipBox.x, "V20: narrow top-rail tooltip left edge must remain visible").toBeGreaterThanOrEqual(0);
-  expect(tooltipBox.y, "V20: narrow top-rail tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
-  expect(tooltipBox.x + tooltipBox.width, "V20: narrow top-rail tooltip right edge must remain visible").toBeLessThanOrEqual(702);
-  expect(tooltipBox.y + tooltipBox.height, "V20: narrow top-rail tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
+  expect(tooltipBox.x, "V20: narrow player tooltip left edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.y, "V20: narrow player tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
+  expect(tooltipBox.x + tooltipBox.width, "V20: narrow player tooltip right edge must remain visible").toBeLessThanOrEqual(702);
+  expect(tooltipBox.y + tooltipBox.height, "V20: narrow player tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
 });
 
 test("keeps seats clear of the board in a short desktop window", async ({ page }) => {
@@ -437,10 +437,10 @@ test("keeps the table log footprint stable as events accumulate", async ({ page 
     const row = list.firstElementChild;
     for (let index = 0; index < 30; index += 1) list.append(row.cloneNode(true));
   });
-  const dense = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top, scrolls: node.scrollHeight > node.clientHeight }));
+  const dense = await log.evaluate((node) => ({ height: node.getBoundingClientRect().height, controlsTop: document.querySelector(".table-controls").getBoundingClientRect().top, containsEvents: node.scrollHeight >= node.clientHeight }));
   expect(dense.height, "V22: table log height must not grow with events").toBe(sparse.height);
   expect(dense.controlsTop, "V22: content below table log must remain fixed").toBe(sparse.controlsTop);
-  expect(dense.scrolls, "V22: excess table events must scroll inside the fixed log").toBe(true);
+  expect(dense.containsEvents, "V22: table events must stay inside the fixed log region").toBe(true);
 });
 
 test("makes leaving a tournament a deliberate forfeit", async ({ page }) => {
@@ -703,15 +703,15 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
     // oxlint-disable-next-line unicorn/consistent-function-scoping
     const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
     return {
-      rows: new Set(seats.map((seat) => Math.round(seat.getBoundingClientRect().top))).size,
+      otherRows: new Set(others.map((seat) => Math.round(seat.top))).size,
       viewerWidth: viewer.width,
       otherWidth: Math.max(...others.map((rect) => rect.width)),
       boardOverlap: seats.some((seat) => board.some((card) => overlaps(seat.getBoundingClientRect(), card))),
       stageScrolls: stage.scrollHeight > stage.clientHeight,
     };
   });
-  expect(rail.rows, "L1: the landscape rail must stay on one row").toBe(1);
-  expect(rail.viewerWidth, "L2: the viewer seat must be about twice its neighbours").toBeGreaterThan(rail.otherWidth * 1.8);
+  expect(rail.otherRows, "L1: landscape opponents must stay on one row").toBe(1);
+  expect(rail.viewerWidth, "L2: the viewer seat must take its own row").toBeGreaterThan(rail.otherWidth * 1.8);
   expect(rail.boardOverlap, "L3: the rail must not collide with the board").toBe(false);
   expect(rail.stageScrolls, "L4: a landscape table must fit its stage").toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
