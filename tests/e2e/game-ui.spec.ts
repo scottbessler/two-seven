@@ -838,6 +838,18 @@ test("integrates showdown with players and table log", async ({ page }) => {
   const opponentCard = page.locator(".seat:not(.viewer) .seat-cards.revealed .playing-card").first();
   expect((await opponentCard.boundingBox()).width).toBeGreaterThan(40);
   await expect(page.locator(".seat.winner .winner-role")).toHaveText("WINNER");
+  await expect(page.locator(".seat.winner")).toHaveCSS("border-top-color", "rgb(241, 213, 110)");
+  const winnerBadge = await page.locator(".seat.winner").evaluate((seat) => {
+    const seatBox = seat.getBoundingClientRect();
+    const badgeBox = seat.querySelector(".winner-role").getBoundingClientRect();
+    const stageBox = document.querySelector(".table-stage").getBoundingClientRect();
+    return {
+      attachedBelow: badgeBox.top >= seatBox.bottom - 1,
+      clipped: badgeBox.bottom > stageBox.bottom + 1,
+    };
+  });
+  expect(winnerBadge.attachedBelow, "S8: the winner badge should hang below the seat").toBe(true);
+  expect(winnerBadge.clipped, "S9: the winner badge must not be clipped").toBe(false);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 6s");
   await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
   await expect(page.locator(".last-hand")).toHaveCount(0);
@@ -920,6 +932,7 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   await expect(board).toHaveCount(3);
   await expect(page.locator(".seat.leading")).toHaveCount(1);
   await expect(page.locator(".seat.leading .leading-role")).toHaveText("AHEAD");
+  await expect(page.locator(".seat.leading")).toHaveCSS("border-top-color", "rgb(127, 212, 168)");
   await expect(result, "the result waits for the last card").toHaveText("");
 
   await page.clock.fastForward(5_000);
