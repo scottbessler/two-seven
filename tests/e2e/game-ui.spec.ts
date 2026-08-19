@@ -242,12 +242,16 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(viewerCard).toHaveCSS("color", "rgb(32, 35, 31)");
   expect(await page.evaluate(() => localStorage.getItem("table-four-color-suits"))).toBe("off");
   await page.getByRole("button", { name: "Close" }).click();
+  const handBeforeMagnify = await page.locator(".seat.viewer .seat-cards").boundingBox();
   const firstBeforeMagnify = await viewerCard.boundingBox();
   const secondBeforeMagnify = await secondViewerCard.boundingBox();
   await viewerCard.hover();
   await page.waitForTimeout(250);
+  const handMagnified = await page.locator(".seat.viewer .seat-cards").boundingBox();
   const firstMagnified = await viewerCard.boundingBox();
   const secondMagnified = await secondViewerCard.boundingBox();
+  expect(handMagnified.y, "viewer card zoom should grow upward").toBeLessThan(handBeforeMagnify.y);
+  expect(Math.abs((handMagnified.y + handMagnified.height) - (handBeforeMagnify.y + handBeforeMagnify.height)), "viewer card zoom should keep its bottom anchored").toBeLessThanOrEqual(2);
   expect(firstMagnified.width).toBeGreaterThan(firstBeforeMagnify.width * 1.1);
   expect(secondMagnified.width).toBeGreaterThan(secondBeforeMagnify.width * 1.1);
   await page.locator(".brand").hover();

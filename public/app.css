@@ -164,6 +164,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .seat-cards .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .seat-cards .playing-card:last-child{transform:rotate(3deg)}
 .seat.viewer .seat-cards{grid-column:1;grid-row:5;align-self:start;margin:.25rem auto 0}
+.seat.viewer .seat-cards,.seat.viewer .seat-cards .playing-card{transform-origin:center bottom}
 .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.15rem}
 .seat .playing-card.red,.seat .playing-card.red span,.seat .playing-card.red b{color:#d5291f!important}
 .seat .playing-card.black,.seat .playing-card.black span,.seat .playing-card.black b{color:#20231f!important}
