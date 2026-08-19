@@ -339,8 +339,8 @@ function TableApp() {
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
+    <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
     <section class="table-stage" aria-label="Poker table">
-      <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} />
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
       <div class="felt">
         <div class="table-center">

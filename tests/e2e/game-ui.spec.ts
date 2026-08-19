@@ -300,6 +300,16 @@ test("shows live hand cues and event log", async ({ page }) => {
     return !overlaps && wager.top >= cards.bottom;
   }).every(Boolean));
   expect(opponentWagerLayout, "opponent wagers must sit below cards/folded state without overlap").toBe(true);
+  await expect(page.locator(".table-stage > .card-settings")).toHaveCount(0);
+  const stageStart = await page.locator(".table-stage").evaluate((stage) => {
+    const first = stage.firstElementChild;
+    return {
+      firstClass: first?.className || "",
+      gap: first ? Math.round(first.getBoundingClientRect().top - stage.getBoundingClientRect().top) : null,
+    };
+  });
+  expect(stageStart.firstClass).toContain("other-seats");
+  expect(stageStart.gap, "table-stage must not reserve an empty first row").toBeLessThanOrEqual(1);
   await expect(page.locator(".seat.folded")).toHaveCount(1);
   await expect(page.locator(".seat.all-in")).toHaveCount(1);
   await expect(page.locator(".seat.all-in .seat-wager")).toHaveText("ALL IN");
