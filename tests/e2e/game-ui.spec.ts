@@ -164,6 +164,12 @@ test("shows live hand cues and event log", async ({ page }) => {
   const configButtonBox = await page.getByRole("button", { name: "Card display settings" }).boundingBox();
   expect(configButtonBox.x).toBeGreaterThan((page.viewportSize()?.width || 0) * 0.75);
   expect(configButtonBox.y).toBeLessThan(80);
+  if ((page.viewportSize()?.width || 0) > 760) {
+    const headerBox = await page.locator(".site-header").boundingBox();
+    const headerCenter = headerBox.y + headerBox.height / 2;
+    const configCenter = configButtonBox.y + configButtonBox.height / 2;
+    expect(Math.abs(configCenter - headerCenter), "settings button should align with the header center").toBeLessThanOrEqual(1);
+  }
   await expect(page.locator(".card-config-dialog")).not.toBeVisible();
   await page.getByRole("button", { name: "Card display settings" }).click();
   await expect(page.locator(".card-config-dialog")).toBeVisible();
@@ -394,6 +400,39 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.every((button) => button.insideActionBar), "action buttons must stay inside the action bar").toBe(true);
   expect(layout.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight), "action labels must fit inside their buttons").toBe(true);
   expect(layout.map((button) => button.left)).toEqual([...layout].map((button) => button.left).toSorted((a, b) => a - b));
+});
+
+test("keeps compact table header rows from overlapping", async ({ page }) => {
+  await page.setViewportSize({ width: 702, height: 900 });
+  await mountTable(page, tableState);
+  await page.locator(".header-context").evaluate((context) => {
+    context.firstChild.textContent = "Friday Night Hold'em With A Needlessly Long Table Name";
+  });
+  await page.getByRole("button", { name: "Card display settings" }).waitFor();
+
+  const geometry = await page.locator(".site-header").evaluate((header) => {
+    const brand = header.querySelector(".brand").getBoundingClientRect();
+    const context = header.querySelector(".header-context").getBoundingClientRect();
+    const bank = header.querySelector(".bank-widget").getBoundingClientRect();
+    const settings = document.querySelector(".table-config-button").getBoundingClientRect();
+    // Browser-evaluated helpers cannot close over test-scope functions.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    return {
+      contextBelowBrand: context.top > brand.bottom,
+      contextOverlapsBrand: overlaps(context, brand),
+      contextOverlapsBank: overlaps(context, bank),
+      contextOverlapsSettings: overlaps(context, settings),
+      settingsCenterDelta: Math.abs((settings.top + settings.height / 2) - (brand.top + brand.height / 2)),
+      headerHeight: header.getBoundingClientRect().height,
+    };
+  });
+  expect(geometry.contextBelowBrand, "compact table name should get its own header row").toBe(true);
+  expect(geometry.contextOverlapsBrand, "compact table name must not overlap the brand").toBe(false);
+  expect(geometry.contextOverlapsBank, "compact table name must not overlap the bank").toBe(false);
+  expect(geometry.contextOverlapsSettings, "compact table name must not overlap settings").toBe(false);
+  expect(geometry.settingsCenterDelta, "settings should align with the first compact header row").toBeLessThanOrEqual(4);
+  expect(geometry.headerHeight).toBeGreaterThan(44);
 });
 
 test("keeps a player tooltip inside a narrow desktop viewport", async ({ page }) => {

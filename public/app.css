@@ -206,7 +206,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-controls{justify-content:flex-end}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .table-controls button{padding:.4rem .65rem;background:#10241f;color:var(--muted)}
-.table-config-button{position:fixed;right:calc(.5rem + env(safe-area-inset-right));top:calc(.75rem + env(safe-area-inset-top));z-index:8;width:2rem;height:2rem;padding:0;border-color:#527d6c;background:#10241f;color:var(--muted);font-size:1rem}
+.table-config-button{position:fixed;right:calc(.5rem + env(safe-area-inset-right));top:calc(1.375rem + env(safe-area-inset-top));z-index:8;width:2rem;height:2rem;padding:0;border-color:#527d6c;background:#10241f;color:var(--muted);font-size:1rem}
 /* The bot control rides alongside the buy-in/leave command as a dialog. */
 .table-controls .seat-bot{display:contents}
 .table-history-link{display:grid;place-items:center;padding:.4rem .65rem;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--muted);text-decoration:none}
@@ -239,6 +239,14 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 
 .site-header{padding-top:env(safe-area-inset-top)}
 .actions{padding-bottom:calc(.65rem + env(safe-area-inset-bottom))}
+@media(max-width:760px){
+  .page:has(.table-shell) .site-header{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;align-items:center;gap:.1rem .65rem;height:3.45rem;padding-right:2.6rem;white-space:nowrap}
+  .page:has(.table-shell) .brand{grid-column:1}
+  .page:has(.table-shell) .bank-widget{grid-column:3;justify-self:end;margin-left:0}
+  .page:has(.table-shell) .header-context{grid-column:1/-1;grid-row:2;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .header-context .header-info{display:none}
+  .table-config-button{top:calc(1.1rem + env(safe-area-inset-top))}
+}
 @media(min-width:641px){
   .page:has(.table-shell)>#table-app{overflow:hidden}
   .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
@@ -275,7 +283,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
   .page:has(.table-shell){display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.35rem + env(safe-area-inset-top)) calc(.45rem + env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) calc(.45rem + env(safe-area-inset-left))}
-  .page:has(.table-shell) .site-header{flex:0 0 auto;height:2.1rem;margin-bottom:0;padding-top:0;padding-right:2.6rem}
+  .page:has(.table-shell) .site-header{flex:0 0 auto;height:3.45rem;margin-bottom:0;padding-top:0;padding-right:2.6rem}
   .page:has(.table-shell) .brand{font-size:.9rem}
   .header-context{font-size:.72rem}
   .page:has(.table-shell) .bank-widget{font-size:.7rem}
