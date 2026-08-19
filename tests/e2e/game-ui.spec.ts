@@ -437,7 +437,8 @@ test("keeps compact table header rows from overlapping", async ({ page }) => {
       contextOverlapsBrand: overlaps(context, brand),
       contextOverlapsBank: overlaps(context, bank),
       contextOverlapsSettings: overlaps(context, settings),
-      settingsCenterDelta: Math.abs((settings.top + settings.height / 2) - (brand.top + brand.height / 2)),
+      rightControlCenterDelta: Math.abs((settings.top + settings.height / 2) - (bank.top + bank.height / 2)),
+      rowGap: context.top - brand.bottom,
       headerHeight: header.getBoundingClientRect().height,
     };
   });
@@ -445,8 +446,9 @@ test("keeps compact table header rows from overlapping", async ({ page }) => {
   expect(geometry.contextOverlapsBrand, "compact table name must not overlap the brand").toBe(false);
   expect(geometry.contextOverlapsBank, "compact table name must not overlap the bank").toBe(false);
   expect(geometry.contextOverlapsSettings, "compact table name must not overlap settings").toBe(false);
-  expect(geometry.settingsCenterDelta, "settings should align with the first compact header row").toBeLessThanOrEqual(4);
-  expect(geometry.headerHeight).toBeGreaterThan(44);
+  expect(geometry.rightControlCenterDelta, "compact header right controls should align with each other").toBeLessThanOrEqual(4);
+  expect(geometry.rowGap, "compact header rows should stay tight").toBeLessThanOrEqual(3);
+  expect(geometry.headerHeight, "compact header should not reserve a tall blank band").toBeLessThanOrEqual(42);
 });
 
 test("keeps a player tooltip inside a narrow desktop viewport", async ({ page }) => {
