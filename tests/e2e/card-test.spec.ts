@@ -36,7 +36,7 @@ test.describe("card test page", () => {
     await expect(page).toHaveScreenshot("card-test.png", { fullPage: true });
     await page.evaluate(() => document.documentElement.classList.add("four-color-suits"));
     await expect(page.locator(".playing-card.suit-c").first()).toHaveCSS("color", "rgb(18, 79, 140)");
-    await expect(page.locator(".playing-card.suit-d").first()).toHaveCSS("color", "rgb(199, 91, 26)");
+    await expect(page.locator(".playing-card.suit-d").first()).toHaveCSS("color", "rgb(255, 140, 0)");
     await expect(page.locator(".playing-card.suit-h").first()).toHaveCSS("color", "rgb(213, 41, 31)");
     await expect(page.locator(".playing-card.suit-s").first()).toHaveCSS("color", "rgb(32, 35, 31)");
   });

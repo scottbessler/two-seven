@@ -4,7 +4,7 @@
 .card-corner b{font-weight:var(--card-rank-weight,700);letter-spacing:0;-webkit-text-stroke:var(--card-rank-stroke,0) currentColor;paint-order:stroke fill}
 .card-corner i{font-style:normal}
 .four-color-suits .playing-card.suit-c,.four-color-suits .playing-card.suit-c span,.four-color-suits .playing-card.suit-c b{color:#124f8c!important}
-.four-color-suits .playing-card.suit-d,.four-color-suits .playing-card.suit-d span,.four-color-suits .playing-card.suit-d b{color:#c75b1a!important}
+.four-color-suits .playing-card.suit-d,.four-color-suits .playing-card.suit-d span,.four-color-suits .playing-card.suit-d b{color:darkorange!important}
 /* Shared card-face geometry scales with both card dimensions. */
 :root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57}
 *{box-sizing:border-box}
@@ -171,7 +171,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .seat .playing-card.red,.seat .playing-card.red span,.seat .playing-card.red b{color:#d5291f!important}
 .seat .playing-card.black,.seat .playing-card.black span,.seat .playing-card.black b{color:#20231f!important}
 .four-color-suits .seat .playing-card.suit-c,.four-color-suits .seat .playing-card.suit-c span,.four-color-suits .seat .playing-card.suit-c b{color:#124f8c!important}
-.four-color-suits .seat .playing-card.suit-d,.four-color-suits .seat .playing-card.suit-d span,.four-color-suits .seat .playing-card.suit-d b{color:#c75b1a!important}
+.four-color-suits .seat .playing-card.suit-d,.four-color-suits .seat .playing-card.suit-d span,.four-color-suits .seat .playing-card.suit-d b{color:darkorange!important}
 .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{z-index:30;transform:scale(1.12)}
 .seat.viewer .seat-cards:hover .playing-card:first-child,.seat.viewer .seat-cards:focus-within .playing-card:first-child{transform:rotate(-3deg)!important}
 .seat.viewer .seat-cards:hover .playing-card:last-child,.seat.viewer .seat-cards:focus-within .playing-card:last-child{transform:rotate(3deg)!important}
