@@ -623,6 +623,20 @@ test("makes leaving a tournament a deliberate forfeit", async ({ page }) => {
   await page.getByRole("button", { name: "Forfeit and leave" }).click();
   await expect(confirm).not.toBeVisible();
   await expect.poll(() => left).toBe(2);
+
+  const eliminated = {
+    ...tournament,
+    hand: null,
+    tournament: { ...tournament.tournament, finish_order: [tableState.viewer_seat] },
+    seats: tournament.seats.map((seat) => {
+      if (seat.index !== tableState.viewer_seat) return seat;
+      return Object.assign({}, seat, { stack: 0 });
+    }),
+  };
+  await mountTable(page, eliminated);
+  await page.locator(".table-controls .table-command").click();
+  await expect.poll(() => left).toBe(3);
+  await expect(page.locator(".confirm-dialog")).toHaveCount(0);
 });
 
 test("offers a seat at a table the house has filled", async ({ page }) => {

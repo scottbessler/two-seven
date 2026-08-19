@@ -259,10 +259,13 @@ function TableCommands({ state, openSeats, refresh }) {
   const viewer = state.viewer_seat == null
     ? null
     : state.seats.find((seat) => seat.index === state.viewer_seat);
+  const eliminatedFromTournament = Boolean(
+    state.tournament && viewer && state.tournament.finish_order?.includes(viewer.index),
+  );
   const leave = {
     label: "Leave",
     endpoint: `/tables/${tableId}/leave`,
-    forfeits: Boolean(state.tournament),
+    forfeits: Boolean(state.tournament && !eliminatedFromTournament),
   };
   const commands = [];
   if (state.viewer_leaving) {
