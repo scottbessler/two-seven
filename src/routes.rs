@@ -913,14 +913,9 @@ pub async fn join_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (no_debt, buy_in, tournament) = {
+    let (buy_in, tournament) = {
         let t = table_arc.lock().await;
-        let no_debt = matches!(t.mode, TableMode::Cash { no_debt: true });
-        (
-            no_debt,
-            t.buy_in,
-            matches!(t.mode, TableMode::Tournament(_)),
-        )
+        (t.buy_in, matches!(t.mode, TableMode::Tournament(_)))
     };
     if tournament {
         return Err(AppError::bad_request(
@@ -941,7 +936,7 @@ pub async fn join_table(
         }
     }
     s.bank
-        .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
+        .buy_in(AccountOwner::User(user), id, buy_in, true)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let mut displaced = None;
@@ -1221,13 +1216,9 @@ pub async fn rebuy_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (no_debt, buy_in, tournament) = {
+    let (buy_in, tournament) = {
         let table = table.lock().await;
-        (
-            matches!(table.mode, TableMode::Cash { no_debt: true }),
-            table.buy_in,
-            matches!(table.mode, TableMode::Tournament(_)),
-        )
+        (table.buy_in, matches!(table.mode, TableMode::Tournament(_)))
     };
     if tournament {
         return Err(AppError::bad_request("tournament chips cannot be rebought"));
@@ -1241,7 +1232,7 @@ pub async fn rebuy_table(
         }
     }
     s.bank
-        .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
+        .buy_in(AccountOwner::User(user), id, buy_in, true)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let result = s

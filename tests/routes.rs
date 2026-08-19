@@ -1809,7 +1809,7 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
 }
 
 #[tokio::test]
-async fn no_debt_join_still_honors_legacy_restriction() {
+async fn cash_join_requires_available_balance() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -1844,6 +1844,23 @@ async fn no_debt_join_still_honors_legacy_restriction() {
     let open_id = seat_table(&t, "Open debt", 9, 10_000, false).await;
     let response = t
         .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{open_id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let response = t
+        .router
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -1856,6 +1873,89 @@ async fn no_debt_join_still_honors_legacy_restriction() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn cash_rebuy_requires_available_balance() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "Rebuyer".into(),
+            display_name: "Rebuyer".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let id = seat_table(&t, "Rebuy", 9, BankStore::RE_UP_AMOUNT, false).await;
+
+    let join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join.status(), StatusCode::OK);
+
+    t.tables
+        .update(id, |table| {
+            let seat = table
+                .seats
+                .iter_mut()
+                .find(|seat| {
+                    matches!(seat.occupant, two_seven::table::SeatOccupant::Human { user_id } if user_id == user)
+                })
+                .expect("user seat");
+            seat.stack = 0;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let rebuy = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/rebuy"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rebuy.status(), StatusCode::BAD_REQUEST);
+
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let rebuy = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/rebuy"))
+                .header(header::COOKIE, cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rebuy.status(), StatusCode::OK);
 }
 
 #[tokio::test]
