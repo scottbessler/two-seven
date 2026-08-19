@@ -801,6 +801,29 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await expect(page.locator(".table-controls .table-command")).toBeDisabled();
 });
 
+test("celebrates a completed tournament and leaves to the lobby", async ({ page }) => {
+  const finished = {
+    ...showdownState,
+    tournament: { level: 4, small_blind: 800, big_blind: 1_600, ante: 0, hands_at_level: 12, hands_per_level: 12, started: true, finished: true, registered: 6, seat_count: 6, finish_order: [2, 3, 4, 5, 0] },
+    result_pause_seconds: 0,
+    next_hand_at: new Date(Date.now() - 1_000).toISOString(),
+    seats: showdownState.seats.map((seat) => {
+      if (seat.index === 1) return Object.assign({}, seat, { stack: 120_000 });
+      if (seat.index === 0) return Object.assign({}, seat, { stack: 0 });
+      return seat;
+    }),
+  };
+  await mountTable(page, finished);
+  await expect(page.locator(".tournament-complete")).toContainText("Tournament complete");
+  await expect(page.locator(".tournament-complete")).toContainText("Mina wins");
+  await expect(page.locator(".seat.champion")).toContainText("Mina");
+  await expect(page.locator(".seat.champion")).toHaveCSS("border-top-color", "rgb(241, 213, 110)");
+  await expect(page.locator(".showdown-advance")).toHaveCount(0);
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
+  await expect(page.locator(".table-controls .table-command")).toHaveAttribute("href", "/tables");
+  await expect(page.locator(".confirm-dialog")).toHaveCount(0);
+});
+
 test("reflows viewer cards at maximum display settings", async ({ page }) => {
   await mountTable(page, { ...tableState, hand: { ...tableState.hand, your_hole_cards: ["Tc", "9c"] } });
   await page.getByRole("button", { name: "Card display settings" }).click();

@@ -185,8 +185,9 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .showdown-result{margin:0;color:var(--muted);font-size:.82rem;text-align:center;white-space:normal}
 .showdown-result{color:#f1d56e;font-weight:800}
 .seat.acting{border-color:var(--accent)}
-.seat.leading{border-color:#7fd4a8;box-shadow:0 0 0 1px #7fd4a8,0 0 0 4px #7fd4a826}
-.seat.winner{border-color:#f1d56e;box-shadow:0 0 0 1px #f1d56e,0 0 0 4px #f1d56e2e}
+.seat.leading{border-color:#7fd4a8;box-shadow:0 0 0 2px #7fd4a8,0 0 18px 5px #7fd4a870,inset 0 0 18px #7fd4a822}
+.seat.winner{border-color:#f1d56e;box-shadow:0 0 0 2px #f1d56e,0 0 22px 6px #f1d56e80,inset 0 0 18px #f1d56e24}
+.seat.champion{border-color:#f1d56e;background:linear-gradient(135deg,#1b3d32 0%,#10241f 58%,#423618 100%);box-shadow:0 0 0 2px #f1d56e,0 0 30px 8px #f1d56e99,inset 0 0 24px #f1d56e30}
 .seat.folded{opacity:.58;filter:saturate(.35)}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:2.7rem;overflow:hidden;padding:.45rem .8rem;border-radius:6px;border-color:#d9ad55;background:#10241f;color:var(--ink)}
@@ -194,6 +195,9 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .showdown-progress{position:absolute;left:0;top:0;bottom:0;background:#d9ad5540;transition:width .1s linear}
 .house-deal button{background:#245a49;border-color:#6caa91;color:var(--ink)}
 .showdown-advance b{position:relative;z-index:1;font-size:.85rem}
+.tournament-complete{display:grid;place-items:center;gap:.1rem;min-height:3rem;padding:.35rem .8rem;border:1px solid #f1d56e;border-radius:6px;background:linear-gradient(135deg,#10241f,#3d3216);box-shadow:inset 0 0 20px #f1d56e26,0 0 22px #f1d56e45;text-align:center}
+.tournament-complete small{color:var(--muted);font-size:.68rem;font-weight:800;text-transform:uppercase}
+.tournament-complete b{color:#f1d56e;font-size:1.05rem}
 .decision-area{position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;padding:.5rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
 .actions{position:static;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
 .actions button{min-width:0;height:2.7rem;padding:.45rem .3rem;border-radius:6px;white-space:nowrap}
@@ -211,11 +215,12 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .game-log .result-log b{color:#f1d56e}
 .table-controls{justify-content:flex-end}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.table-controls button{padding:.4rem .65rem;background:#10241f;color:var(--muted)}
+.table-controls button,.table-controls .table-command-link{padding:.4rem .65rem;background:#10241f;color:var(--muted)}
 .table-config-button{display:grid;place-items:center;flex:0 0 auto;width:2rem;height:2rem;padding:0;border-color:#527d6c;background:#10241f;color:var(--muted);font-size:1rem}
 /* The bot control rides alongside the buy-in/leave command as a dialog. */
 .table-controls .seat-bot{display:contents}
 .table-history-link{display:grid;place-items:center;padding:.4rem .65rem;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--muted);text-decoration:none}
+.table-command-link{display:grid;place-items:center;border:1px solid #527d6c;border-radius:8px;text-decoration:none;font-weight:700}
 .table-controls button{white-space:nowrap}
 .table-controls .table-command-confirm{display:contents}
 /* Sign out sits apart from the things you came here to do. */

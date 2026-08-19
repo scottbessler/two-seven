@@ -45,7 +45,7 @@ function blindRole(events, seat) {
   return null;
 }
 
-function Seat({ seat, player, events, current, button, viewer, viewerCards, showdown, leading, settled }) {
+function Seat({ seat, player, events, current, button, viewer, viewerCards, showdown, leading, settled, champion }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
@@ -62,7 +62,7 @@ function Seat({ seat, player, events, current, button, viewer, viewerCards, show
     ? (player?.stack ?? seat.stack)
     : beforeAwards;
   const winner = settled && awarded > 0;
-  const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
+  const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner", champion && "champion"].filter(Boolean).join(" ");
   return html`<article class=${classes}>
     <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
     <span class="player-info" tabindex="0">
@@ -219,7 +219,26 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
   }}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
 }
 
-function TableCommand({ label, endpoint, disabled, forfeits, buyIn, refresh }) {
+function tournamentChampion(state) {
+  if (!state.tournament?.finished) return null;
+  const eliminated = new Set(state.tournament.finish_order || []);
+  return state.seats
+    .filter((seat) => seat.occupant !== "empty" && !eliminated.has(seat.index))
+    .toSorted((left, right) => right.stack - left.stack)[0]
+    || state.seats.find((seat) => seat.index === state.tournament.finish_order?.at(-1))
+    || null;
+}
+
+function TournamentComplete({ champion }) {
+  const name = champion?.display_name || champion?.occupant || "Winner";
+  return html`<section class="tournament-complete" aria-live="polite">
+    <small>Tournament complete</small>
+    <b>${name} wins</b>
+  </section>`;
+}
+
+function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refresh }) {
+  if (href) return html`<a class="table-command table-command-link" href=${href}>${label}</a>`;
   const submit = async () => {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -251,6 +270,9 @@ function TableCommand({ label, endpoint, disabled, forfeits, buyIn, refresh }) {
 /// What the viewer can do about their seat. Busted at a cash table you get two
 /// choices, because rebuying must never be the only way out.
 function TableCommands({ state, openSeats, refresh }) {
+  if (state.tournament?.finished) {
+    return html`<${TableCommand} label="Leave" href="/tables" />`;
+  }
   // A table full of house players still has room: you take one of their seats.
   const seatsForYou = state.tournament
     ? openSeats
@@ -333,12 +355,14 @@ function TableApp() {
   // has had its moment, hand the table back to whoever is watching.
   const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
   const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
+  const champion = tournamentChampion(state);
+  const tournamentComplete = Boolean(state.tournament?.finished);
   const status = showdown
     ? null
     : hand
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} />`;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} trigger=${false} />
     <section class="table-stage" aria-label="Poker table">
@@ -352,7 +376,9 @@ function TableApp() {
       </div>
       ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}
     </section>
-    <section class="decision-area">${showdown && !awaitingDeal
+    <section class="decision-area">${tournamentComplete
+      ? html`<${TournamentComplete} champion=${champion} />`
+      : showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions
         ? html`<${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} />`
