@@ -115,7 +115,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-shell>.game-log{grid-row:3}
 .table-shell>.table-controls{grid-row:4}
 .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;min-height:0;width:100%;margin:0 auto;overflow:visible}
-.table-stage .felt{width:100%;min-height:0;margin:0;padding:0 0 1.35rem;border:0;border-radius:0;background:none;box-shadow:none}
+.table-stage .felt{width:100%;min-height:0;margin:0;border:0;border-radius:0;background:none;box-shadow:none}
 .table-center{display:grid;justify-items:center;gap:.4rem;text-align:center}
 .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
 .card-test-grid .playing-card{--card-w:5.2rem;--card-h:7.25rem;--corner-gap:.28rem}
@@ -297,7 +297,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell>*{flex:0 0 auto}
   .table-stage{display:flex;flex-direction:column;flex:1 1 auto;gap:.35rem;height:auto;min-height:0;padding:0;overflow-x:hidden;overflow-y:auto}
   .table-stage>*{flex:0 0 auto}
-  .table-stage .felt{width:auto;padding:0}
+  .table-stage .felt{width:auto}
   .table-stage .table-center{width:auto}
   .table-metrics{gap:.35rem;margin:0 0 .3rem}
   .table-metrics span{min-width:4.4rem;padding:.15rem .4rem}
