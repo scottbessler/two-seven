@@ -295,29 +295,16 @@ function TableCommands({ state, openSeats, refresh }) {
   return commands.map((command) => html`<${TableCommand} ...${command} buyIn=${state.buy_in} refresh=${refresh} />`);
 }
 
-const seatBotDialog = () => document.getElementById("seat-bot");
-
 function SeatBot({ state, openSeats, refresh }) {
   if (openSeats.length === 0 || state.tournament?.started) return null;
-  const submit = async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seat: Number(data.get("seat")), kind: data.get("kind") }) });
+  const submit = async (kind) => {
+    const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
     if (response.ok) {
-      seatBotDialog()?.close();
       refresh();
     } else document.getElementById("table-error").textContent = await responseError(response);
   };
-  return html`<span class="seat-bot">
-    <button type="button" onClick=${() => seatBotDialog()?.showModal()}>Seat a bot</button>
-    <dialog id="seat-bot" class="seat-bot-dialog">
-      <form onSubmit=${submit}>
-        <header><h2>Seat a bot</h2><button type="button" title="Cancel" aria-label="Cancel" onClick=${() => seatBotDialog()?.close()}>×</button></header>
-        <label>Seat<select name="seat">${openSeats.map((seat) => html`<option value=${seat.index}>Seat ${seat.index}</option>`)}</select></label>
-        <label>Bot kind<select name="kind"><option value="fish">fish</option><option value="rock">rock</option><option value="grinder">grinder</option><option value="shark">shark</option></select></label>
-        <button type="submit">Seat bot</button>
-      </form>
-    </dialog>
+  return html`<span class="seat-bot" aria-label="Seat a bot">
+    ${["fish", "rock", "grinder", "shark"].map((kind) => html`<button type="button" onClick=${() => submit(kind)}>Seat ${kind}</button>`)}
   </span>`;
 }
 

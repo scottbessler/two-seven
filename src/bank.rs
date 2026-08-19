@@ -210,7 +210,7 @@ impl BankStore {
         owner: AccountOwner,
         table: Uuid,
         amount: Cents,
-        _no_debt: bool,
+        no_debt: bool,
     ) -> Result<Account, anyhow::Error> {
         if !valid_game_amount(amount) {
             return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
@@ -230,10 +230,9 @@ impl BankStore {
                 },
             );
         }
-        if matches!(owner, AccountOwner::Bot(_)) {
-            // The house covers a bot's seat in one loan. Lending a fixed
-            // thousand at a time meant a $1,000,000 table cost a bot a
-            // thousand loans and a thousand ledger lines per buy-in.
+        if matches!(owner, AccountOwner::Bot(_)) || !no_debt {
+            // Buy-ins can self-fund. Lending a fixed thousand at a time meant
+            // a $1,000,000 table cost a thousand loans and ledger lines.
             let balance = guard.accounts[&owner].balance;
             if balance < amount {
                 let shortfall = (amount - balance).max(Self::RE_UP_AMOUNT);
@@ -483,24 +482,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn game_entries_never_create_debt() {
+    async fn game_entries_validate_amounts_and_can_create_loans() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
         let owner = AccountOwner::User(Uuid::new_v4());
         assert!(
-            bank.buy_in(owner.clone(), Uuid::new_v4(), 1_000_001, false)
+            bank.buy_in(owner.clone(), Uuid::new_v4(), 100_000_001, false)
                 .await
                 .is_err()
         );
-        assert!(
-            bank.buy_in(owner.clone(), Uuid::new_v4(), 100, false)
-                .await
-                .is_err()
-        );
-        bank.re_up(owner.clone()).await.unwrap();
-        bank.buy_in(owner.clone(), Uuid::new_v4(), 100_000, false)
+        bank.buy_in(owner.clone(), Uuid::new_v4(), 100, false)
             .await
             .unwrap();
-        assert_eq!(bank.account(owner).await.unwrap().balance, 0);
+        let account = bank.account(owner).await.unwrap();
+        assert_eq!(account.balance, BankStore::RE_UP_AMOUNT - 100);
+        assert_eq!(account.loan_count, 1);
     }
 
     #[tokio::test]
@@ -514,9 +509,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bot_buy_ins_auto_re_up_without_debt() {
+    async fn buy_ins_auto_re_up_without_debt() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
-        let owner = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Fish, 0));
+        let owner = AccountOwner::User(Uuid::new_v4());
         let account = bank
             .buy_in(owner, Uuid::new_v4(), 100, false)
             .await
@@ -580,28 +575,36 @@ mod tests {
 mod no_debt_tests {
     use super::*;
     #[tokio::test]
-    async fn buy_in_requires_balance_even_when_no_debt_flag_is_false() {
+    async fn buy_in_only_requires_balance_when_no_debt_is_true() {
         let bank = BankStore::load(
             std::env::temp_dir().join(format!("two-seven-no-debt-{}", Uuid::new_v4())),
         )
         .await
         .unwrap();
         let owner = AccountOwner::User(Uuid::new_v4());
-        assert!(
-            bank.buy_in(owner.clone(), Uuid::new_v4(), 1, false)
+        assert_eq!(
+            bank.buy_in(owner.clone(), Uuid::new_v4(), 100, false)
                 .await
-                .is_err()
+                .unwrap()
+                .balance,
+            BankStore::RE_UP_AMOUNT - 100
         );
-        bank.append(owner.clone(), LedgerKind::Adjustment, 100, "seed".into())
-            .await
-            .unwrap();
+        let no_debt_owner = AccountOwner::User(Uuid::new_v4());
+        bank.append(
+            no_debt_owner.clone(),
+            LedgerKind::Adjustment,
+            100,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
         assert!(
-            bank.buy_in(owner.clone(), Uuid::new_v4(), 101, true)
+            bank.buy_in(no_debt_owner.clone(), Uuid::new_v4(), 101, true)
                 .await
                 .is_err()
         );
         assert_eq!(
-            bank.buy_in(owner, Uuid::new_v4(), 100, true)
+            bank.buy_in(no_debt_owner, Uuid::new_v4(), 100, true)
                 .await
                 .unwrap()
                 .balance,

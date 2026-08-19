@@ -55,8 +55,8 @@ fn table_island_has_live_state_and_action_contracts() {
         "waiting-status",
         "/tables/${tableId}/bot",
         "/tournaments/${tableId}/register",
-        "Seat a bot",
-        "option value=\"fish\"",
+        "Seat ${kind}",
+        "\"shark\"",
         "table-error",
         "responseError",
         "rawRank === \"T\" ? \"10\"",
@@ -275,5 +275,6 @@ fn setup_walks_a_stepped_game_dialog() {
     assert_eq!(LOBBY_JS.matches("  [").count(), 15, "T10,000 has 15 levels");
     assert!(TABLE_JS.contains("money(state.buy_in)"));
     assert!(TABLE_JS.contains("body: \"{}\""));
+    assert!(TABLE_JS.contains("JSON.stringify({ kind })"));
     assert!(!TABLE_JS.contains("JSON.stringify({ seat })"));
 }

@@ -1272,7 +1272,7 @@ pub async fn rebuy_table(
 
 #[derive(Deserialize)]
 pub struct BotRequest {
-    pub seat: usize,
+    pub seat: Option<usize>,
     pub kind: Option<String>,
 }
 pub async fn bot_table(
@@ -1286,13 +1286,25 @@ pub async fn bot_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (old, buy_in, no_debt, started, live_hand) = {
+    let (seat_index, old, buy_in, no_debt, started, live_hand) = {
         let table = table.lock().await;
+        let seat_index = if let Some(seat) = input.seat {
+            seat
+        } else if input.kind.is_some() {
+            table
+                .seats
+                .iter()
+                .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+                .ok_or_else(|| AppError::bad_request("no empty seats"))?
+        } else {
+            return Err(AppError::bad_request("seat required"));
+        };
         let seat = table
             .seats
-            .get(input.seat)
+            .get(seat_index)
             .ok_or_else(|| AppError::bad_request("invalid seat"))?;
         (
+            seat_index,
             seat.occupant.clone(),
             table.buy_in,
             matches!(table.mode, TableMode::Cash { no_debt: true }),
@@ -1321,7 +1333,7 @@ pub async fn bot_table(
         ));
     }
     if let Some(bot) = old.as_bot() {
-        let stack = s.tables.get(id).await.unwrap().lock().await.seats[input.seat].stack;
+        let stack = s.tables.get(id).await.unwrap().lock().await.seats[seat_index].stack;
         if !tournament {
             s.bank
                 .cash_out(AccountOwner::Bot(bot), id, stack)
@@ -1384,7 +1396,7 @@ pub async fn bot_table(
         .update(id, |table| {
             let seat = table
                 .seats
-                .get_mut(input.seat)
+                .get_mut(seat_index)
                 .ok_or_else(|| anyhow::anyhow!("invalid seat"))?;
             if let Some((bot, amount)) = bought {
                 seat.occupant = SeatOccupant::bot(bot);

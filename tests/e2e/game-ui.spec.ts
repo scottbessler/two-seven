@@ -134,13 +134,13 @@ test("builds a tournament one question at a time", async ({ page }) => {
 
   await page.locator('.setup-option[value="9"]').click();
   await expect(page.locator(".setup-step:not([hidden])")).toContainText("How much to buy in?");
-  // You may only pick an entry you can actually cover.
   await expect(page.locator('.setup-option[value="100000"]')).toBeEnabled();
-  await expect(page.locator('.setup-option[value="1000000"]')).toBeDisabled();
-  await expect(page.locator('.setup-option[value="1000000"]')).toContainText("More than you have");
+  await expect(page.locator('.setup-option[value="1000000"]')).toBeEnabled();
 
   await page.locator('.setup-option[value="100000"]').click();
   await expect(page.locator("#setup-summary")).toHaveText("$1,000 tournament · 9 players · 10,000 chips · top 3 paid");
+  await expect(page.locator(".setup-step:not([hidden]) legend")).toHaveText("Name");
+  await expect(page.locator('input[name="name"]')).toHaveValue("Friday night");
   await page.fill('input[name="name"]', "Sunday deep");
   await page.locator(".setup-create").click();
   await page.waitForURL(/\/tables\/[0-9a-f-]+$/);
@@ -576,13 +576,15 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   };
   await mountTable(page, unseated);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
-  // Seating a bot is a single control beside the lifecycle command.
-  await expect(page.locator(".seat-bot-dialog")).not.toBeVisible();
-  await page.getByRole("button", { name: "Seat a bot" }).click();
-  await expect(page.locator(".seat-bot-dialog")).toBeVisible();
-  await expect(page.locator('.seat-bot-dialog select[name="seat"] option')).toHaveText(["Seat 2"]);
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.locator(".seat-bot-dialog")).not.toBeVisible();
+  // Seating a bot is one click: pick the type and the server fills the next seat.
+  let botBody;
+  await page.route("**/tables/mock/bot", async (route) => {
+    botBody = route.request().postDataJSON();
+    await route.fulfill({ json: { ok: true } });
+  });
+  await expect(page.locator(".seat-bot button")).toHaveText(["Seat fish", "Seat rock", "Seat grinder", "Seat shark"]);
+  await page.getByRole("button", { name: "Seat rock" }).click();
+  expect(botBody).toEqual({ kind: "rock" });
   await page.locator(".table-controls .table-command").click();
   expect(joinBody).toEqual({});
 

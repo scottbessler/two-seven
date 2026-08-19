@@ -37,7 +37,7 @@ function money(cents) {
   return `$${(cents / 100).toLocaleString("en-US")}`;
 }
 
-export function gameRequest({ players, buyIn }, name, noDebt) {
+export function gameRequest({ players, buyIn }, name) {
   // Choices arrive as strings from the option buttons; the API wants numbers.
   const amount = Number(buyIn);
   const seats = Number(players);
@@ -46,7 +46,6 @@ export function gameRequest({ players, buyIn }, name, noDebt) {
     endpoint: "/tournaments",
     body: {
       name,
-      no_debt: noDebt,
       buy_in: amount,
       seat_count: seats,
       starting_chips: TOURNAMENT_CHIPS,
@@ -105,7 +104,7 @@ if (form && dialog) {
     errorEl.textContent = "";
     try {
       const data = new FormData(form);
-      const request = gameRequest(choices, data.get("name"), data.get("no_debt") === "on");
+      const request = gameRequest(choices, data.get("name"));
       const response = await fetch(request.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

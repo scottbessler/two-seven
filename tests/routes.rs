@@ -337,8 +337,10 @@ async fn game_setup_walks_a_stepped_dialog() {
     );
     assert!(html.contains("quick-game-form"));
     assert!(html.contains("id=\"game-setup\""));
-    // Signed out of any money, every buy-in is out of reach.
-    assert_eq!(html.matches("setup-option-dear").count(), 6);
+    assert_eq!(html.matches("setup-option-dear").count(), 0);
+    assert!(html.contains(r#"<legend>Name</legend>"#));
+    assert!(html.contains(r#"value="Friday night""#));
+    assert!(!html.contains("Require available balance"));
 }
 
 #[tokio::test]
@@ -403,7 +405,7 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
         .oneshot(
             Request::builder()
                 .uri("/tables")
-                .header(header::COOKIE, &cookie_value)
+                .header(header::COOKIE, cookie_value)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -563,6 +565,7 @@ async fn the_house_plays_its_way_onto_the_leaderboard() {
     let response = t
         .router
         .clone()
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/leaderboard")
@@ -651,7 +654,7 @@ async fn blackjack_caps_starting_bet_at_half_the_bankroll() {
 }
 
 #[tokio::test]
-async fn the_lobby_counts_humans_and_folds_away_what_you_cannot_afford() {
+async fn the_lobby_counts_humans_and_lists_every_cash_table() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -665,7 +668,7 @@ async fn the_lobby_counts_humans_and_folds_away_what_you_cannot_afford() {
         })
         .await
         .unwrap();
-    // A single re-up buys the cheapest table and nothing above it.
+    // Balance no longer hides or disables tables.
     t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let cookie_value = cookie(&t.key, user);
     two_seven::driver::ensure_cash_ladder(&t.state)
@@ -681,7 +684,7 @@ async fn the_lobby_counts_humans_and_folds_away_what_you_cannot_afford() {
         .oneshot(
             Request::builder()
                 .uri("/tables")
-                .header(header::COOKIE, &cookie_value)
+                .header(header::COOKIE, cookie_value)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -691,21 +694,13 @@ async fn the_lobby_counts_humans_and_folds_away_what_you_cannot_afford() {
     let html = String::from_utf8_lossy(&body);
     // The house filled every table, so none of them holds a person yet.
     assert!(html.contains("no humans"), "the list says who is a person");
-    let dear = two_seven::cash::TIERS
-        .iter()
-        .filter(|tier| **tier > two_seven::bank::BankStore::RE_UP_AMOUNT)
-        .count();
-    assert!(
-        html.contains(&format!("{dear} games beyond your balance")),
-        "everything above the balance folds away"
-    );
     // Cash tables and tournaments are listed apart.
     assert!(html.contains("<h2>Cash tables</h2>"));
     assert!(html.contains("<h2>Tournaments</h2>"));
-    assert!(html.contains("out-of-reach"));
-    // The cheapest table is affordable, so it is listed in the open section.
-    let open = html.split("out-of-reach").next().unwrap();
-    assert!(open.contains(&two_seven::cash::name(two_seven::cash::TIERS[0])));
+    assert!(!html.contains("out-of-reach"));
+    for tier in two_seven::cash::TIERS {
+        assert!(html.contains(&two_seven::cash::name(tier)));
+    }
 }
 
 #[tokio::test]
@@ -1578,7 +1573,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
                 .uri(format!("/tables/{id}/bot"))
                 .header(header::COOKIE, &cookie_a)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(r#"{"seat":0,"kind":"fish"}"#))
+                .body(Body::from(r#"{"kind":"fish"}"#))
                 .unwrap(),
         )
         .await
@@ -1784,7 +1779,7 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
             Request::builder()
                 .method("POST")
                 .uri(format!("/tables/{id}/bot"))
-                .header(header::COOKIE, cookie_value)
+                .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"seat":0,"kind":"fish"}"#))
                 .unwrap(),
@@ -1802,10 +1797,19 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
         .unwrap();
     assert_eq!(account.balance, 90_000);
     assert_eq!(account.loan_count, 1);
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    assert_eq!(
+        table.seats[0].occupant.as_bot(),
+        Some(two_seven::table::Bot::new(
+            two_seven::table::BotKind::Fish,
+            0
+        ))
+    );
 }
 
 #[tokio::test]
-async fn no_debt_join_is_rejected() {
+async fn no_debt_join_still_honors_legacy_restriction() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -1823,11 +1827,12 @@ async fn no_debt_join_is_rejected() {
     let id = seat_table(&t, "No debt", 9, 10_000, true).await;
     let response = t
         .router
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
                 .uri(format!("/tables/{id}/join"))
-                .header(header::COOKIE, cookie_value)
+                .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from("{}"))
                 .unwrap(),
@@ -1835,6 +1840,22 @@ async fn no_debt_join_is_rejected() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let open_id = seat_table(&t, "Open debt", 9, 10_000, false).await;
+    let response = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{open_id}/join"))
+                .header(header::COOKIE, cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

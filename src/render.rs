@@ -103,39 +103,37 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
     }
 }
 
-pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
+pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], _balance: Cents) -> String {
     layout(
         "Lobby",
         &format!(
             "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
             escape(name),
-            lobby_table_list(tables, true, balance),
+            lobby_table_list(tables, true),
             sign_out()
         ),
         "",
     )
 }
 
-pub fn table_create(balance: Cents) -> String {
-    game_create(balance)
+pub fn table_create(_balance: Cents) -> String {
+    game_create()
 }
 
-pub fn tournament_create(balance: Cents) -> String {
-    game_create(balance)
+pub fn tournament_create(_balance: Cents) -> String {
+    game_create()
 }
 
-fn game_create(balance: Cents) -> String {
+fn game_create() -> String {
     // One question per step; lobby.js walks the steps and assembles the config.
     let step = |name: &str, legend: &str, options: &str| {
         format!(
             r#"<fieldset class="setup-step" data-step="{name}" hidden><legend>{legend}</legend><div class="setup-options">{options}</div></fieldset>"#
         )
     };
-    let option = |name: &str, value: &str, title: &str, detail: &str, affordable: bool| {
+    let option = |name: &str, value: &str, title: &str, detail: &str| {
         format!(
-            r#"<button class="setup-option{}" type="button" data-choice="{name}" value="{value}"{}><b>{title}</b><small>{detail}</small></button>"#,
-            if affordable { "" } else { " setup-option-dear" },
-            if affordable { "" } else { " disabled" }
+            r#"<button class="setup-option" type="button" data-choice="{name}" value="{value}"><b>{title}</b><small>{detail}</small></button>"#
         )
     };
     let players_step = step(
@@ -148,10 +146,9 @@ fn game_create(balance: Cents) -> String {
                 "4",
                 "4 players",
                 "Winner takes the whole prize pool",
-                true
             ),
-            option("players", "6", "6 players", "Top 2 paid", true),
-            option("players", "9", "9 players", "Top 3 paid", true)
+            option("players", "6", "6 players", "Top 2 paid"),
+            option("players", "9", "9 players", "Top 3 paid")
         ),
     );
     let buy_ins = [
@@ -172,17 +169,12 @@ fn game_create(balance: Cents) -> String {
                     "buyIn",
                     &amount.to_string(),
                     label,
-                    if *amount > balance {
-                        "More than you have"
-                    } else {
-                        "10,000 chips · blinds climb every few hands"
-                    },
-                    *amount <= balance,
+                    "10,000 chips · blinds climb every few hands",
                 )
             })
             .collect::<String>(),
     );
-    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name the tournament</legend><p class="setup-summary" id="setup-summary"></p><label>Game name<input name="name" required maxlength="48" placeholder="Friday night"></label><label class="setup-debt"><input type="checkbox" name="no_debt"> Require available balance</label><button class="setup-create" type="submit">Create tournament</button></fieldset>"#;
+    let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name</legend><p class="setup-summary" id="setup-summary"></p><label>Name<input name="name" required maxlength="48" value="Friday night"></label><button class="setup-create" type="submit">Create tournament</button></fieldset>"#;
     let body = format!(
         r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form"><header><h2 id="setup-title">Start a tournament</h2><a class="setup-close" href="/tables" aria-label="Cancel">×</a></header><p class="setup-note">Cash games run around the clock in the lobby. A tournament is the one you start yourself.</p>{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
         lobby = asset("/public/lobby.js")
@@ -577,22 +569,18 @@ fn format_duration_ms(ms: u64) -> String {
     }
 }
 
-pub fn lobby(tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
+pub fn lobby(tables: &[crate::view::LobbyTableView], _balance: Cents) -> String {
     layout(
         "Lobby",
         &format!(
             "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
-            lobby_table_list(tables, false, balance)
+            lobby_table_list(tables, false)
         ),
         "",
     )
 }
 
-fn lobby_table_list(
-    tables: &[crate::view::LobbyTableView],
-    include_yours: bool,
-    balance: Cents,
-) -> String {
+fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool) -> String {
     let row = |table: &crate::view::LobbyTableView| {
         let detail = if let Some(tournament) = &table.tournament {
             format!(
@@ -640,32 +628,18 @@ fn lobby_table_list(
     let mut yours = String::new();
     let mut cash = String::new();
     let mut tournaments = String::new();
-    let mut dear = String::new();
-    let mut dear_count = 0;
     for table in tables {
         let entry = row(table);
         if include_yours && table.your_seat.is_some() {
             yours.push_str(&entry);
-        } else if table.buy_in > balance {
-            // Tables you cannot afford are folded away rather than dangled.
-            dear_count += 1;
-            dear.push_str(&entry);
         } else if table.tournament.is_some() {
             tournaments.push_str(&entry);
         } else {
             cash.push_str(&entry);
         }
     }
-    let out_of_reach = if dear.is_empty() {
-        String::new()
-    } else {
-        format!(
-            "<details class=\"table-list out-of-reach\"><summary>{dear_count} game{} beyond your balance</summary><ul>{dear}</ul></details>",
-            if dear_count == 1 { "" } else { "s" }
-        )
-    };
     format!(
-        "{}{}{}{out_of_reach}",
+        "{}{}{}",
         if include_yours {
             section("Your seats", &yours, "<li>None yet</li>")
         } else {
