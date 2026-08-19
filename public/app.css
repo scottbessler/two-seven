@@ -242,7 +242,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell>.decision-area{grid-row:4}
   .table-shell>.game-log{grid-row:5}
   .table-shell>.table-controls{grid-row:6}
-  .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:30rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.45rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.2rem)}
+  .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:31rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.45rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.2rem)}
   .table-stage .felt{position:static;inset:auto;width:100%;min-height:0;max-width:none;margin:0;padding:0 0 1.35rem;border:0;border-radius:0;background:none;box-shadow:none}
   .table-stage .table-center{position:static;display:grid;justify-items:center;gap:.4rem;width:auto;transform:none;text-align:center}
   .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
@@ -255,7 +255,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 
   .table-stage .seats{position:static;inset:auto;display:grid;gap:.4rem;pointer-events:auto}
   .table-stage .other-seats{grid-template-columns:repeat(auto-fit,minmax(7.2rem,1fr))}
-  .table-stage .viewer-seats{grid-template-columns:minmax(0,1fr)}
+  .table-stage .viewer-seats{grid-template-columns:minmax(0,1fr);margin-top:.5rem}
   .table-stage .seat{position:relative;left:auto;top:auto;transform:none;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(2.85rem,1fr) auto;align-items:start;justify-items:center;min-width:0;height:8rem;min-height:0;overflow:hidden;gap:.08rem;padding:.4rem .45rem;border-radius:7px;pointer-events:auto}
   .table-stage .viewer-seats .seat{height:11.2rem;grid-template-rows:auto auto auto auto minmax(0,1fr)}
   .player-info>strong{max-width:100%;min-width:0}
