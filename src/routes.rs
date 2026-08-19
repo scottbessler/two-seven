@@ -549,11 +549,21 @@ async fn balance_of(state: &AppState, user: Uuid) -> crate::money::Cents {
 
 async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
     let mut tables = Vec::new();
+    let balance = balance_of(state, user).await;
     for id in state.tables.ids().await {
         if let Some(table) = state.tables.get(id).await {
             let table = table.lock().await;
             // A finished tournament has nothing left to join or watch.
             if matches!(&table.mode, TableMode::Tournament(state) if state.finished) {
+                continue;
+            }
+            let your_seat = table.seats.iter().position(
+                |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+            );
+            if matches!(table.mode, TableMode::Cash { .. })
+                && your_seat.is_none()
+                && balance < table.buy_in
+            {
                 continue;
             }
             let tournament = match &table.mode {
@@ -586,9 +596,7 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
                 max_seats: table.max_seats,
                 no_debt,
                 tournament,
-                your_seat: table.seats.iter().position(|seat| {
-                    matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
-                }),
+                your_seat,
             });
         }
     }

@@ -398,6 +398,15 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
         "chips on a retired table come back"
     );
     assert_eq!(t.tables.ids().await.len(), two_seven::cash::TIERS.len());
+    t.bank
+        .append(
+            AccountOwner::User(user),
+            LedgerKind::Adjustment,
+            two_seven::cash::TIERS.last().copied().unwrap(),
+            "sorting bankroll".into(),
+        )
+        .await
+        .unwrap();
 
     let response = t
         .router
@@ -654,7 +663,7 @@ async fn blackjack_caps_starting_bet_at_half_the_bankroll() {
 }
 
 #[tokio::test]
-async fn the_lobby_counts_humans_and_lists_every_cash_table() {
+async fn the_lobby_counts_humans_and_lists_cash_tables_you_can_afford() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -668,7 +677,6 @@ async fn the_lobby_counts_humans_and_lists_every_cash_table() {
         })
         .await
         .unwrap();
-    // Balance no longer hides or disables tables.
     t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let cookie_value = cookie(&t.key, user);
     two_seven::driver::ensure_cash_ladder(&t.state)
@@ -697,9 +705,13 @@ async fn the_lobby_counts_humans_and_lists_every_cash_table() {
     // Cash tables and tournaments are listed apart.
     assert!(html.contains("<h2>Cash tables</h2>"));
     assert!(html.contains("<h2>Tournaments</h2>"));
-    assert!(!html.contains("out-of-reach"));
     for tier in two_seven::cash::TIERS {
-        assert!(html.contains(&two_seven::cash::name(tier)));
+        let name = two_seven::cash::name(tier);
+        if tier <= BankStore::RE_UP_AMOUNT {
+            assert!(html.contains(&name), "{name} should be visible");
+        } else {
+            assert!(!html.contains(&name), "{name} should be hidden");
+        }
     }
 }
 

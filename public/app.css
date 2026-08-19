@@ -243,7 +243,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell>.game-log{grid-row:5}
   .table-shell>#table-error{grid-row:6}
   .table-shell>.table-controls{grid-row:7}
-  .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:30.25rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.65rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.45rem)}
+  .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:27rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.9rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.8rem)}
   .table-stage .felt{position:static;inset:auto;width:100%;min-height:0;max-width:none;margin:0;padding:.25rem 0;border:0;border-radius:0;background:none;box-shadow:none}
   .table-stage .table-center{position:static;width:auto;transform:none;text-align:center}
   .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
@@ -257,18 +257,19 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-stage .seats{position:static;inset:auto;display:grid;gap:.4rem;pointer-events:auto}
   .table-stage .other-seats{grid-template-columns:repeat(auto-fit,minmax(7.2rem,1fr))}
   .table-stage .viewer-seats{grid-template-columns:minmax(0,1fr)}
-  .table-stage .seat{position:relative;left:auto;top:auto;transform:none;display:grid;grid-template-rows:auto auto .9rem auto minmax(2.9rem,1fr);align-items:start;min-width:0;height:7rem;min-height:0;overflow:hidden;gap:.08rem;padding:.38rem .45rem;border-radius:7px;pointer-events:auto}
-  .table-stage .viewer-seats .seat{height:11.55rem;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto auto minmax(0,1fr);align-items:start;justify-items:center}
+  .table-stage .seat{position:relative;left:auto;top:auto;transform:none;display:grid;grid-template-rows:auto auto .95rem 1.25rem minmax(0,1fr);align-items:start;min-width:0;height:6.8rem;min-height:0;overflow:hidden;gap:.08rem;padding:.38rem .45rem;border-radius:7px;pointer-events:auto}
+  .table-stage .viewer-seats .seat{height:7.9rem;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);grid-template-rows:auto auto 1rem auto;column-gap:.65rem;align-items:center}
+  .table-stage .viewer-seats .player-info,.table-stage .viewer-seats .seat-stack,.table-stage .viewer-seats .seat-badges,.table-stage .viewer-seats .seat-wager{grid-column:1}
   .player-info>strong{max-width:100%;min-width:0}
   .seat-badges{min-height:.9rem;overflow:hidden}
   .seat .seat-role{font-size:.53rem;white-space:nowrap}
-  .seat .seat-wager,.seat.viewer .seat-wager{position:static;z-index:5;min-width:0;max-width:100%;margin:0 auto;padding:.1rem .3rem;font-size:.62rem;transform:none}
+  .seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;max-width:100%;margin:0 auto;padding:.1rem .3rem;font-size:.62rem;transform:none}
   .seat-cards,.seat.cards-above .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;left:auto;display:flex;justify-content:center;align-self:end;max-width:100%;margin:.1rem auto 0;transform:none}
   .seat-cards .playing-card{--card-w:2rem;--card-h:2.8rem;--corner-gap:.08rem;margin-left:-.15rem;border-radius:3px}
   .seat-cards.revealed .playing-card{--card-w:2.45rem;--card-h:3.4rem;--corner-gap:.1rem}
-  .seat.viewer .seat-cards{grid-column:1;grid-row:5;align-self:start;margin:.35rem auto 0}
+  .seat.viewer .seat-cards{grid-column:2;grid-row:1/-1;align-self:center;margin:0}
   .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.15rem}
-  .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{transform:scale(1.12)}
+  .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{transform:scale(1.2)}
   .button-marker{left:auto;right:.2rem;top:.2rem;transform:none}
   .seat .player-tooltip,.seat.tooltip-right .player-tooltip,.seat.tooltip-left .player-tooltip{position:fixed;left:50%;right:auto;top:auto;bottom:auto;width:min(15rem,calc(100vw - 1rem));transform:translate(-50%,-100%)}
 

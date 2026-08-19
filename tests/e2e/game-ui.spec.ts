@@ -7,6 +7,7 @@ const tableState = {
   button: 5,
   viewer_seat: 2,
   viewer_leaving: false,
+  bank_balance: 25_000,
   buy_in: 20_000,
   tournament: null,
   last_hand: null,
@@ -495,6 +496,10 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   await mountTable(page, houseTable);
   // A full table of house players is still a table you can join.
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
+  await expect(page.locator(".table-controls .table-command")).toBeEnabled();
+  await mountTable(page, { ...houseTable, bank_balance: 19_999 });
+  await expect(page.locator(".table-controls .table-command")).toBeDisabled();
+  await mountTable(page, houseTable);
   // And it waits to be asked before it plays.
   await expect(page.getByRole("button", { name: "Deal a hand" })).toBeVisible();
 
@@ -576,6 +581,7 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   };
   await mountTable(page, unseated);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
+  await expect(page.locator(".table-controls .table-command")).toBeEnabled();
   // Seating a bot is one click: pick the type and the server fills the next seat.
   let botBody;
   await page.route("**/tables/mock/bot", async (route) => {
@@ -604,6 +610,11 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   // Busted, you may buy in again -- or walk away. Rebuying must never be the
   // only way out of a seat.
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200", "Leave"]);
+  await expect(page.locator(".table-controls .table-command").first()).toBeEnabled();
+  await mountTable(page, { ...busted, bank_balance: 19_999 });
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200", "Leave"]);
+  await expect(page.locator(".table-controls .table-command").first()).toBeDisabled();
+  await mountTable(page, busted);
   await page.locator(".table-controls .table-command").first().click();
   expect(rebuyBody).toEqual({});
 

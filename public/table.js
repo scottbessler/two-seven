@@ -101,15 +101,18 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
   const winner = settled && awarded > 0;
   const classes = ["seat", viewer && "viewer", tooltipBelow && "tooltip-below", cardsAbove && "cards-above", tooltipHorizontal, seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner"].filter(Boolean).join(" ");
   return html`<article class=${classes} style=${position} data-seat-order=${order}>
+    <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
     <span class="player-info" tabindex="0">
       <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
     <span class="seat-stack">${money(stack)}</span>
-    <span class="seat-badges">${role && html`<i class="seat-role">${role}</i>`}${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.folded && html`<i class="seat-role state-role">FOLDED</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
+    <span class="seat-badges">${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}</span>
+    ${player?.folded && !viewer
+      ? html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`
+      : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
     <span class=${`seat-wager ${player?.street_contribution > 0 ? "" : "no-wager"}`}>${money(player?.street_contribution || 0)}</span>
-    ${cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${true} />`)}</span>`}
-    ${seat.index === button && html`<i class="button-marker">D</i>`}
+    <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
   </article>`;
 }
 
@@ -270,6 +273,7 @@ function TableCommands({ state, openSeats, refresh }) {
   const seatsForYou = state.tournament
     ? openSeats
     : [...openSeats, ...state.seats.filter((seat) => seat.bot)];
+  const canAffordCashSeat = state.tournament || (state.bank_balance ?? 0) >= state.buy_in;
   const viewer = state.viewer_seat == null
     ? null
     : state.seats.find((seat) => seat.index === state.viewer_seat);
@@ -283,13 +287,14 @@ function TableCommands({ state, openSeats, refresh }) {
     commands.push({ label: "Leaving...", disabled: true });
   } else if (viewer) {
     if (!state.tournament && viewer.stack <= 0 && !state.hand) {
-      commands.push({ label: `Re-Buy In ${money(state.buy_in)}`, endpoint: `/tables/${tableId}/rebuy` });
+      commands.push({ label: `Re-Buy In ${money(state.buy_in)}`, endpoint: `/tables/${tableId}/rebuy`, disabled: !canAffordCashSeat });
     }
     commands.push(leave);
   } else if (seatsForYou.length > 0 && (!state.tournament || (!state.tournament.started && !state.tournament.finished))) {
     commands.push({
       label: `Buy In ${money(state.buy_in)}`,
       endpoint: state.tournament ? `/tournaments/${tableId}/register` : `/tables/${tableId}/join`,
+      disabled: !canAffordCashSeat,
     });
   }
   return commands.map((command) => html`<${TableCommand} ...${command} buyIn=${state.buy_in} refresh=${refresh} />`);
