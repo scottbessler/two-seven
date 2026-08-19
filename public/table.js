@@ -107,11 +107,11 @@ function Seat({ seat, player, events, current, button, order, total, viewer, vie
       <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
     </span>
     <span class="seat-stack">${money(stack)}</span>
-    <span class="seat-badges">${current && html`<i class="seat-role acting-role">ACT</i>`}${player?.all_in && html`<i class="seat-role state-role">ALL IN</i>`}</span>
+    <span class="seat-badges">${current && html`<i class="seat-role acting-role">ACT</i>`}</span>
     ${player?.folded && !viewer
       ? html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`
       : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
-    <span class=${`seat-wager ${player?.street_contribution > 0 ? "" : "no-wager"}`}>${money(player?.street_contribution || 0)}</span>
+    <span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in ? "" : "no-wager"}`}>${player?.all_in ? "ALL IN" : money(player?.street_contribution || 0)}</span>
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
   </article>`;
 }

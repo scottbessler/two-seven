@@ -260,6 +260,8 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(wagerOverlapsStatus, "V16: viewer wager must not cover table status").toBe(false);
   await expect(page.locator(".seat.folded")).toHaveCount(1);
   await expect(page.locator(".seat.all-in")).toHaveCount(1);
+  await expect(page.locator(".seat.all-in .seat-wager")).toHaveText("ALL IN");
+  await expect(page.locator(".seat.all-in .seat-badges")).not.toContainText("ALL IN");
   expect(await page.locator(".decision-area").evaluate((actions) => actions.compareDocumentPosition(document.querySelector(".game-log")) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
   const overlaps = await page.locator(".table-stage").evaluate((stage) => {
     const cards = [...stage.querySelectorAll(".board .playing-card")].map((node) => node.getBoundingClientRect());
