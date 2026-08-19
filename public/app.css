@@ -3,6 +3,8 @@
 .card-corner b,.card-corner i{font-size:min(calc(var(--card-w)*.58),calc(var(--card-w)*.42*var(--card-rank-percent,1)))}
 .card-corner b{font-weight:var(--card-rank-weight,700);letter-spacing:0;-webkit-text-stroke:var(--card-rank-stroke,0) currentColor;paint-order:stroke fill}
 .card-corner i{font-style:normal}
+.four-color-suits .playing-card.suit-c,.four-color-suits .playing-card.suit-c span,.four-color-suits .playing-card.suit-c b{color:#124f8c!important}
+.four-color-suits .playing-card.suit-d,.four-color-suits .playing-card.suit-d span,.four-color-suits .playing-card.suit-d b{color:#c75b1a!important}
 /* Shared card-face geometry scales with both card dimensions. */
 :root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57}
 *{box-sizing:border-box}
@@ -124,14 +126,14 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .paranoid-cards :is(.seat.viewer .seat-cards,.card-config-preview) .card-corner{visibility:hidden}
 .paranoid-cards :is(.seat.viewer .seat-cards,.card-config-preview):is(:hover,:focus-within,:active) .playing-card{background:#faf9f2;border:0;box-shadow:inset 0 0 0 1px #d8d5cc,inset 0 0 0 2px #fff,0 3px 8px #0006}
 .paranoid-cards :is(.seat.viewer .seat-cards,.card-config-preview):is(:hover,:focus-within,:active) .card-corner{visibility:visible}
-.card-config-dialog .paranoid-toggle{grid-template-columns:auto 1fr;align-items:start;gap:.6rem;padding:.55rem .65rem;border:1px solid #527d6c;border-radius:8px;background:#0d1f1b;cursor:pointer}
-.card-config-dialog .paranoid-toggle input{width:1.15rem;height:1.15rem;margin:.1rem 0 0;padding:0;accent-color:var(--accent)}
-.card-config-dialog .paranoid-toggle span{display:grid;justify-content:start;gap:.15rem}
-.card-config-dialog .paranoid-toggle b{color:var(--ink)}
-.card-config-dialog .paranoid-toggle small{color:var(--muted);line-height:1.35}
-.card-config-dialog .paranoid-toggle:has(input:checked){border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
-.card-config-dialog .paranoid-toggle:has(input:checked) b{color:var(--accent)}
-.card-config-dialog .paranoid-toggle:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:2px}
+.card-config-dialog .card-option-toggle{grid-template-columns:auto 1fr;align-items:start;gap:.6rem;padding:.55rem .65rem;border:1px solid #527d6c;border-radius:8px;background:#0d1f1b;cursor:pointer}
+.card-config-dialog .card-option-toggle input{width:1.15rem;height:1.15rem;margin:.1rem 0 0;padding:0;accent-color:var(--accent)}
+.card-config-dialog .card-option-toggle span{display:grid;justify-content:start;gap:.15rem}
+.card-config-dialog .card-option-toggle b{color:var(--ink)}
+.card-config-dialog .card-option-toggle small{color:var(--muted);line-height:1.35}
+.card-config-dialog .card-option-toggle:has(input:checked){border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.card-config-dialog .card-option-toggle:has(input:checked) b{color:var(--accent)}
+.card-config-dialog .card-option-toggle:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:2px}
 .card-back i{width:62%;height:72%;border:1px solid #6f8f83;background:repeating-linear-gradient(45deg,#214b40 0 5px,#183a31 5px 10px)}
 .table-stage .seats{display:grid;gap:.4rem;pointer-events:auto}
 .table-stage .other-seats{grid-template-columns:repeat(auto-fit,minmax(7.2rem,1fr))}
@@ -165,6 +167,8 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.15rem}
 .seat .playing-card.red,.seat .playing-card.red span,.seat .playing-card.red b{color:#d5291f!important}
 .seat .playing-card.black,.seat .playing-card.black span,.seat .playing-card.black b{color:#20231f!important}
+.four-color-suits .seat .playing-card.suit-c,.four-color-suits .seat .playing-card.suit-c span,.four-color-suits .seat .playing-card.suit-c b{color:#124f8c!important}
+.four-color-suits .seat .playing-card.suit-d,.four-color-suits .seat .playing-card.suit-d span,.four-color-suits .seat .playing-card.suit-d b{color:#c75b1a!important}
 .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{z-index:30;transform:scale(1.12)}
 .seat.viewer .seat-cards:hover .playing-card:first-child,.seat.viewer .seat-cards:focus-within .playing-card:first-child{transform:rotate(-3deg)!important}
 .seat.viewer .seat-cards:hover .playing-card:last-child,.seat.viewer .seat-cards:focus-within .playing-card:last-child{transform:rotate(3deg)!important}

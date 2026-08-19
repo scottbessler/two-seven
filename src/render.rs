@@ -547,7 +547,7 @@ fn card_face(rank: &str, suit: &str) -> String {
     };
     // Mirrors card.js: the face is rank over suit at one size.
     format!(
-        r#"<span class="playing-card {color}" aria-label="{rank}{suit}"><span class="card-corner"><b>{display}</b><i>{glyph}</i></span></span>"#
+        r#"<span class="playing-card {color} suit-{suit}" aria-label="{rank}{suit}"><span class="card-corner"><b>{display}</b><i>{glyph}</i></span></span>"#
     )
 }
 

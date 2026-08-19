@@ -14,7 +14,7 @@ export function Card({ value, card, empty = false, hidden = false, interactive =
   const face = cardFace(value || card);
   const red = face.suitCode === "h" || face.suitCode === "d";
   // A face is rank over suit at one size: no pips, no court art, no second corner.
-  return html`<span class=${`playing-card ${red ? "red" : "black"} ${interactive ? "card-zoom-target" : ""}`} aria-label=${value || card} tabindex=${interactive ? 0 : undefined}>
+  return html`<span class=${`playing-card ${red ? "red" : "black"} suit-${face.suitCode} ${interactive ? "card-zoom-target" : ""}`} aria-label=${value || card} tabindex=${interactive ? 0 : undefined}>
     <span class="card-corner"><b>${face.rank}</b><i>${face.suit}</i></span>
   </span>`;
 }

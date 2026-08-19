@@ -6,6 +6,10 @@ test.describe("card test page", () => {
     await expect(page.locator(".playing-card")).toHaveCount(52);
     // The face is rank over suit only: no pips, no court art, no second corner.
     await expect(page.locator(".card-corner")).toHaveCount(52);
+    await expect(page.locator(".playing-card.suit-c")).toHaveCount(13);
+    await expect(page.locator(".playing-card.suit-d")).toHaveCount(13);
+    await expect(page.locator(".playing-card.suit-h")).toHaveCount(13);
+    await expect(page.locator(".playing-card.suit-s")).toHaveCount(13);
     await expect(page.locator(".pip-grid, .card-art, .court-piece, .card-frame, .card-corner-bottom")).toHaveCount(0);
     const cardFaceStyles = await page.evaluate(() => {
       const corner = document.querySelector(".card-corner b");
@@ -30,5 +34,10 @@ test.describe("card test page", () => {
     );
     expect(overflowingSuitRows, "V8: card test suit rows must not scroll horizontally").toBe(0);
     await expect(page).toHaveScreenshot("card-test.png", { fullPage: true });
+    await page.evaluate(() => document.documentElement.classList.add("four-color-suits"));
+    await expect(page.locator(".playing-card.suit-c").first()).toHaveCSS("color", "rgb(18, 79, 140)");
+    await expect(page.locator(".playing-card.suit-d").first()).toHaveCSS("color", "rgb(199, 91, 26)");
+    await expect(page.locator(".playing-card.suit-h").first()).toHaveCSS("color", "rgb(213, 41, 31)");
+    await expect(page.locator(".playing-card.suit-s").first()).toHaveCSS("color", "rgb(32, 35, 31)");
   });
 });

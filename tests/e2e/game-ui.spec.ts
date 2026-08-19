@@ -170,11 +170,13 @@ test("shows live hand cues and event log", async ({ page }) => {
   const sizeSlider = page.locator('input[name="card-scale"]');
   const rankSlider = page.locator('input[name="rank-scale"]');
   const weightSlider = page.locator('input[name="rank-weight"]');
+  const fourColorToggle = page.locator('input[name="four-color"]');
   await Promise.all([sizeSlider, rankSlider, weightSlider].map(async (slider) => {
     await expect(slider).toHaveValue("100");
     await expect(slider).toHaveAttribute("min", "50");
     await expect(slider).toHaveAttribute("max", "200");
   }));
+  await expect(fourColorToggle).not.toBeChecked();
   await expect(page.locator(".card-config-preview .playing-card")).toHaveCount(2);
   const previewBox = await page.locator(".card-config-preview .playing-card").first().boundingBox();
   const liveBox = await viewerCard.boundingBox();
@@ -225,6 +227,14 @@ test("shows live hand cues and event log", async ({ page }) => {
   await weightSlider.fill("100");
   expect(await page.evaluate(() => localStorage.getItem("table-rank-size-percent"))).toBe("100");
   expect(await page.evaluate(() => localStorage.getItem("table-rank-weight-percent"))).toBe("100");
+  await fourColorToggle.check();
+  await expect(page.locator("html")).toHaveClass(/four-color-suits/);
+  await expect(viewerCard).toHaveCSS("color", "rgb(18, 79, 140)");
+  expect(await page.evaluate(() => localStorage.getItem("table-four-color-suits"))).toBe("on");
+  await fourColorToggle.uncheck();
+  await expect(page.locator("html")).not.toHaveClass(/four-color-suits/);
+  await expect(viewerCard).toHaveCSS("color", "rgb(32, 35, 31)");
+  expect(await page.evaluate(() => localStorage.getItem("table-four-color-suits"))).toBe("off");
   await page.getByRole("button", { name: "Close" }).click();
   const firstBeforeMagnify = await viewerCard.boundingBox();
   const secondBeforeMagnify = await secondViewerCard.boundingBox();

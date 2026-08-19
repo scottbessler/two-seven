@@ -89,6 +89,7 @@ fn table_css_is_mobile_poker_layout() {
         ".felt",
         ".playing-card",
         ".card-corner",
+        ".four-color-suits",
         ".seats",
         "@media(max-width:640px)",
         ".actions",
@@ -168,6 +169,8 @@ fn hand_blitz_island_has_mode_contracts() {
 fn shared_card_renderer_draws_rank_over_suit_only() {
     assert!(CARD_JS.contains("card-corner"));
     assert!(CARD_JS.contains("<b>${face.rank}</b><i>${face.suit}</i>"));
+    assert!(CARD_JS.contains("suit-${face.suitCode}"));
+    assert!(RENDER_RS.contains("suit-{suit}"));
     assert!(CARD_JS.contains("card-back"));
     assert!(CARD_JS.contains("empty-card"));
     for dropped in [
@@ -190,6 +193,7 @@ fn shared_card_settings_preserve_storage_contract() {
         "table-card-size-percent",
         "table-rank-size-percent",
         "table-rank-weight-percent",
+        "table-four-color-suits",
         "table-paranoid-cards",
         "localStorage",
         "Card display",
@@ -199,6 +203,7 @@ fn shared_card_settings_preserve_storage_contract() {
         "--viewer-card-w",
         "--card-rank-weight",
         "--card-rank-stroke",
+        "four-color-suits",
     ] {
         assert!(
             CARD_SETTINGS_JS.contains(literal),
