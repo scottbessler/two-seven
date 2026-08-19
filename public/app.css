@@ -243,7 +243,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell>.game-log{grid-row:5}
   .table-shell>.table-controls{grid-row:6}
   .table-stage{display:grid;grid-template-rows:auto auto auto;gap:1rem;flex:0 0 auto;height:30rem;min-height:0;padding:0;overflow:visible;--viewer-card-w-fit:min(var(--viewer-card-w),4.45rem);--viewer-card-h-fit:min(var(--viewer-card-h),6.2rem)}
-  .table-stage .felt{position:static;inset:auto;width:100%;min-height:0;max-width:none;margin:0;padding:0 0 1rem;border:0;border-radius:0;background:none;box-shadow:none}
+  .table-stage .felt{position:static;inset:auto;width:100%;min-height:0;max-width:none;margin:0;padding:0 0 1.35rem;border:0;border-radius:0;background:none;box-shadow:none}
   .table-stage .table-center{position:static;display:grid;justify-items:center;gap:.4rem;width:auto;transform:none;text-align:center}
   .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
   .table-stage .playing-card{--card-w:min(3.65rem,calc((100vw - 15rem)/5));--card-h:min(5.1rem,calc((100vw - 15rem)/5 * 1.4));--corner-gap:.18rem}
