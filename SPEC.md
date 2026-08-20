@@ -328,6 +328,8 @@ Mark each milestone done here as it lands.
   events are emitted only for actual table mutations or explicit keep-alives.
 - **V31** Bank-affecting island actions publish the refreshed account state;
   blackjack controls and the header balance update without page refresh.
+- **V32** Bots never fold when `Check` is legal; free continuation is chosen over
+  surrender for every app bot policy.
 
 ## §T Build tasks
 
@@ -445,3 +447,5 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - Blackjack, poker table commands, Hand Blitz, and the bank widget kept separate
   balance state, so same-page re-ups and game buy-ins/payouts left sibling UI
   stale; share `bank:updated` account events and cover the flow under V31.
+- Fish could randomly fold a made hand from a free `Fold`/`Check` legal-action
+  set; normalize app bot policy output so every bot checks instead under V32.

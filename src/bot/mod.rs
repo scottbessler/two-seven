@@ -9,12 +9,21 @@ use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 
 impl BotKind {
     pub fn act(self, view: &HandView, legal: &LegalActions, seed: u64) -> Action {
-        match self {
+        let action = match self {
             Self::Fish => fish(view, legal, seed),
             Self::Rock => rock(view, legal),
             Self::Grinder => grinder(view, legal),
             Self::Shark => shark_with(&SharkParams::DEFAULT, view, legal, seed),
-        }
+        };
+        avoid_free_fold(action, legal)
+    }
+}
+
+fn avoid_free_fold(action: Action, legal: &LegalActions) -> Action {
+    if matches!(action, Action::Fold) && legal.actions.contains(&Action::Check) {
+        Action::Check
+    } else {
+        action
     }
 }
 
@@ -124,7 +133,7 @@ mod tests {
     use super::*;
     use crate::{
         cards::Card,
-        holdem::Hand,
+        holdem::{Hand, WagerBounds},
         table::Stakes,
         view::{HandPlayerView, HandView, hand_view},
     };
@@ -161,6 +170,78 @@ mod tests {
                         )
                     });
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn bots_check_instead_of_folding_free_actions() {
+        let view = HandView {
+            street: "Flop".into(),
+            button: 0,
+            big_blind: 2,
+            board: vec![
+                Card::from_str("Ah").unwrap(),
+                Card::from_str("7c").unwrap(),
+                Card::from_str("2s").unwrap(),
+            ],
+            your_hole_cards: Some(vec![
+                Card::from_str("As").unwrap(),
+                Card::from_str("Kd").unwrap(),
+            ]),
+            seats: Vec::new(),
+            pot: 100,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: vec![
+                HandPlayerView {
+                    seat: 0,
+                    stack: 100,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+                HandPlayerView {
+                    seat: 1,
+                    stack: 100,
+                    contribution: 0,
+                    street_contribution: 0,
+                    folded: false,
+                    all_in: false,
+                    acted: false,
+                },
+            ],
+            events: Vec::new(),
+            last_bet: 0,
+            to_call: 0,
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![Action::Fold, Action::Check, Action::Bet { amount: 10 }],
+            to_call: 0,
+            wager: Some(WagerBounds {
+                min: 10,
+                max: 100,
+                fixed: None,
+            }),
+            wagers_capped: false,
+        };
+
+        for kind in [
+            BotKind::Fish,
+            BotKind::Rock,
+            BotKind::Grinder,
+            BotKind::Shark,
+        ] {
+            for seed in 0..64 {
+                assert_ne!(
+                    kind.act(&view, &legal, seed),
+                    Action::Fold,
+                    "{kind:?} folded when check was free at seed {seed}"
+                );
             }
         }
     }
