@@ -220,6 +220,7 @@ pub fn table_view_with_banks(
     banks: &std::collections::HashMap<usize, Account>,
     names: &std::collections::HashMap<usize, String>,
 ) -> TableView {
+    let tournament_result_visible = !terminal_tournament_result_pending(table);
     TableView {
         id: table.id,
         name: table.name.clone(),
@@ -281,13 +282,24 @@ pub fn table_view_with_banks(
                         .levels
                         .get(state.current_level + 1)
                         .map(|level| level.ante),
-                    finish_order: state.finish_order.clone(),
+                    finish_order: if state.finished && !tournament_result_visible {
+                        Vec::new()
+                    } else {
+                        state.finish_order.clone()
+                    },
                     started: state.started,
-                    finished: state.finished,
+                    finished: state.finished && tournament_result_visible,
                 }),
             crate::table::TableMode::Cash { .. } => None,
         },
     }
+}
+
+fn terminal_tournament_result_pending(table: &Table) -> bool {
+    matches!(&table.mode, crate::table::TableMode::Tournament(state) if state.finished)
+        && table.hand.is_none()
+        && table.last_hand.is_some()
+        && table.next_action_at.is_some_and(|at| at > Utc::now())
 }
 fn seat_view(
     index: usize,
@@ -311,5 +323,102 @@ fn seat_view(
         hole_cards: None,
         bank_balance: account.map(|account| account.balance),
         bank_entries: account.map_or_else(Vec::new, |account| account.entries.clone()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::table::{
+        BlindLevel, Seat, SeatOccupant, Stakes, Table, TableMode, TournamentConfig, TournamentState,
+    };
+    use chrono::Duration;
+    use std::collections::BTreeMap;
+
+    fn terminal_tournament() -> Table {
+        let mut table = Table::new(
+            "final".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Tournament(TournamentState {
+                config: TournamentConfig {
+                    buy_in: 1_000,
+                    seat_count: 2,
+                    starting_chips: 10_000,
+                    levels: vec![BlindLevel {
+                        small_blind: 100,
+                        big_blind: 200,
+                        ante: 0,
+                        hands: 4,
+                    }],
+                    payout_percentages: vec![100],
+                    no_debt: false,
+                },
+                current_level: 0,
+                hands_at_level: 1,
+                finish_order: vec![1],
+                registered: 2,
+                started: true,
+                prize_pool: 2_000,
+                finished: true,
+                paid_out: false,
+            }),
+            2,
+            1_000,
+        );
+        table.seats[0] = Seat {
+            occupant: SeatOccupant::Human {
+                user_id: uuid::Uuid::new_v4(),
+            },
+            stack: 20_000,
+            sitting_out: false,
+            pending_departure: false,
+        };
+        table.seats[1] = Seat {
+            occupant: SeatOccupant::Human {
+                user_id: uuid::Uuid::new_v4(),
+            },
+            stack: 0,
+            sitting_out: false,
+            pending_departure: false,
+        };
+        table.last_hand = Some(crate::holdem::HandSummary {
+            board: Vec::new(),
+            results: Vec::new(),
+            awards: vec![crate::holdem::Award {
+                seat: 0,
+                amount: 20_000,
+            }],
+            contributions: BTreeMap::new(),
+            revealed_hole_cards: vec![(0, Vec::new()), (1, Vec::new())],
+            events: Vec::new(),
+            runout_from: 0,
+            runout: Vec::new(),
+            stacks_before_awards: BTreeMap::new(),
+            reveal_leaders: vec![0],
+        });
+        table
+    }
+
+    #[test]
+    fn tournament_result_waits_for_reveal_before_exposing_winner_v33() {
+        let mut table = terminal_tournament();
+        table.next_action_at = Some(Utc::now() + Duration::seconds(6));
+
+        let hidden = table_view(&table, None).tournament.unwrap();
+
+        assert!(!hidden.finished, "terminal winner waits for reveal");
+        assert!(
+            hidden.finish_order.is_empty(),
+            "terminal finish order would identify the winner too early"
+        );
+
+        table.next_action_at = Some(Utc::now() - Duration::seconds(1));
+        let visible = table_view(&table, None).tournament.unwrap();
+
+        assert!(visible.finished);
+        assert_eq!(visible.finish_order, vec![1]);
     }
 }

@@ -365,8 +365,8 @@ function TableApp() {
   // has had its moment, hand the table back to whoever is watching.
   const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
   const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
-  const champion = tournamentChampion(state);
-  const tournamentComplete = Boolean(state.tournament?.finished);
+  const tournamentComplete = Boolean(state.tournament?.finished && (!showdown || settled));
+  const champion = tournamentComplete ? tournamentChampion(state) : null;
   const status = showdown
     ? null
     : hand

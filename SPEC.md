@@ -330,6 +330,8 @@ Mark each milestone done here as it lands.
   blackjack controls and the header balance update without page refresh.
 - **V32** Bots never fold when `Check` is legal; free continuation is chosen over
   surrender for every app bot policy.
+- **V33** Terminal tournament winner state is not exposed to the live table view
+  until the final hand reveal/runout pause has finished.
 
 ## §T Build tasks
 
@@ -449,3 +451,6 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
   stale; share `bank:updated` account events and cover the flow under V31.
 - Fish could randomly fold a made hand from a free `Fold`/`Check` legal-action
   set; normalize app bot policy output so every bot checks instead under V32.
+- Terminal tournaments projected `finished` and champion state as soon as the
+  final hand settled, letting the UI spoil the winner before reveal; embargo the
+  public tournament result until the final hand pause completes under V33.

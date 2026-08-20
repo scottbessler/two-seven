@@ -64,6 +64,7 @@ fn table_island_has_live_state_and_action_contracts() {
         "response.ok",
         "hand.legal_actions.to_call",
         "state.tournament.started",
+        "state.tournament?.finished && (!showdown || settled)",
         "header-info",
         "street_contribution",
         "SmallBlind",
