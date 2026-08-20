@@ -34,6 +34,29 @@ test("blackjack bank mutations refresh the header balance", async ({ page }) => 
   await expect(page.locator("#bank-balance")).toHaveText("$990");
 });
 
+test("bank header delta shows net change in the last hour", async ({ page }) => {
+  await signIn(page, "bankhour");
+  const now = new Date();
+  await page.route("**/api/bank", async (route) => {
+    await route.fulfill({
+      json: {
+        balance: 125_000,
+        loan_count: 0,
+        entries: [
+          { at: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(), delta: 50_000, memo: "old win" },
+          { at: new Date(now.getTime() - 45 * 60 * 1000).toISOString(), delta: 20_000, memo: "recent win" },
+          { at: new Date(now.getTime() - 10 * 60 * 1000).toISOString(), delta: -5_000, memo: "recent bet" },
+        ],
+      },
+    });
+  });
+
+  await page.goto("/blackjack");
+
+  await expect(page.locator("#bank-balance")).toHaveText("$1,250");
+  await expect(page.locator("#bank-delta")).toHaveText(" (+$150)");
+});
+
 test("blackjack trainer settings drive tutor quiz and analyzer", async ({ page }) => {
   await signIn(page, "blackjacktrainer");
   await page.request.post("/api/bank", { data: {} });

@@ -7,11 +7,21 @@ const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
 const panel = document.getElementById("bank-panel");
 
+function netChangeInLastHour(entries) {
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  return entries
+    .filter((entry) => {
+      const at = Date.parse(entry.at);
+      return Number.isFinite(at) && at >= cutoff;
+    })
+    .reduce((sum, entry) => sum + entry.delta, 0);
+}
+
 if (balance && widget && panel) {
   const showBank = (account) => {
     balance.textContent = money(account.balance);
-    const latest = account.entries.at(-1);
-    delta.textContent = latest ? ` (${latest.delta >= 0 ? "+" : ""}${money(latest.delta)})` : "";
+    const recentNet = netChangeInLastHour(account.entries || []);
+    delta.textContent = recentNet ? ` (${recentNet >= 0 ? "+" : ""}${money(recentNet)})` : "";
     for (const button of document.querySelectorAll(".re-up-form button")) {
       button.disabled = account.balance >= 10_000;
     }

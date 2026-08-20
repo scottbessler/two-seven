@@ -147,6 +147,8 @@ fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("player-page-link"));
     assert!(BANK_JS.contains("textContent"));
     assert!(BANK_JS.contains("bank-delta"));
+    assert!(BANK_JS.contains("netChangeInLastHour"));
+    assert!(BANK_JS.contains("60 * 60 * 1000"));
     assert!(BANK_JS.contains("bank-panel"));
     assert!(BANK_JS.contains("bank:updated"));
     assert!(!BANK_JS.contains("aria-expanded"));
