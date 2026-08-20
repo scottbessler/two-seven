@@ -326,6 +326,8 @@ Mark each milestone done here as it lands.
   predictable from, the table's sequential `hand_no`.
 - **V30** Idle driver ticks do not persist or broadcast table state; SSE table
   events are emitted only for actual table mutations or explicit keep-alives.
+- **V31** Bank-affecting island actions publish the refreshed account state;
+  blackjack controls and the header balance update without page refresh.
 
 ## §T Build tasks
 
@@ -440,3 +442,6 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - Driver ticks updated every table every 250ms even when no hand action, deal,
   or settlement was due; preflight mutation cases before `TableStore::update`
   and cover idle ticks under V30.
+- Blackjack and the bank widget kept separate balance state, so same-page
+  re-ups did not unlock blackjack and blackjack bets/payouts left the header
+  stale; share `bank:updated` account events and cover the flow under V31.

@@ -128,6 +128,8 @@ fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("textContent"));
     assert!(BANK_JS.contains("bank-delta"));
     assert!(BANK_JS.contains("bank-panel"));
+    assert!(BANK_JS.contains("bank:updated"));
+    assert!(BANK_JS.contains("CustomEvent"));
     assert!(!BANK_JS.contains("aria-expanded"));
 }
 
@@ -230,6 +232,7 @@ fn blackjack_island_has_game_contracts() {
         "deal-action",
         "betOptions",
         "Deal ${wholeDollarMoney(amount)}",
+        "bank:updated",
         "game.can_hit && html",
         "game.can_double && html",
         "actions blackjack-actions",

@@ -36,15 +36,24 @@ function App() {
 
   const loadBalance = () => fetch("/api/bank", { headers: { Accept: "application/json" } })
     .then((response) => (response.ok ? response.json() : null))
-    .then((account) => account && setBalance(account.balance))
+    .then((account) => {
+      if (!account) return;
+      setBalance(account.balance);
+      window.dispatchEvent(new CustomEvent("bank:updated", { detail: account }));
+    })
     .catch(() => {});
 
   useEffect(() => {
+    const syncBalance = (event) => {
+      if (event.detail) setBalance(event.detail.balance);
+    };
+    window.addEventListener("bank:updated", syncBalance);
     loadBalance();
     fetch("/blackjack/resume")
       .then((response) => response.ok ? response.json() : null)
       .then((value) => value && setGame(value))
       .catch(() => {});
+    return () => window.removeEventListener("bank:updated", syncBalance);
   }, []);
 
   const start = async (amount) => {
