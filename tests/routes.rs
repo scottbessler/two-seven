@@ -450,7 +450,7 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
             .unwrap()
             .balance,
         before + 9_900,
-        "chips on a retired table come back after loan interest"
+        "human cash-outs on a retired table pay loan interest"
     );
     assert_eq!(t.tables.ids().await.len(), two_seven::cash::TIERS.len());
     t.bank

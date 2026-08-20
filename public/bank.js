@@ -29,10 +29,10 @@ if (balance && widget && panel) {
     const heading = document.createElement("strong");
     heading.textContent = `Balance ${money(account.balance)}`;
     panel.append(heading);
-    const shame = document.createElement("span");
-    shame.className = "loan-badge";
-    shame.textContent = `Loans ${account.loan_count ?? 0}`;
-    panel.append(shame);
+    const loanBadge = document.createElement("span");
+    loanBadge.className = "loan-badge";
+    loanBadge.textContent = `Loans ${account.loan_count ?? 0}`;
+    panel.append(loanBadge);
     const debt = document.createElement("span");
     debt.className = "loan-summary";
     debt.textContent = `Debt ${money(account.loan_debt ?? 0)} · Net ${money(account.net_balance ?? account.balance)}`;

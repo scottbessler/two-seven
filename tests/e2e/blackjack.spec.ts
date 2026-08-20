@@ -23,7 +23,7 @@ test("blackjack notices a same-page re-up", async ({ page }) => {
   await expect(page.locator("#bank-balance")).toHaveText("$1,000");
 });
 
-test("coin menu repays the newest loan", async ({ page }) => {
+test("coin menu repays a loan", async ({ page }) => {
   await signIn(page, "blackjackrepay");
   await page.request.post("/api/bank", { data: {} });
   await page.goto("/blackjack");
