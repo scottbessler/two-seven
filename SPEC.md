@@ -349,6 +349,9 @@ Mark each milestone done here as it lands.
 - **V39** Blackjack settings use the shared page header gear like poker; the
   game body renders stable rows for status, hands, trainer feedback, and actions
   without an in-table settings control.
+- **V40** Blackjack bet analyzer separates optional insurance advice from
+  hit/stand/double/split hand strategy; an available insurance decision cannot
+  make a hard hand recommendation say Stand.
 
 ## §T Build tasks
 
@@ -475,3 +478,5 @@ T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
   public tournament result until the final hand pause completes under V33.
 - All-in odds flex-wrapped into multiple center rows and pushed board/result
   content toward the viewer cards; keep odds to one compact horizontal row under V37.
+- Blackjack analyzer treated declining insurance as Stand for the active hand,
+  so a hard 5 hit could be called wrong; analyze insurance separately under V40.

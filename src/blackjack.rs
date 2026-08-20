@@ -534,17 +534,17 @@ impl BlackjackGame {
         if self.settings.bet_analyzer {
             self.decisions.push(BlackjackDecision {
                 action,
-                recommended: self.recommended_action(),
+                recommended: self.recommended_action(action),
             });
         }
     }
 
-    fn recommended_action(&self) -> Action {
+    fn recommended_action(&self, action: Action) -> Action {
         let i = self.active_index();
         let Some(hand) = self.hands.get(i) else {
             return Action::Stand;
         };
-        if self.can_insure(i64::MAX) {
+        if action == Action::Insure {
             return if count(&self.visible_cards(false)) >= 3 {
                 Action::Insure
             } else {
@@ -1249,6 +1249,24 @@ mod tests {
         assert!(
             game.view(false, 0).analysis[0].contains("Hit"),
             "16 against 10 should prefer a hit"
+        );
+    }
+
+    #[test]
+    fn analyzer_keeps_insurance_separate_from_hand_strategy_v40() {
+        let mut game = game(
+            vec![hand(
+                vec![card(Rank::Two), card(Rank::Three)],
+                100,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Ace), card(Rank::Ten)],
+        );
+        game.settings.bet_analyzer = true;
+        game.record_decision(Action::Hit);
+        assert!(
+            game.view(false, 0).analysis.is_empty(),
+            "hard 5 should hit even when insurance was available"
         );
     }
 }
