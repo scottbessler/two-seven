@@ -809,6 +809,25 @@ async fn a_human_may_take_a_house_players_seat() {
     };
     assert_eq!(seated_bots, two_seven::cash::SEATS, "the house filled it");
 
+    let state = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/state"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(state.status(), StatusCode::OK);
+    let state: serde_json::Value =
+        serde_json::from_slice(&to_bytes(state.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(state["viewer_seat"], serde_json::Value::Null);
+    assert_eq!(state["bank_balance"], 100_000);
+    assert_eq!(state["buy_in"], 20_000);
+
     let join = t
         .router
         .clone()

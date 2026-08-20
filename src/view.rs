@@ -55,6 +55,7 @@ pub struct TableView {
     pub name: String,
     pub stakes: crate::table::Stakes,
     pub buy_in: Cents,
+    pub bank_balance: Option<Cents>,
     pub seats: Vec<SeatView>,
     pub button: usize,
     pub viewer_seat: Option<usize>,
@@ -206,6 +207,7 @@ pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
     table_view_with_banks(
         table,
         viewer,
+        None,
         &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     )
@@ -214,6 +216,7 @@ pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
 pub fn table_view_with_banks(
     table: &Table,
     viewer: Option<usize>,
+    bank_balance: Option<Cents>,
     banks: &std::collections::HashMap<usize, Account>,
     names: &std::collections::HashMap<usize, String>,
 ) -> TableView {
@@ -222,6 +225,7 @@ pub fn table_view_with_banks(
         name: table.name.clone(),
         stakes: table.stakes,
         buy_in: table.buy_in,
+        bank_balance,
         seats: table
             .seats
             .iter()

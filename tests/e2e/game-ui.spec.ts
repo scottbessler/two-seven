@@ -153,6 +153,18 @@ test("builds a tournament one question at a time", async ({ page }) => {
   await expect(page.locator(".header-info")).toHaveAttribute("aria-label", /Blinds \$100\/\$200/);
 });
 
+test("buys into an affordable cash table from the live table page", async ({ page }) => {
+  await signIn(page, "cashjoin");
+  await page.request.post("/api/bank", { data: {} });
+  await page.goto("/tables");
+  const cashTables = page.locator(".table-list").filter({ has: page.getByRole("heading", { name: "Cash tables" }) });
+  await cashTables.locator("ul > li a").first().click();
+  await expect(page.getByRole("button", { name: /Buy In/ })).toBeEnabled();
+  await page.getByRole("button", { name: /Buy In/ }).click();
+  await expect(page.locator(".seat.viewer")).toBeVisible();
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
+});
+
 test("shows live hand cues and event log", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".game-log")).toBeVisible();

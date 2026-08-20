@@ -432,3 +432,6 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
   the run first and charge only after successful validation.
 - Blackjack payouts and Hand Blitz wins accepted non-positive amounts; reject
   zero and negative awards without imposing an upper bound.
+- Live table state omitted the viewer's bank balance, so affordable cash buy-in
+  buttons rendered disabled outside mocks; include the authenticated balance in
+  `TableView` and cover the real join flow under V5/V23.

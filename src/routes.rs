@@ -617,6 +617,7 @@ pub async fn table_page(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
+    let bank_balance = Some(balance_of(&s, user).await);
     let table = table.lock().await;
     let viewer = table.seats.iter().position(
         |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
@@ -624,7 +625,11 @@ pub async fn table_page(
     let banks = seat_banks(&s, &table).await;
     let names = seat_names(&s, &table).await;
     Ok(Html(render::table_page(&table_view_with_banks(
-        &table, viewer, &banks, &names,
+        &table,
+        viewer,
+        bank_balance,
+        &banks,
+        &names,
     ))))
 }
 
@@ -831,6 +836,10 @@ pub async fn table_state(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
+    let bank_balance = match user {
+        Some(uid) => Some(balance_of(&s, uid).await),
+        None => None,
+    };
     let table = table.lock().await;
     let viewer = user.and_then(|uid| {
         table.seats.iter().position(
@@ -839,7 +848,13 @@ pub async fn table_state(
     });
     let banks = seat_banks(&s, &table).await;
     let names = seat_names(&s, &table).await;
-    Ok(Json(table_view_with_banks(&table, viewer, &banks, &names)))
+    Ok(Json(table_view_with_banks(
+        &table,
+        viewer,
+        bank_balance,
+        &banks,
+        &names,
+    )))
 }
 
 pub async fn table_events(
@@ -852,6 +867,10 @@ pub async fn table_events(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
+    let bank_balance = match user {
+        Some(uid) => Some(balance_of(&s, uid).await),
+        None => None,
+    };
     let snapshot = {
         let table = table.lock().await;
         let viewer = user.and_then(|uid| {
@@ -861,8 +880,14 @@ pub async fn table_events(
         });
         let banks = seat_banks(&s, &table).await;
         let names = seat_names(&s, &table).await;
-        serde_json::to_string(&table_view_with_banks(&table, viewer, &banks, &names))
-            .map_err(AppError::internal)?
+        serde_json::to_string(&table_view_with_banks(
+            &table,
+            viewer,
+            bank_balance,
+            &banks,
+            &names,
+        ))
+        .map_err(AppError::internal)?
     };
     let rx = s.tables.subscribe();
     let tables = s.tables.clone();
@@ -881,12 +906,20 @@ pub async fn table_events(
                 match rx.recv().await {
                     Ok(changed) if changed == id => {
                         if let Some(table) = tables.get(id).await {
+                            let bank_balance = match user {
+                                Some(uid) => Some(balance_of(&state, uid).await),
+                                None => None,
+                            };
                             let table = table.lock().await;
                             let viewer = user.and_then(|uid|table.seats.iter().position(|seat|matches!(seat.occupant,SeatOccupant::Human{user_id} if user_id==uid)));
                             let banks = seat_banks(&state, &table).await;
                             let names = seat_names(&state, &table).await;
                             let data = serde_json::to_string(&table_view_with_banks(
-                                &table, viewer, &banks, &names,
+                                &table,
+                                viewer,
+                                bank_balance,
+                                &banks,
+                                &names,
                             ))
                             .unwrap_or_else(|_| "{}".into());
                             return Some((
