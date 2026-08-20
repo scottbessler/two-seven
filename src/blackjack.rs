@@ -84,8 +84,8 @@ pub struct BlackjackHandView {
 pub struct BlackjackTrainerSettings {
     #[serde(default = "default_decks")]
     pub decks: u8,
-    #[serde(default = "default_penetration_percent")]
-    pub penetration_percent: u8,
+    #[serde(default = "default_penetration_hands", alias = "penetration_percent")]
+    pub penetration_hands: u8,
     #[serde(default)]
     pub counting_tutor: bool,
     #[serde(default)]
@@ -98,7 +98,7 @@ impl Default for BlackjackTrainerSettings {
     fn default() -> Self {
         Self {
             decks: default_decks(),
-            penetration_percent: default_penetration_percent(),
+            penetration_hands: default_penetration_hands(),
             counting_tutor: false,
             counting_quiz: false,
             bet_analyzer: false,
@@ -113,7 +113,7 @@ impl BlackjackTrainerSettings {
                 1 | 2 | 8 => self.decks,
                 _ => default_decks(),
             },
-            penetration_percent: self.penetration_percent.clamp(25, 95),
+            penetration_hands: self.penetration_hands.clamp(1, 100),
             counting_tutor: self.counting_tutor,
             counting_quiz: self.counting_quiz,
             bet_analyzer: self.bet_analyzer,
@@ -204,8 +204,8 @@ fn default_decks() -> u8 {
     8
 }
 
-fn default_penetration_percent() -> u8 {
-    75
+fn default_penetration_hands() -> u8 {
+    5
 }
 
 const MAX_HANDS: usize = 4;

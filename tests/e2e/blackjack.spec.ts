@@ -84,7 +84,7 @@ test("blackjack trainer settings drive tutor quiz and analyzer", async ({ page }
         active_hand: 1,
         settings: {
           decks: 1,
-          penetration_percent: 80,
+          penetration_hands: 5,
           counting_tutor: true,
           counting_quiz: true,
           bet_analyzer: true,
@@ -99,7 +99,7 @@ test("blackjack trainer settings drive tutor quiz and analyzer", async ({ page }
   await page.goto("/blackjack");
   await page.getByRole("button", { name: "Card display settings" }).click();
   await page.locator('select[name="blackjack-decks"]').selectOption("1");
-  await page.locator('input[name="blackjack-penetration"]').fill("80");
+  await expect(page.locator('input[name="blackjack-penetration-hands"]')).toHaveValue("5");
   await page.locator('input[name="counting-tutor"]').check();
   await page.locator('input[name="counting-quiz"]').check();
   await page.locator('input[name="bet-analyzer"]').check();
@@ -109,7 +109,7 @@ test("blackjack trainer settings drive tutor quiz and analyzer", async ({ page }
 
   expect(startPayload.settings).toEqual({
     decks: 1,
-    penetration_percent: 80,
+    penetration_hands: 5,
     counting_tutor: true,
     counting_quiz: true,
     bet_analyzer: true,

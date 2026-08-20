@@ -8,7 +8,7 @@ const root = document.getElementById("blackjack-app");
 const CHEAPEST_STARTING_BET_CAP = 10000;
 const TRAINER_KEYS = {
   decks: "blackjack-trainer-decks",
-  penetration: "blackjack-trainer-penetration",
+  penetrationHands: "blackjack-trainer-penetration-hands",
   countingTutor: "blackjack-counting-tutor",
   countingQuiz: "blackjack-counting-quiz",
   betAnalyzer: "blackjack-bet-analyzer",
@@ -37,10 +37,10 @@ function Hand({ title, cards, score, hidden }) {
 
 function readTrainerSettings() {
   const decks = Number(localStorage.getItem(TRAINER_KEYS.decks));
-  const penetration = Number(localStorage.getItem(TRAINER_KEYS.penetration));
+  const penetrationHands = Number(localStorage.getItem(TRAINER_KEYS.penetrationHands));
   return {
     decks: [1, 2, 8].includes(decks) ? decks : 8,
-    penetration: penetration >= 25 && penetration <= 95 ? penetration : 75,
+    penetrationHands: penetrationHands >= 1 && penetrationHands <= 100 ? penetrationHands : 5,
     countingTutor: localStorage.getItem(TRAINER_KEYS.countingTutor) === "on",
     countingQuiz: localStorage.getItem(TRAINER_KEYS.countingQuiz) === "on",
     betAnalyzer: localStorage.getItem(TRAINER_KEYS.betAnalyzer) === "on",
@@ -64,7 +64,7 @@ function TrainerSettings({ settings, setSettings }) {
       <option value="2">Double deck</option>
       <option value="8">Eight deck</option>
     </select></label>
-    <label><span>Deck penetration <output>${settings.penetration}%</output></span><input name="blackjack-penetration" type="range" min="25" max="95" step="5" value=${settings.penetration} onInput=${setNumber("penetration", TRAINER_KEYS.penetration)} /></label>
+    <label><span>Deck penetration <output>${settings.penetrationHands} hands</output></span><input name="blackjack-penetration-hands" type="number" min="1" max="100" step="1" value=${settings.penetrationHands} onInput=${setNumber("penetrationHands", TRAINER_KEYS.penetrationHands)} /></label>
     <label class="card-option-toggle"><input name="counting-tutor" type="checkbox" checked=${settings.countingTutor} onChange=${toggle("countingTutor", TRAINER_KEYS.countingTutor)} /><span><b>Card counting tutor</b><small>Show the Hi-Lo running count and card-by-card changes</small></span></label>
     <label class="card-option-toggle"><input name="counting-quiz" type="checkbox" checked=${settings.countingQuiz} onChange=${toggle("countingQuiz", TRAINER_KEYS.countingQuiz)} /><span><b>Card counting quiz</b><small>Ask for the running count after each hand</small></span></label>
     <label class="card-option-toggle"><input name="bet-analyzer" type="checkbox" checked=${settings.betAnalyzer} onChange=${toggle("betAnalyzer", TRAINER_KEYS.betAnalyzer)} /><span><b>Bet analyzer</b><small>Compare your choices with basic strategy</small></span></label>
@@ -123,7 +123,7 @@ function App() {
         bet: amount,
         settings: {
           decks: trainerSettings.decks,
-          penetration_percent: trainerSettings.penetration,
+          penetration_hands: trainerSettings.penetrationHands,
           counting_tutor: trainerSettings.countingTutor,
           counting_quiz: trainerSettings.countingQuiz,
           bet_analyzer: trainerSettings.betAnalyzer,

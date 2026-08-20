@@ -344,8 +344,9 @@ Mark each milestone done here as it lands.
 - **V37** All-in showdown odds render as one compact horizontal row; adding
   odds must not wrap center content into the viewer card area.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
-  shoe choice, penetration percent, visible-card Hi-Lo tutor/log, post-hand
-  running-count quiz, and server-side basic-strategy analyzer feedback.
+  shoe choice, hands-per-shoe penetration defaulting to 5 for one player,
+  visible-card Hi-Lo tutor/log, post-hand running-count quiz, and server-side
+  basic-strategy analyzer feedback.
 - **V39** Blackjack settings use the shared page header gear like poker; the
   game body renders stable rows for status, hands, trainer feedback, and actions
   without an in-table settings control.
