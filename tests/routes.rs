@@ -449,8 +449,8 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
             .await
             .unwrap()
             .balance,
-        before + 10_000,
-        "chips on a retired table come back"
+        before + 9_900,
+        "chips on a retired table come back after loan interest"
     );
     assert_eq!(t.tables.ids().await.len(), two_seven::cash::TIERS.len());
     t.bank
@@ -651,24 +651,31 @@ async fn the_house_plays_its_way_onto_the_leaderboard() {
     for header in ["Hands", "VPIP", "PFR", "Biggest pot"] {
         assert!(html.contains(header), "missing {header} column");
     }
-    // Balances descend down the table.
-    let balances: Vec<i64> = html
-        .split("<td class=\"money\">$")
+    // Net balances descend down the table.
+    let net_balances: Vec<i64> = html
+        .split("<tr><td class=\"rank\">")
         .skip(1)
-        .filter_map(|cell| {
-            cell.split('<')
-                .next()?
+        .filter_map(|row| {
+            let text = row
+                .split("<td class=\"money\">")
+                .nth(2)?
+                .split('<')
+                .next()?;
+            let negative = text.starts_with('-');
+            let dollars = text
+                .trim_start_matches('-')
+                .trim_start_matches('$')
                 .replace(',', "")
                 .split('.')
                 .next()?
                 .parse::<i64>()
-                .ok()
+                .ok()?;
+            Some(if negative { -dollars } else { dollars })
         })
-        .step_by(2)
         .collect();
     assert!(
-        balances.windows(2).all(|pair| pair[0] >= pair[1]),
-        "the board is sorted by balance: {balances:?}"
+        net_balances.windows(2).all(|pair| pair[0] >= pair[1]),
+        "the board is sorted by net balance: {net_balances:?}"
     );
 }
 
@@ -919,7 +926,7 @@ async fn a_human_may_take_a_house_players_seat() {
 }
 
 #[tokio::test]
-async fn the_leaderboard_ranks_by_balance_then_by_fewer_loans() {
+async fn the_leaderboard_ranks_by_net_balance_then_by_fewer_loans() {
     let t = appx().await;
     // Same balance, different borrowing: the one who took fewer loans is above.
     let thrifty = Uuid::new_v4();
@@ -984,8 +991,8 @@ async fn the_leaderboard_ranks_by_balance_then_by_fewer_loans() {
         "equal balances break toward fewer loans"
     );
     assert!(
-        place("Borrower") < place("Poorest"),
-        "a bigger balance still outranks"
+        place("Poorest") < place("Borrower"),
+        "a better net balance outranks"
     );
     // Every difficulty gets its own accuracy and streak columns.
     for difficulty in blitz_labels() {

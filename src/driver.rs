@@ -999,21 +999,29 @@ mod tests {
         let table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
         drop(table);
         let mut bank_chips = 0;
+        let mut house_interest = 0;
         for kind in kinds {
             let account = bank
                 .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
                 .await
                 .unwrap();
             bank_chips += account.balance;
+            house_interest += account
+                .entries
+                .iter()
+                .filter_map(|entry| {
+                    matches!(entry.kind, LedgerKind::LoanInterest).then_some(-entry.delta)
+                })
+                .sum::<i64>();
             assert_eq!(
                 account.entries.iter().map(|entry| entry.delta).sum::<i64>(),
                 account.balance
             );
         }
         assert_eq!(
-            table_chips + bank_chips,
+            table_chips + bank_chips + house_interest,
             initial_chips,
-            "cash bot chips must be conserved across table and bot bank accounts: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
+            "cash bot chips must be conserved after loan interest: initial={initial_chips}, table={table_chips}, bank={bank_chips}, interest={house_interest}"
         );
     }
 
@@ -1094,17 +1102,25 @@ mod tests {
         let table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
         drop(table);
         let mut bank_chips = 0;
+        let mut house_interest = 0;
         for kind in kinds {
-            bank_chips += bank
+            let account = bank
                 .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
                 .await
-                .unwrap()
-                .balance;
+                .unwrap();
+            bank_chips += account.balance;
+            house_interest += account
+                .entries
+                .iter()
+                .filter_map(|entry| {
+                    matches!(entry.kind, LedgerKind::LoanInterest).then_some(-entry.delta)
+                })
+                .sum::<i64>();
         }
         assert_eq!(
-            table_chips + bank_chips,
+            table_chips + bank_chips + house_interest,
             initial_chips,
-            "cash bot chips must be conserved across table and bot bank accounts: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
+            "cash bot chips must be conserved after loan interest: initial={initial_chips}, table={table_chips}, bank={bank_chips}, interest={house_interest}"
         );
     }
 

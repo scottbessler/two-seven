@@ -23,6 +23,19 @@ test("blackjack notices a same-page re-up", async ({ page }) => {
   await expect(page.locator("#bank-balance")).toHaveText("$1,000");
 });
 
+test("coin menu repays the newest loan", async ({ page }) => {
+  await signIn(page, "blackjackrepay");
+  await page.request.post("/api/bank", { data: {} });
+  await page.goto("/blackjack");
+
+  await page.locator(".bank-widget summary").click();
+  await expect(page.getByRole("button", { name: "Pay back $1,000" })).toBeEnabled();
+  await page.getByRole("button", { name: "Pay back $1,000" }).click();
+
+  await expect(page.locator("#bank-balance")).toHaveText("$0");
+  await expect(page.getByRole("button", { name: /Pay back/ })).toHaveCount(0);
+});
+
 test("blackjack bank mutations refresh the header balance", async ({ page }) => {
   await signIn(page, "blackjackbank");
   await page.request.post("/api/bank", { data: {} });

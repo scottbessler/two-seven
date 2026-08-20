@@ -33,6 +33,10 @@ if (balance && widget && panel) {
     shame.className = "loan-badge";
     shame.textContent = `Loans ${account.loan_count ?? 0}`;
     panel.append(shame);
+    const debt = document.createElement("span");
+    debt.className = "loan-summary";
+    debt.textContent = `Debt ${money(account.loan_debt ?? 0)} · Net ${money(account.net_balance ?? account.balance)}`;
+    panel.append(debt);
     const reUp = document.createElement("button");
     reUp.type = "button";
     reUp.className = "re-up-button";
@@ -53,6 +57,29 @@ if (balance && widget && panel) {
         });
     });
     panel.append(reUp);
+    const nextRepayment = account.next_repayment_amount;
+    if (nextRepayment != null) {
+      const repay = document.createElement("button");
+      repay.type = "button";
+      repay.className = "re-up-button repay-button";
+      repay.textContent = `Pay back ${money(nextRepayment)}`;
+      repay.disabled = account.balance < nextRepayment;
+      repay.addEventListener("click", (event) => {
+        event.stopPropagation();
+        repay.disabled = true;
+        fetch("/api/bank/repay", {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: "{}",
+        })
+          .then((response) => (response.ok ? response.json() : Promise.reject(response)))
+          .then((updated) => announceBank(updated))
+          .catch(() => {
+            repay.disabled = account.balance < nextRepayment;
+          });
+      });
+      panel.append(repay);
+    }
     const playerLink = document.createElement("a");
     playerLink.className = "player-page-link";
     playerLink.href = "/player";

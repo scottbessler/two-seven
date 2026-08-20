@@ -78,6 +78,7 @@ pub struct LeaderboardRow {
     /// House regulars are ranked alongside people, and marked as such.
     pub house: bool,
     pub balance: Cents,
+    pub net_balance: Cents,
     pub loan_count: u64,
     pub poker: crate::stats::PlayerStats,
     pub blitz: Vec<LeaderboardBlitz>,

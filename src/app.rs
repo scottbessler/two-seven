@@ -120,6 +120,7 @@ pub fn router(s: AppState) -> Router {
             "/api/bank",
             get(routes::bank_state).post(routes::bank_re_up),
         )
+        .route("/api/bank/repay", axum::routing::post(routes::bank_repay))
         .route(
             "/auth/register/begin",
             axum::routing::post(auth::register_begin),
