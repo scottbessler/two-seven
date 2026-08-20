@@ -324,6 +324,8 @@ Mark each milestone done here as it lands.
 - **V29** Each new Hold'em hand stores its replay seed, but the seed is mixed
   from fresh entropy plus table id and hand number; it is not equal to, nor
   predictable from, the table's sequential `hand_no`.
+- **V30** Idle driver ticks do not persist or broadcast table state; SSE table
+  events are emitted only for actual table mutations or explicit keep-alives.
 
 ## §T Build tasks
 
@@ -435,3 +437,6 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - Live table state omitted the viewer's bank balance, so affordable cash buy-in
   buttons rendered disabled outside mocks; include the authenticated balance in
   `TableView` and cover the real join flow under V5/V23.
+- Driver ticks updated every table every 250ms even when no hand action, deal,
+  or settlement was due; preflight mutation cases before `TableStore::update`
+  and cover idle ticks under V30.

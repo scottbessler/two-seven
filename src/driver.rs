@@ -1,7 +1,7 @@
 use crate::{
     app::AppState,
     bank::{AccountOwner, LedgerKind},
-    table::{SeatOccupant, maybe_start_hand, settle_finished_hand},
+    table::{SeatOccupant, Table, TableMode, maybe_start_hand, settle_finished_hand},
     view::hand_view,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -28,65 +28,71 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
     let mut ids = state.tables.ids().await;
     ids.sort();
     for id in ids {
-        if state.tables.get(id).await.is_none() {
+        let Some(table) = state.tables.get(id).await else {
             continue;
-        }
+        };
+        let should_update = {
+            let table = table.lock().await;
+            driver_update_due(&table, now)
+        };
         let mut recorded = Vec::new();
-        if let Err(error) = state
-            .tables
-            .update(id, |table| {
-                if table.hand.as_ref().is_some_and(|hand| hand.complete) {
-                    recorded.extend(settle_finished_hand(table));
-                }
-                if table.hand.is_none() {
-                    if table.next_action_at.is_none_or(|at| at <= now) {
-                        maybe_start_hand(table);
+        if should_update {
+            if let Err(error) = state
+                .tables
+                .update(id, |table| {
+                    if table.hand.as_ref().is_some_and(|hand| hand.complete) {
+                        recorded.extend(settle_finished_hand(table));
                     }
-                    return Ok(());
-                }
-                let Some(hand) = table.hand.as_mut() else {
-                    return Ok(());
-                };
-                let Some(seat) = hand.current_player else {
-                    return Ok(());
-                };
-                let Some(bot) = table
-                    .seats
-                    .get(seat)
-                    .and_then(|value| value.occupant.as_bot())
-                else {
-                    return Ok(());
-                };
-                if table.next_action_at.is_none() {
-                    table.next_action_at = Some(now + Duration::milliseconds(400));
-                    return Ok(());
-                }
-                if table.next_action_at.is_some_and(|at| at > now) {
-                    return Ok(());
-                }
-                let kind = bot.kind;
-                let view = hand_view(hand, Some(seat));
-                let legal = view
-                    .legal_actions
-                    .clone()
-                    .ok_or_else(|| anyhow::anyhow!("bot turn has no legal actions"))?;
-                let action = kind.act(
-                    &view,
-                    &legal,
-                    hand.seed.wrapping_add(hand.players.len() as u64),
-                );
-                hand.apply_action(action)
-                    .map_err(|error| anyhow::anyhow!(error))?;
-                table.next_action_at = None;
-                if hand.complete {
-                    recorded.extend(settle_finished_hand(table));
-                }
-                Ok(())
-            })
-            .await
-        {
-            tracing::warn!(%id, %error, "table driver update failed");
-            continue;
+                    if table.hand.is_none() {
+                        if table.next_action_at.is_none_or(|at| at <= now) {
+                            maybe_start_hand(table);
+                        }
+                        return Ok(());
+                    }
+                    let Some(hand) = table.hand.as_mut() else {
+                        return Ok(());
+                    };
+                    let Some(seat) = hand.current_player else {
+                        return Ok(());
+                    };
+                    let Some(bot) = table
+                        .seats
+                        .get(seat)
+                        .and_then(|value| value.occupant.as_bot())
+                    else {
+                        return Ok(());
+                    };
+                    if table.next_action_at.is_none() {
+                        table.next_action_at = Some(now + Duration::milliseconds(400));
+                        return Ok(());
+                    }
+                    if table.next_action_at.is_some_and(|at| at > now) {
+                        return Ok(());
+                    }
+                    let kind = bot.kind;
+                    let view = hand_view(hand, Some(seat));
+                    let legal = view
+                        .legal_actions
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("bot turn has no legal actions"))?;
+                    let action = kind.act(
+                        &view,
+                        &legal,
+                        hand.seed.wrapping_add(hand.players.len() as u64),
+                    );
+                    hand.apply_action(action)
+                        .map_err(|error| anyhow::anyhow!(error))?;
+                    table.next_action_at = None;
+                    if hand.complete {
+                        recorded.extend(settle_finished_hand(table));
+                    }
+                    Ok(())
+                })
+                .await
+            {
+                tracing::warn!(%id, %error, "table driver update failed");
+                continue;
+            }
         }
         for record in &recorded {
             if let Err(error) = state.history.append(id, record).await {
@@ -116,6 +122,58 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
         }
     }
     Ok(())
+}
+
+fn driver_update_due(table: &Table, now: DateTime<Utc>) -> bool {
+    if table.hand.as_ref().is_some_and(|hand| hand.complete) {
+        return true;
+    }
+    let Some(hand) = &table.hand else {
+        return table.next_action_at.is_none_or(|at| at <= now) && can_start_hand(table);
+    };
+    let Some(seat) = hand.current_player else {
+        return false;
+    };
+    if table
+        .seats
+        .get(seat)
+        .and_then(|value| value.occupant.as_bot())
+        .is_none()
+    {
+        return false;
+    }
+    table.next_action_at.is_none_or(|at| at <= now)
+}
+
+fn can_start_hand(table: &Table) -> bool {
+    if let TableMode::Tournament(state) = &table.mode
+        && !state.started
+        && state.registered < state.config.seat_count
+    {
+        return false;
+    }
+    if table.hand.is_some() || deal_in_count(table) < 2 {
+        return false;
+    }
+    if table.cash_tier.is_some()
+        && table
+            .seats
+            .iter()
+            .any(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+    {
+        return false;
+    }
+    !table.waits_for_a_watcher() || table.bot_hands_requested > 0
+}
+
+fn deal_in_count(table: &Table) -> usize {
+    table
+        .seats
+        .iter()
+        .filter(|seat| {
+            !seat.sitting_out && seat.stack > 0 && !matches!(seat.occupant, SeatOccupant::Empty)
+        })
+        .count()
 }
 
 /// Cash tables built by hand before the ladder existed have nowhere to belong,
@@ -609,6 +667,56 @@ mod tests {
                 Ok(())
             })
             .await;
+    }
+
+    #[tokio::test]
+    async fn idle_human_table_ticks_without_broadcasting() {
+        let root = std::env::temp_dir().join(format!("two-seven-idle-tick-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let state = AppState {
+            users,
+            bank,
+            blackjack: crate::blackjack::BlackjackStore::new(),
+            blitz,
+            tables: tables.clone(),
+            history: crate::history::HistoryStore::load(&root).await.unwrap(),
+            stats: crate::stats::StatsStore::load(&root).await.unwrap(),
+            admin_password: Arc::new("test-admin-password".into()),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        let mut table = Table::new(
+            "idle".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            20_000,
+        );
+        table.seats[0] = Seat {
+            occupant: SeatOccupant::Human {
+                user_id: Uuid::new_v4(),
+            },
+            stack: 20_000,
+            sitting_out: false,
+            pending_departure: false,
+        };
+        let id = tables.insert(table).await.unwrap();
+        let mut events = tables.subscribe();
+
+        tick_once_at(&state, Utc::now()).await.unwrap();
+
+        let event = tokio::time::timeout(std::time::Duration::from_millis(50), events.recv()).await;
+        assert!(
+            event.is_err(),
+            "idle driver ticks should not broadcast table {id}"
+        );
     }
 
     #[tokio::test]
