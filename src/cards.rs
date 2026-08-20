@@ -195,6 +195,12 @@ impl Deck {
     pub fn remaining(&self) -> usize {
         self.cards.len() - self.next
     }
+    pub fn dealt(&self) -> usize {
+        self.next
+    }
+    pub fn total(&self) -> usize {
+        self.cards.len()
+    }
 }
 #[cfg(test)]
 mod tests {

@@ -344,7 +344,7 @@ Mark each milestone done here as it lands.
 - **V37** All-in showdown odds render as one compact horizontal row; adding
   odds must not wrap center content into the viewer card area.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
-  shoe choice, hands-per-shoe penetration defaulting to 5 for one player,
+  shoe choice, percentage-of-shoe cut-card penetration defaulting to 50%,
   visible-card Hi-Lo tutor/log, post-hand running-count quiz, and server-side
   basic-strategy analyzer feedback.
 - **V39** Blackjack settings use the shared page header gear like poker; the
@@ -353,6 +353,10 @@ Mark each milestone done here as it lands.
 - **V40** Blackjack bet analyzer separates optional insurance advice from
   hit/stand/double/split hand strategy; an available insurance decision cannot
   make a hard hand recommendation say Stand.
+- **V41** Blackjack keeps a persistent per-user shoe and accumulated Hi-Lo
+  count across hands; a frozen percentage cut card or the safe reserve rule
+  triggers reshuffles only at hand start, and the active shoe's dealt cards,
+  remaining cards, and exact cut-card marker are always visualized.
 
 ## §T Build tasks
 
@@ -385,6 +389,7 @@ T15|x|persist live blackjack games and restore them after restart|V1,V24
 T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 T21|x|add blackjack card-counting and strategy trainer settings|V24,V25,V27,V28,V31,V38
 T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
+T23|x|persist blackjack shoes with cut-card count continuity and visualization|V38,V41
 
 ## §B Bug log
 
@@ -457,6 +462,9 @@ T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
   start; create the game first and charge only after successful validation.
 - Blackjack live games existed only in memory; persist live state atomically and
   restore it on startup while dropping finished games.
+- Blackjack rebuilt a fresh shoe for every hand and reset the card-counting
+  tutor; persist one shoe per user, carry the settled count forward, and
+  reshuffle at the configured cut card.
 - Hand Blitz runs never expired without an answer and could pin a charged buy-in
   indefinitely; sweep overdue rounds server-side and prune finished runs.
 - Hand Blitz charged its buy-in before rejecting a concurrent live start; create

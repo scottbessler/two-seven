@@ -36,8 +36,8 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
             driver_update_due(&table, now)
         };
         let mut recorded = Vec::new();
-        if should_update {
-            if let Err(error) = state
+        if should_update
+            && let Err(error) = state
                 .tables
                 .update(id, |table| {
                     if table.hand.as_ref().is_some_and(|hand| hand.complete) {
@@ -89,10 +89,9 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                     Ok(())
                 })
                 .await
-            {
-                tracing::warn!(%id, %error, "table driver update failed");
-                continue;
-            }
+        {
+            tracing::warn!(%id, %error, "table driver update failed");
+            continue;
         }
         for record in &recorded {
             if let Err(error) = state.history.append(id, record).await {
