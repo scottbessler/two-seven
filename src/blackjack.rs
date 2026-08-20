@@ -223,8 +223,6 @@ struct BlackjackShoe {
     hands_dealt: usize,
     running_count: i16,
     exposed_cards: usize,
-    #[serde(default)]
-    fresh_shuffle: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -359,7 +357,7 @@ impl BlackjackStore {
         let shoe = shoes
             .entry(user)
             .or_insert_with(|| BlackjackShoe::new(settings.decks, settings.penetration_percent));
-        let effective_cut = cut_card(shoe.deck.cards_len(), settings.penetration_percent);
+        let effective_cut = cut_card(shoe.deck.total(), settings.penetration_percent);
         if shoe.decks != settings.decks
             || shoe.dealt_cards() >= effective_cut
             || shoe.deck.remaining() < SAFE_RESERVE_CARDS
@@ -369,7 +367,6 @@ impl BlackjackStore {
         } else {
             shoe.cut_card = effective_cut;
         }
-        shoe.fresh_shuffle = fresh_shuffle;
         let base_count = shoe.running_count;
         let base_exposed_cards = shoe.exposed_cards;
         shoe.hands_dealt += 1;
@@ -584,7 +581,6 @@ impl BlackjackShoe {
             hands_dealt: 0,
             running_count: 0,
             exposed_cards: 0,
-            fresh_shuffle: false,
         }
     }
 
@@ -1191,6 +1187,31 @@ mod tests {
         }
     }
 
+    fn non_zero_finished_count_seed() -> u64 {
+        (0..)
+            .find(|seed| {
+                let mut deck = Deck::shoe_seeded(*seed, 1);
+                let player = vec![deck.deal().unwrap(), deck.deal().unwrap()];
+                let dealer = vec![deck.deal().unwrap(), deck.deal().unwrap()];
+                if score(&player).0 == 21 || score(&dealer).0 == 21 {
+                    return false;
+                }
+                let mut game = game(
+                    vec![hand(player, 100, BlackjackHandStatus::Playing)],
+                    dealer,
+                );
+                game.deck = deck;
+                game.peek();
+                if game.status != BlackjackStatus::Playing {
+                    return false;
+                }
+                game.hands[0].status = BlackjackHandStatus::Stand;
+                game.advance();
+                count(&game.visible_cards(true)) != 0
+            })
+            .unwrap()
+    }
+
     #[test]
     fn dealer_natural_and_player_natural_push() {
         let mut game = game(
@@ -1535,6 +1556,92 @@ mod tests {
             store.inner.lock().await.values().next().unwrap().base_count,
             0
         );
+    }
+
+    #[tokio::test]
+    async fn store_count_continuity_and_dealt_cards_span_finished_hands() {
+        let store = BlackjackStore::new();
+        let user = Uuid::new_v4();
+        let seed = non_zero_finished_count_seed();
+        let mut shoe = BlackjackShoe::new(1, 50);
+        shoe.deck = Deck::shoe_seeded(seed, 1);
+        store.shoes.lock().await.insert(user, shoe);
+        let settings = BlackjackTrainerSettings {
+            decks: 1,
+            counting_tutor: true,
+            ..Default::default()
+        };
+
+        let first = store
+            .start(user, 100, Uuid::new_v4(), 0, settings.clone())
+            .await
+            .unwrap();
+        let first = if first.status == BlackjackStatus::Playing {
+            store.stand(user, first.id, 0).await.unwrap()
+        } else {
+            first
+        };
+        let first_running = first.count.as_ref().unwrap().running;
+        assert_ne!(first_running, 0);
+        let first_dealt = first.shoe.dealt_cards;
+
+        let second = store
+            .start(user, 100, Uuid::new_v4(), 0, settings)
+            .await
+            .unwrap();
+        let current_visible = second
+            .player
+            .iter()
+            .chain(second.dealer.iter())
+            .map(|card| ("current".to_string(), *card))
+            .collect::<Vec<_>>();
+        let carried = second.count.as_ref().unwrap().running - count(&current_visible);
+        assert_eq!(carried, first_running);
+        assert_eq!(second.shoe.dealt_cards, first_dealt + 4);
+        assert_eq!(second.shoe.hands_dealt, 2);
+    }
+
+    #[tokio::test]
+    async fn persisted_shoe_keeps_settled_count_and_dealt_cards() {
+        let root = std::env::temp_dir().join(format!("two-seven-blackjack-{}", Uuid::new_v4()));
+        let user = Uuid::new_v4();
+        let seed = non_zero_finished_count_seed();
+        let store = BlackjackStore::load(&root).await.unwrap();
+        let mut shoe = BlackjackShoe::new(1, 50);
+        shoe.deck = Deck::shoe_seeded(seed, 1);
+        store.shoes.lock().await.insert(user, shoe);
+
+        let started = store
+            .start(
+                user,
+                100,
+                Uuid::new_v4(),
+                0,
+                BlackjackTrainerSettings {
+                    decks: 1,
+                    counting_tutor: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let finished = if started.status == BlackjackStatus::Playing {
+            store.stand(user, started.id, 0).await.unwrap()
+        } else {
+            started
+        };
+        let expected_count = finished.count.as_ref().unwrap().running;
+        let expected_dealt = finished.shoe.dealt_cards;
+        store.persist().await.unwrap();
+
+        let restored = BlackjackStore::load(&root).await.unwrap();
+        let restored_shoe = restored.shoes.lock().await.get(&user).cloned().unwrap();
+        assert_eq!(restored_shoe.running_count, expected_count);
+        assert_eq!(
+            restored_shoe.exposed_cards,
+            finished.count.unwrap().visible_cards
+        );
+        assert_eq!(restored_shoe.dealt_cards(), expected_dealt);
     }
 
     #[tokio::test]

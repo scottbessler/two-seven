@@ -198,7 +198,7 @@ impl Deck {
     pub fn dealt(&self) -> usize {
         self.next
     }
-    pub fn cards_len(&self) -> usize {
+    pub fn total(&self) -> usize {
         self.cards.len()
     }
 }
