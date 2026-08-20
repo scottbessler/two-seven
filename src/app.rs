@@ -46,6 +46,7 @@ pub fn router(s: AppState) -> Router {
         .route("/healthcheck", get(routes::healthcheck))
         .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
+        .route("/player", get(routes::player_page))
         .route("/leaderboard", get(routes::leaderboard))
         .route("/blackjack", get(routes::blackjack))
         .route("/admin", get(routes::admin_page).post(routes::admin_action))

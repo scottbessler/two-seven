@@ -101,7 +101,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
                 escape(&name),
                 sign_out()
             ),
@@ -114,7 +114,7 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], _balance: 
     layout(
         "Lobby",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/player\">Player</a> · <a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
             escape(name),
             lobby_table_list(tables, true),
             sign_out()
@@ -277,6 +277,108 @@ pub fn card_test() -> String {
         ),
         "",
     )
+}
+
+pub fn player_page(
+    name: &str,
+    account: &crate::bank::Account,
+    poker: crate::stats::PlayerStats,
+    blitz: &crate::blitz::BlitzStats,
+) -> String {
+    let entries = account
+        .entries
+        .iter()
+        .rev()
+        .take(20)
+        .map(|entry| {
+            format!(
+                r#"<tr><td>{}</td><td>{}</td><td class="money {}">{}</td><td class="money">{}</td></tr>"#,
+                entry.at.format("%Y-%m-%d %H:%M"),
+                escape(&entry.memo),
+                if entry.delta >= 0 { "positive" } else { "negative" },
+                signed_cents(entry.delta),
+                format_cents(entry.balance_after),
+            )
+        })
+        .collect::<String>();
+    let ledger = if entries.is_empty() {
+        r#"<p class="loading">No finance history yet.</p>"#.to_string()
+    } else {
+        format!(
+            r#"<table class="finance-ledger"><thead><tr><th>When</th><th>Event</th><th>Change</th><th>Balance</th></tr></thead><tbody>{entries}</tbody></table>"#
+        )
+    };
+    let body = format!(
+        r#"<section class="player-page"><header class="history-top"><div><h1>{}</h1><p>Your bankroll over time.</p></div><nav><a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a></nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section><section class="finance-panel"><h2>Finances</h2>{}</section><section class="finance-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        escape(name),
+        format_cents(account.balance),
+        account.loan_count,
+        format_cents(poker.net),
+        blitz.accuracy_percent(),
+        finance_chart(account),
+        ledger
+    );
+    layout(&format!("{name} player"), &body, "")
+}
+
+fn finance_chart(account: &crate::bank::Account) -> String {
+    let mut series = Vec::new();
+    if let Some(first) = account.entries.first() {
+        series.push((account.created_at, first.balance_after - first.delta));
+    } else {
+        series.push((account.created_at, account.balance));
+    }
+    series.extend(
+        account
+            .entries
+            .iter()
+            .map(|entry| (entry.at, entry.balance_after)),
+    );
+    let min = series
+        .iter()
+        .map(|(_, value)| *value)
+        .min()
+        .unwrap_or(0)
+        .min(0);
+    let max = series
+        .iter()
+        .map(|(_, value)| *value)
+        .max()
+        .unwrap_or(0)
+        .max(0);
+    let span = (max - min).max(1) as f64;
+    let width = 640.0;
+    let height = 220.0;
+    let pad = 24.0;
+    let denom = (series.len().saturating_sub(1)).max(1) as f64;
+    let points = series
+        .iter()
+        .enumerate()
+        .map(|(index, (_, value))| {
+            let x = pad + (width - pad * 2.0) * index as f64 / denom;
+            let y = height - pad - (height - pad * 2.0) * (*value - min) as f64 / span;
+            format!("{x:.1},{y:.1}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let latest = series
+        .last()
+        .map(|(at, _)| at.format("%Y-%m-%d %H:%M UTC").to_string())
+        .unwrap_or_else(|| "No entries yet".into());
+    format!(
+        r#"<figure class="finance-chart"><svg viewBox="0 0 640 220" role="img" aria-label="Player finances over time"><line class="axis" x1="24" y1="196" x2="616" y2="196"></line><line class="axis" x1="24" y1="24" x2="24" y2="196"></line><polyline points="{points}"></polyline></svg><figcaption><span>Low {}</span><span>High {}</span><span>Latest {}</span></figcaption></figure>"#,
+        format_cents(min),
+        format_cents(max),
+        escape(&latest)
+    )
+}
+
+fn signed_cents(value: Cents) -> String {
+    if value >= 0 {
+        format!("+{}", format_cents(value))
+    } else {
+        format!("-{}", format_cents(-value))
+    }
 }
 
 pub fn table_page(view: &crate::view::TableView) -> String {

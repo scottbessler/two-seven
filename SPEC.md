@@ -89,6 +89,8 @@ UI: the header shows the signed-in user's balance next to their username, with a
 coin icon; hovering/tapping it opens a small panel with the current balance, loan
 count badge, re-up action, and the most recent ledger deltas. Seat labels at a
 table show the seat owner's bank balance the same way (bots included).
+The signed-in player page shows account summary, recent ledger rows, and a
+ledger-derived finances-over-time chart.
 
 ## 5. Hold'em rules implemented
 
@@ -168,6 +170,7 @@ and the board) — the same redacted view a human gets (§V3).
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/` | Lobby: bank widget, open tables, tournaments, your seats |
+| GET | `/player` | Signed-in player's account and finance history |
 | GET | `/healthcheck` | Liveness for Fly |
 | POST | `/auth/register/begin`, `/auth/register/finish` | Passkey registration |
 | POST | `/auth/login/begin`, `/auth/login/finish` | Passkey login |
@@ -334,6 +337,8 @@ Mark each milestone done here as it lands.
   until the final hand reveal/runout pause has finished.
 - **V34** Table preferences persist opt-in confirmations for Fold and All In;
   when enabled, only that chosen action requires an explicit confirmation step.
+- **V35** The player page finance chart is derived from ledger entry
+  `balance_after` values and shows the current signed-in player's account only.
 
 ## §T Build tasks
 

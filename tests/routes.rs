@@ -214,6 +214,56 @@ async fn signed_home() {
 }
 
 #[tokio::test]
+async fn player_page_charts_finances_over_time() {
+    let t = appx().await;
+    let id = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id,
+            username: "finley".into(),
+            display_name: "Finley".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank.re_up(AccountOwner::User(id)).await.unwrap();
+    t.bank
+        .append(
+            AccountOwner::User(id),
+            LedgerKind::Adjustment,
+            -25_000,
+            "test spend".into(),
+        )
+        .await
+        .unwrap();
+
+    let response = t
+        .router
+        .oneshot(
+            Request::builder()
+                .uri("/player")
+                .header(header::COOKIE, cookie(&t.key, id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let html = String::from_utf8_lossy(&body);
+    assert!(html.contains("Finley"));
+    assert!(html.contains("finance-chart"));
+    assert!(html.contains("Player finances over time"));
+    assert!(html.contains("<polyline"));
+    assert!(html.contains("re-up loan"));
+    assert!(html.contains("test spend"));
+    assert!(html.contains("$750.00"));
+}
+
+#[tokio::test]
 async fn admin_requires_the_local_password() {
     let t = appx().await;
     let response = t

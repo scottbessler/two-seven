@@ -118,6 +118,9 @@ fn table_css_is_mobile_poker_layout() {
         ".seat.folded",
         ".seat-wager",
         ".bank-widget[open]",
+        ".player-page",
+        ".finance-chart",
+        ".finance-ledger",
         "position:absolute",
         "label[hidden]{display:none}",
     ] {
@@ -132,6 +135,8 @@ fn table_css_is_mobile_poker_layout() {
 fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("fetch(\"/api/bank\""));
     assert!(BANK_JS.contains("bank-balance"));
+    assert!(BANK_JS.contains("/player"));
+    assert!(BANK_JS.contains("player-page-link"));
     assert!(BANK_JS.contains("textContent"));
     assert!(BANK_JS.contains("bank-delta"));
     assert!(BANK_JS.contains("bank-panel"));

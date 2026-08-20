@@ -105,6 +105,22 @@ pub async fn index(State(s): State<AppState>, MaybeUser(user): MaybeUser) -> Htm
     }
 }
 
+pub async fn player_page(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+    let user_record = s.users.get(user).await;
+    let name = user_record
+        .as_ref()
+        .map_or_else(|| "Player".to_string(), |user| user.display_name.clone());
+    let account = s
+        .bank
+        .account(AccountOwner::User(user))
+        .await
+        .expect("account can be created");
+    let owner = AccountOwner::User(user);
+    let poker = s.stats.of(&owner).await;
+    let blitz = s.blitz.stats(user).await;
+    Html(render::player_page(&name, &account, poker, &blitz))
+}
+
 pub async fn new_table(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
     Html(render::table_create(balance_of(&s, user).await))
 }

@@ -43,6 +43,11 @@ if (balance && widget && panel) {
         });
     });
     panel.append(reUp);
+    const playerLink = document.createElement("a");
+    playerLink.className = "player-page-link";
+    playerLink.href = "/player";
+    playerLink.textContent = "Player page";
+    panel.append(playerLink);
     for (const entry of account.entries.slice(-5).toReversed()) {
       const line = document.createElement("div");
       line.textContent = `${entry.delta >= 0 ? "+" : ""}${money(entry.delta)} ${entry.memo}`;

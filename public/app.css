@@ -16,7 +16,7 @@ body{margin:0;background:radial-gradient(circle at top,#1d5948,var(--felt));colo
 .bank-widget summary{display:flex;align-items:center;gap:.25rem;padding:.4rem;list-style:none;cursor:pointer}
 .bank-widget summary::-webkit-details-marker{display:none}
 .bank-panel{position:absolute;right:0;top:2.2rem;z-index:8;display:none;min-width:15rem;padding:.8rem;border:1px solid #527d6c;border-radius:8px;background:#10241f;color:var(--ink);font-size:.8rem;line-height:1.5;text-align:left;box-shadow:0 8px 25px #0008}
-.bank-panel strong,.loan-badge{display:block}.loan-badge{width:max-content;margin:.35rem 0;padding:.1rem .45rem;border:1px solid #b75b57;border-radius:999px;background:#351b1b;color:#ffb7ae;font-weight:800}.re-up-button{width:100%;margin:.25rem 0 .45rem;padding:.45rem .6rem;font-size:.85rem}.re-up-button:disabled{opacity:.55;cursor:not-allowed}
+.bank-panel strong,.loan-badge{display:block}.loan-badge{width:max-content;margin:.35rem 0;padding:.1rem .45rem;border:1px solid #b75b57;border-radius:999px;background:#351b1b;color:#ffb7ae;font-weight:800}.re-up-button{width:100%;margin:.25rem 0 .45rem;padding:.45rem .6rem;font-size:.85rem}.re-up-button:disabled{opacity:.55;cursor:not-allowed}.player-page-link{display:block;margin:.15rem 0 .45rem;color:var(--accent);font-weight:800}
 .bank-widget[open] .bank-panel{display:block}
 .card{background:color-mix(in srgb,var(--card) 92%,black);border:1px solid #346252;border-radius:14px;padding:1.25rem;box-shadow:0 12px 40px #0006}
 .setup-dialog{width:min(34rem,calc(100vw - 2rem));padding:0;border:1px solid #527d6c;border-radius:10px;background:#10241f;color:var(--ink);box-shadow:0 18px 60px #000c}.setup-dialog::backdrop{background:#06100dcc}.setup-dialog form{gap:1rem;margin:0;padding:1rem}.setup-dialog header{display:flex;align-items:center;justify-content:space-between}.setup-dialog h2{margin:0;font-size:1.1rem}.setup-close{display:grid;place-items:center;width:2rem;height:2rem;color:var(--muted);font-size:1.3rem;text-decoration:none}.setup-step{display:grid;gap:.65rem;margin:0;padding:0;border:0}.setup-step[hidden]{display:none}.setup-step legend{padding:0;color:var(--muted);font-weight:700}.setup-dialog .setup-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}button.setup-option{display:grid;align-content:start;gap:.3rem;min-height:5.25rem;padding:.75rem;border:1px solid #527d6c;border-radius:8px;background:#0d1f1b;color:var(--ink);text-align:left}button.setup-option b{color:var(--accent);font-size:1rem}button.setup-option small{color:var(--muted);font-weight:500;line-height:1.35}button.setup-option[aria-pressed=true]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}.setup-note{margin:0;color:var(--muted);font-size:.8rem;line-height:1.4}
@@ -59,6 +59,25 @@ button.danger{background:var(--danger);color:white}
 .leaderboard-table .blitz-empty{color:#527d6c}
 .house-tag{padding:.05rem .3rem;border:1px solid #527d6c;border-radius:4px;color:var(--muted);font-size:.65rem;font-style:normal}
 @media(max-width:640px){.leaderboard-table{font-size:.72rem}.leaderboard-table th,.leaderboard-table td{padding:.3rem .35rem}}
+/* Player page: compact account history with a ledger-derived chart. */
+.player-page{display:grid;gap:.9rem;padding-bottom:2rem}
+.player-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.65rem}
+.player-summary span{display:grid;gap:.2rem;padding:.75rem;border:1px solid #346252;border-radius:8px;background:#10241f99}
+.player-summary small{color:var(--muted);font-weight:800;text-transform:uppercase}
+.player-summary b{color:var(--accent);font-size:1.25rem;font-variant-numeric:tabular-nums}
+.finance-panel{display:grid;gap:.55rem;padding:1rem;border:1px solid #346252;border-radius:8px;background:#10241f99}
+.finance-panel h2{margin:0;font-size:1rem}
+.finance-chart{margin:0}
+.finance-chart svg{display:block;width:100%;height:auto;min-height:12rem;border:1px solid #24463c;border-radius:8px;background:#0b1c18}
+.finance-chart .axis{stroke:#346252;stroke-width:1}
+.finance-chart polyline{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 8px #d9ad5570)}
+.finance-chart figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem;margin-top:.4rem;color:var(--muted);font-size:.8rem}
+.finance-ledger{width:100%;border-collapse:collapse;font-size:.84rem}
+.finance-ledger th{padding:.35rem .5rem;color:var(--muted);text-align:left}
+.finance-ledger td{padding:.35rem .5rem;border-top:1px solid #24463c}
+.finance-ledger .money{font-variant-numeric:tabular-nums;font-weight:800}
+.finance-ledger .positive{color:#7fd4a8}.finance-ledger .negative{color:#ffb7ae}
+@media(max-width:640px){.player-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-ledger{font-size:.72rem}.finance-ledger th,.finance-ledger td{padding:.3rem}}
 /* Hand history is a debugging view: dense, readable, no table chrome. */
 .history-shell{display:grid;gap:.75rem;padding-bottom:2rem}
 .history-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1rem}
