@@ -96,14 +96,19 @@ test("blackjack trainer settings drive tutor quiz and analyzer", async ({ page }
   await expect(page.locator(".blackjack-analysis")).toContainText("basic strategy prefers Hit");
   await expect(page.locator(".blackjack-quiz")).toContainText("What is the running count?");
   const handGeometry = await page.locator(".blackjack-play-area").evaluate((area) => {
+    const areaBox = area.getBoundingClientRect();
     const [dealer, player] = [...area.querySelectorAll(".blackjack-hand")].map((hand) => hand.getBoundingClientRect());
     return {
       dealerAbovePlayer: dealer.bottom <= player.top,
+      dealerCentered: Math.abs(dealer.left + dealer.width / 2 - (areaBox.left + areaBox.width / 2)),
+      playerCentered: Math.abs(player.left + player.width / 2 - (areaBox.left + areaBox.width / 2)),
       dealer: { top: dealer.top, bottom: dealer.bottom },
       player: { top: player.top, bottom: player.bottom },
     };
   });
   expect(handGeometry.dealerAbovePlayer, `dealer should sit above player ${JSON.stringify(handGeometry)}`).toBe(true);
+  expect(handGeometry.dealerCentered, `dealer should be centered ${JSON.stringify(handGeometry)}`).toBeLessThanOrEqual(1);
+  expect(handGeometry.playerCentered, `player should be centered ${JSON.stringify(handGeometry)}`).toBeLessThanOrEqual(1);
   await page.getByRole("button", { name: "-3" }).click();
   await expect(page.locator(".blackjack-quiz")).toContainText("Correct");
 });

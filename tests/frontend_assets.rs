@@ -284,7 +284,9 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-quiz",
         ".blackjack-analysis",
         ".blackjack-play-area",
+        "justify-content:center",
         ".blackjack-play-area .blackjack-hand:first-child",
+        ".blackjack-play-area .blackjack-hand:nth-child(2):last-child",
         ".blackjack-status-row",
     ] {
         assert!(

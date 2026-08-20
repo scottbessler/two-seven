@@ -108,8 +108,9 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100%;overflow:hidde
 .blackjack-status-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
 .blackjack-status-row span{display:grid;place-items:center;min-height:3rem;padding:.45rem;border:1px solid #527d6c;border-radius:6px;background:#10241f;color:var(--muted);font-size:.76rem;text-align:center}
 .blackjack-status-row b{color:var(--accent);font-size:1.05rem}
-.blackjack-play-area{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));align-items:center;gap:.75rem;min-height:0;overflow:auto}
+.blackjack-play-area{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,24rem));justify-content:center;align-items:center;gap:.75rem;min-height:0;overflow:auto}
 .blackjack-play-area .blackjack-hand:first-child{grid-column:1/-1}
+.blackjack-play-area .blackjack-hand:nth-child(2):last-child{grid-column:1/-1}
 .blackjack-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:.5rem}
 .blackjack-actions button{min-width:0;min-height:2.9rem}
 .blackjack-actions .deal-action{background:var(--accent);color:#1a160d}
