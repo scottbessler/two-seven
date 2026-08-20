@@ -1,7 +1,7 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings, useCardSettings } from "/public/card-settings.js";
-import { responseError, wholeDollarMoney as money } from "/public/shared.js";
+import { refreshBank, responseError, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("table-app");
@@ -245,8 +245,10 @@ function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refres
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-    if (response.ok) refresh();
-    else document.getElementById("table-error").textContent = await responseError(response);
+    if (response.ok) {
+      refresh();
+      refreshBank().catch(() => {});
+    } else document.getElementById("table-error").textContent = await responseError(response);
   };
   // Walking out of a tournament is not a cash-out: the entry is gone, so ask first.
   if (forfeits) {
@@ -330,6 +332,14 @@ function TableApp() {
     events.addEventListener("state", (event) => setState(JSON.parse(event.data)));
     events.addEventListener("error", refresh);
     return () => events.close();
+  }, []);
+  useEffect(() => {
+    const syncBalance = (event) => {
+      if (!event.detail) return;
+      setState((current) => current && { ...current, bank_balance: event.detail.balance });
+    };
+    window.addEventListener("bank:updated", syncBalance);
+    return () => window.removeEventListener("bank:updated", syncBalance);
   }, []);
   useHeaderInfo(state?.tournament);
   const showdown = state && !state.hand ? state.last_hand : null;

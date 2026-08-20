@@ -1,7 +1,7 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings } from "/public/card-settings.js";
-import { money, responseError } from "/public/shared.js";
+import { money, refreshBank, responseError } from "/public/shared.js";
 // Shared renderer contracts: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("blitz-app");
@@ -65,6 +65,7 @@ function App() {
     const data = await response.json();
     setRun(data.run);
     setStats(data.stats);
+    refreshBank().catch(() => {});
   };
 
   const answer = async (choice) => {
@@ -84,6 +85,7 @@ function App() {
     setRun(data.run);
     setStats(data.stats);
     setFeedback(data.correct ? `Correct: ${data.winning_label}` : `${data.timed_out ? "Time" : "Miss"}: ${data.winning_label}`);
+    refreshBank().catch(() => {});
   };
 
   if (!run) {

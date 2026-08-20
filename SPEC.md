@@ -442,6 +442,6 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 - Driver ticks updated every table every 250ms even when no hand action, deal,
   or settlement was due; preflight mutation cases before `TableStore::update`
   and cover idle ticks under V30.
-- Blackjack and the bank widget kept separate balance state, so same-page
-  re-ups did not unlock blackjack and blackjack bets/payouts left the header
+- Blackjack, poker table commands, Hand Blitz, and the bank widget kept separate
+  balance state, so same-page re-ups and game buy-ins/payouts left sibling UI
   stale; share `bank:updated` account events and cover the flow under V31.

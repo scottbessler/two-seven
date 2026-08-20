@@ -1,4 +1,4 @@
-import { wholeDollarMoney as money } from "/public/shared.js";
+import { announceBank, refreshBank, wholeDollarMoney as money } from "/public/shared.js";
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
@@ -6,10 +6,6 @@ const balance = document.getElementById("bank-balance");
 const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
 const panel = document.getElementById("bank-panel");
-
-const announceBank = (account) => {
-  window.dispatchEvent(new CustomEvent("bank:updated", { detail: account }));
-};
 
 if (balance && widget && panel) {
   const showBank = (account) => {
@@ -53,17 +49,10 @@ if (balance && widget && panel) {
       panel.append(line);
     }
   };
-  const loadBank = () => fetch("/api/bank", { headers: { Accept: "application/json" } })
-    .then((response) => (response.ok ? response.json() : null))
-    .then((account) => {
-      if (!account) return;
-      announceBank(account);
-    })
-    .catch(() => {});
   window.addEventListener("bank:updated", (event) => {
     if (event.detail) showBank(event.detail);
   });
-  loadBank();
+  refreshBank().catch(() => {});
   for (const form of document.querySelectorAll(".re-up-form")) {
     form.addEventListener("submit", (event) => {
       event.preventDefault();

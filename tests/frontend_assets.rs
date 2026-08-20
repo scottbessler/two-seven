@@ -129,7 +129,6 @@ fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("bank-delta"));
     assert!(BANK_JS.contains("bank-panel"));
     assert!(BANK_JS.contains("bank:updated"));
-    assert!(BANK_JS.contains("CustomEvent"));
     assert!(!BANK_JS.contains("aria-expanded"));
 }
 
@@ -149,6 +148,7 @@ fn hand_blitz_island_has_mode_contracts() {
         "card-corner rank over suit",
         "Correct:",
         "Play again",
+        "refreshBank",
     ] {
         assert!(
             BLITZ_JS.contains(literal),
@@ -251,6 +251,10 @@ fn shared_island_helpers_have_contracts() {
         "export function money",
         "export function wholeDollarMoney",
         "export async function responseError",
+        "export function announceBank",
+        "export async function refreshBank",
+        "bank:updated",
+        "CustomEvent",
     ] {
         assert!(
             SHARED_JS.contains(literal),
@@ -283,6 +287,8 @@ fn setup_walks_a_stepped_game_dialog() {
     assert_eq!(LOBBY_JS.matches("  [").count(), 15, "T10,000 has 15 levels");
     assert!(TABLE_JS.contains("money(state.buy_in)"));
     assert!(TABLE_JS.contains("body: \"{}\""));
+    assert!(TABLE_JS.contains("refreshBank"));
+    assert!(TABLE_JS.contains("bank:updated"));
     assert!(TABLE_JS.contains("JSON.stringify({ kind })"));
     assert!(!TABLE_JS.contains("JSON.stringify({ seat })"));
 }

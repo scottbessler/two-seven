@@ -22,3 +22,15 @@ export async function responseError(response) {
     return document.querySelector("p")?.textContent?.trim() || text || `Request failed (${response.status})`;
   }
 }
+
+export function announceBank(account) {
+  window.dispatchEvent(new CustomEvent("bank:updated", { detail: account }));
+}
+
+export async function refreshBank() {
+  const response = await fetch("/api/bank", { headers: { Accept: "application/json" } });
+  if (!response.ok) return null;
+  const account = await response.json();
+  announceBank(account);
+  return account;
+}

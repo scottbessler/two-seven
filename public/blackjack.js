@@ -1,7 +1,7 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings } from "/public/card-settings.js";
-import { money, responseError, wholeDollarMoney } from "/public/shared.js";
+import { money, refreshBank, responseError, wholeDollarMoney } from "/public/shared.js";
 // Shared renderer contract: card-corner rank over suit.
 
 const root = document.getElementById("blackjack-app");
@@ -34,21 +34,12 @@ function App() {
   const [error, setError] = useState("");
   const [balance, setBalance] = useState(0);
 
-  const loadBalance = () => fetch("/api/bank", { headers: { Accept: "application/json" } })
-    .then((response) => (response.ok ? response.json() : null))
-    .then((account) => {
-      if (!account) return;
-      setBalance(account.balance);
-      window.dispatchEvent(new CustomEvent("bank:updated", { detail: account }));
-    })
-    .catch(() => {});
-
   useEffect(() => {
     const syncBalance = (event) => {
       if (event.detail) setBalance(event.detail.balance);
     };
     window.addEventListener("bank:updated", syncBalance);
-    loadBalance();
+    refreshBank().catch(() => {});
     fetch("/blackjack/resume")
       .then((response) => response.ok ? response.json() : null)
       .then((value) => value && setGame(value))
@@ -70,7 +61,7 @@ function App() {
       return;
     }
     setGame(await response.json());
-    loadBalance();
+    refreshBank().catch(() => {});
   };
 
   const act = async (kind) => {
@@ -87,7 +78,7 @@ function App() {
       return;
     }
     setGame(await response.json());
-    loadBalance();
+    refreshBank().catch(() => {});
   };
 
   const bets = betOptions(balance);

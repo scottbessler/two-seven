@@ -153,16 +153,68 @@ test("builds a tournament one question at a time", async ({ page }) => {
   await expect(page.locator(".header-info")).toHaveAttribute("aria-label", /Blinds \$100\/\$200/);
 });
 
-test("buys into an affordable cash table from the live table page", async ({ page }) => {
-  await signIn(page, "cashjoin");
-  await page.request.post("/api/bank", { data: {} });
-  await page.goto("/tables");
-  const cashTables = page.locator(".table-list").filter({ has: page.getByRole("heading", { name: "Cash tables" }) });
-  await cashTables.locator("ul > li a").first().click();
+test("cash table buy-ins refresh the header balance", async ({ page }) => {
+  let account = {
+    balance: 100_000,
+    loan_count: 1,
+    entries: [{ delta: 100_000, memo: "re-up loan" }],
+  };
+  await page.route("**/api/bank", async (route) => {
+    if (route.request().method() === "POST") {
+      account = { ...account, balance: account.balance + 100_000, entries: [...account.entries, { delta: 100_000, memo: "re-up loan" }] };
+    }
+    await route.fulfill({ json: account });
+  });
+  const unseated = {
+    ...tableState,
+    viewer_seat: null,
+    hand: null,
+    seats: tableState.seats.map((seat) => seat.index === 2
+      ? { ...seat, occupant: "empty", display_name: null, stack: 0 }
+      : seat),
+  };
+  await page.route("**/tables/mock/join", async (route) => {
+    account = { ...account, balance: account.balance - tableState.buy_in, entries: [...account.entries, { delta: -tableState.buy_in, memo: "table buy-in" }] };
+    unseated.viewer_seat = 2;
+    unseated.seats[2] = { ...tableState.seats[2], stack: tableState.buy_in };
+    await route.fulfill({ json: { ok: true } });
+  });
+  await mountTable(page, unseated);
+  await expect(page.locator("#bank-balance")).toHaveText("$1,000");
   await expect(page.getByRole("button", { name: /Buy In/ })).toBeEnabled();
   await page.getByRole("button", { name: /Buy In/ }).click();
   await expect(page.locator(".seat.viewer")).toBeVisible();
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
+  await expect(page.locator("#bank-balance")).toHaveText("$800");
+});
+
+test("cash table commands notice a same-page re-up", async ({ page }) => {
+  let account = {
+    balance: 0,
+    loan_count: 0,
+    entries: [],
+  };
+  await page.route("**/api/bank", async (route) => {
+    if (route.request().method() === "POST") {
+      account = { ...account, balance: 100_000, loan_count: 1, entries: [{ delta: 100_000, memo: "re-up loan" }] };
+    }
+    await route.fulfill({ json: account });
+  });
+  await mountTable(page, {
+    ...tableState,
+    viewer_seat: null,
+    bank_balance: 0,
+    hand: null,
+    seats: tableState.seats.map((seat) => seat.index === 2
+      ? { ...seat, occupant: "empty", display_name: null, stack: 0 }
+      : seat),
+  });
+  await expect(page.getByRole("button", { name: /Buy In/ })).toBeDisabled();
+
+  await page.locator(".bank-widget summary").click();
+  await page.locator(".re-up-button").click();
+
+  await expect(page.getByRole("button", { name: /Buy In/ })).toBeEnabled();
 });
 
 test("shows live hand cues and event log", async ({ page }) => {
