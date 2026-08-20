@@ -1001,10 +1001,35 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
     last_hand: {
       ...showdownState.last_hand,
       runout_from: 0,
+      reveal_odds: [
+        { seat: 0, equity_permille: 312, outs: ["Kh", "Qh", "Jh", "Th", "9h", "8h", "6h", "5h", "4h"] },
+        { seat: 1, equity_permille: 688, outs: [] },
+      ],
       runout: [
-        { cards: 3, leaders: [0] },
-        { cards: 4, leaders: [0] },
-        { cards: 5, leaders: [1] },
+        {
+          cards: 3,
+          leaders: [0],
+          odds: [
+            { seat: 0, equity_permille: 712, outs: [] },
+            { seat: 1, equity_permille: 288, outs: ["Ac", "Ad"] },
+          ],
+        },
+        {
+          cards: 4,
+          leaders: [0],
+          odds: [
+            { seat: 0, equity_permille: 844, outs: [] },
+            { seat: 1, equity_permille: 156, outs: ["Ac", "Ad"] },
+          ],
+        },
+        {
+          cards: 5,
+          leaders: [1],
+          odds: [
+            { seat: 0, equity_permille: 0, outs: [] },
+            { seat: 1, equity_permille: 1000, outs: [] },
+          ],
+        },
       ],
       stacks_before_awards: { 0: 18_800, 1: 22_400 },
       reveal_leaders: [1],
@@ -1019,7 +1044,26 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   await expect(board).toHaveCount(0);
   await expect(page.locator(".seat.leading")).toHaveCount(1);
   await expect(page.locator(".seat.leading")).toContainText("Mina");
+  await expect(page.locator(".showdown-odds")).toContainText("31.2%");
   await expect(result).toHaveText("");
+  const revealLayout = await page.locator(".table-stage").evaluate((stage) => {
+    const odds = stage.querySelector(".showdown-odds").getBoundingClientRect();
+    const oddsItems = [...stage.querySelectorAll(".showdown-odds span")].map((node) => node.getBoundingClientRect());
+    const viewer = stage.querySelector(".seat.viewer").getBoundingClientRect();
+    const boardBox = stage.querySelector(".board").getBoundingClientRect();
+    const rowCount = new Set(oddsItems.map((item) => Math.round(item.top))).size;
+    return {
+      rowCount,
+      clearsViewer: odds.bottom <= viewer.top || odds.top >= viewer.bottom,
+      boardGap: viewer.top - boardBox.bottom,
+      odds: { top: odds.top, bottom: odds.bottom },
+      board: { top: boardBox.top, bottom: boardBox.bottom },
+      viewer: { top: viewer.top, bottom: viewer.bottom },
+    };
+  });
+  expect(revealLayout.rowCount, `V37: odds must stay on one row ${JSON.stringify(revealLayout)}`).toBe(1);
+  expect(revealLayout.clearsViewer, `V37: odds must not overlap the viewer seat ${JSON.stringify(revealLayout)}`).toBe(true);
+  expect(revealLayout.boardGap, `V37: center content must keep a visible viewer gap ${JSON.stringify(revealLayout)}`).toBeGreaterThanOrEqual(12);
   // Nothing may give the ending away while the board is still coming.
   await expect(page.locator(".seat.winner")).toHaveCount(0);
   await expect(page.locator(".game-log")).not.toContainText("wins");
