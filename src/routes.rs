@@ -296,6 +296,8 @@ pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html
 #[derive(Deserialize)]
 pub struct BlackjackStartRequest {
     pub bet: i64,
+    #[serde(default)]
+    pub settings: crate::blackjack::BlackjackTrainerSettings,
 }
 
 pub async fn blackjack_start(
@@ -314,7 +316,7 @@ pub async fn blackjack_start(
     let id = Uuid::new_v4();
     let view = s
         .blackjack
-        .start(user, input.bet, id, balance - input.bet)
+        .start(user, input.bet, id, balance - input.bet, input.settings)
         .await
         .map_err(blackjack_error)?;
     s.bank

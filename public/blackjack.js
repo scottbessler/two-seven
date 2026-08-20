@@ -6,6 +6,13 @@ import { money, refreshBank, responseError, wholeDollarMoney } from "/public/sha
 
 const root = document.getElementById("blackjack-app");
 const CHEAPEST_STARTING_BET_CAP = 10000;
+const TRAINER_KEYS = {
+  decks: "blackjack-trainer-decks",
+  penetration: "blackjack-trainer-penetration",
+  countingTutor: "blackjack-counting-tutor",
+  countingQuiz: "blackjack-counting-quiz",
+  betAnalyzer: "blackjack-bet-analyzer",
+};
 
 // Mirrors bet_options and max_starting_bet in src/blackjack.rs: a nibble, a
 // real bet, and a big one, capped at half the bankroll so a double or split
@@ -28,11 +35,68 @@ function Hand({ title, cards, score, hidden }) {
   </section>`;
 }
 
+function readTrainerSettings() {
+  const decks = Number(localStorage.getItem(TRAINER_KEYS.decks));
+  const penetration = Number(localStorage.getItem(TRAINER_KEYS.penetration));
+  return {
+    decks: [1, 2, 8].includes(decks) ? decks : 8,
+    penetration: penetration >= 25 && penetration <= 95 ? penetration : 75,
+    countingTutor: localStorage.getItem(TRAINER_KEYS.countingTutor) === "on",
+    countingQuiz: localStorage.getItem(TRAINER_KEYS.countingQuiz) === "on",
+    betAnalyzer: localStorage.getItem(TRAINER_KEYS.betAnalyzer) === "on",
+  };
+}
+
+function TrainerSettings({ settings, setSettings }) {
+  const setNumber = (name, key) => (event) => {
+    const value = Number(event.currentTarget.value);
+    setSettings((current) => ({ ...current, [name]: value }));
+    localStorage.setItem(key, String(value));
+  };
+  const toggle = (name, key) => (event) => {
+    const value = event.currentTarget.checked;
+    setSettings((current) => ({ ...current, [name]: value }));
+    localStorage.setItem(key, value ? "on" : "off");
+  };
+  return html`
+    <label><span>Blackjack decks <output>${settings.decks}</output></span><select name="blackjack-decks" value=${settings.decks} onChange=${setNumber("decks", TRAINER_KEYS.decks)}>
+      <option value="1">Single deck</option>
+      <option value="2">Double deck</option>
+      <option value="8">Eight deck</option>
+    </select></label>
+    <label><span>Deck penetration <output>${settings.penetration}%</output></span><input name="blackjack-penetration" type="range" min="25" max="95" step="5" value=${settings.penetration} onInput=${setNumber("penetration", TRAINER_KEYS.penetration)} /></label>
+    <label class="card-option-toggle"><input name="counting-tutor" type="checkbox" checked=${settings.countingTutor} onChange=${toggle("countingTutor", TRAINER_KEYS.countingTutor)} /><span><b>Card counting tutor</b><small>Show the Hi-Lo running count and card-by-card changes</small></span></label>
+    <label class="card-option-toggle"><input name="counting-quiz" type="checkbox" checked=${settings.countingQuiz} onChange=${toggle("countingQuiz", TRAINER_KEYS.countingQuiz)} /><span><b>Card counting quiz</b><small>Ask for the running count after each hand</small></span></label>
+    <label class="card-option-toggle"><input name="bet-analyzer" type="checkbox" checked=${settings.betAnalyzer} onChange=${toggle("betAnalyzer", TRAINER_KEYS.betAnalyzer)} /><span><b>Bet analyzer</b><small>Compare your choices with basic strategy</small></span></label>
+  `;
+}
+
+function TrainerPanel({ game, quizChoice, setQuizChoice }) {
+  return html`
+    ${game.count && html`<section class="blackjack-trainer-count" aria-label="Card counting tutor">
+      <span><b>${game.count.running}</b> running</span>
+      <span><b>${game.count.true_count.toFixed(1)}</b> true</span>
+      <span><b>${game.count.penetration_percent}%</b> seen</span>
+    </section>`}
+    ${game.trainer_log?.length ? html`<ol class="blackjack-trainer-log" aria-label="Count log">${game.trainer_log.map((line) => html`<li>${line}</li>`)}</ol>` : null}
+    ${game.analysis?.length ? html`<section class="blackjack-analysis" aria-label="Bet analyzer">${game.analysis.map((line) => html`<p>${line}</p>`)}</section>` : null}
+    ${game.quiz && html`<section class="blackjack-quiz" aria-label="Card counting quiz">
+      <p>${game.quiz.prompt}</p>
+      <div>
+        ${game.quiz.choices.map((choice) => html`<button type="button" class=${quizChoice === choice ? "selected" : ""} onClick=${() => setQuizChoice(choice)}>${choice}</button>`)}
+      </div>
+      ${quizChoice != null && html`<strong>${quizChoice === game.quiz.answer ? "Correct" : `Count was ${game.quiz.answer}`}</strong>`}
+    </section>`}
+  `;
+}
+
 function App() {
   const [game, setGame] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [balance, setBalance] = useState(0);
+  const [trainerSettings, setTrainerSettings] = useState(readTrainerSettings);
+  const [quizChoice, setQuizChoice] = useState(null);
 
   useEffect(() => {
     const syncBalance = (event) => {
@@ -47,13 +111,24 @@ function App() {
     return () => window.removeEventListener("bank:updated", syncBalance);
   }, []);
 
+  useEffect(() => setQuizChoice(null), [game?.id, game?.status]);
+
   const start = async (amount) => {
     setBusy(true);
     setError("");
     const response = await fetch("/blackjack/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ bet: amount }),
+      body: JSON.stringify({
+        bet: amount,
+        settings: {
+          decks: trainerSettings.decks,
+          penetration_percent: trainerSettings.penetration,
+          counting_tutor: trainerSettings.countingTutor,
+          counting_quiz: trainerSettings.countingQuiz,
+          bet_analyzer: trainerSettings.betAnalyzer,
+        },
+      }),
     });
     setBusy(false);
     if (!response.ok) {
@@ -82,8 +157,9 @@ function App() {
   };
 
   const bets = betOptions(balance);
+  const trainerControls = html`<${TrainerSettings} settings=${trainerSettings} setSettings=${setTrainerSettings} />`;
   return html`<section class="blitz-table blackjack-table">
-    <${CardSettings} interactive=${true} />
+    <${CardSettings} interactive=${true} children=${trainerControls} />
     ${game && html`<div class="blitz-score">
       <span><b>${money(game.bet)}</b> bet</span>
       <span><b>${game.payout ? money(game.payout) : "—"}</b> payout</span>
@@ -92,6 +168,7 @@ function App() {
     <${Hand} title="Dealer" cards=${game.dealer} score=${game.dealer_score} hidden=${game.dealer_score == null} />
     ${game.hands.map((hand, index) => html`<${Hand} title=${`Hand ${index + 1}${index === game.active_hand ? " · Active" : ""}`} cards=${hand.cards} score=${hand.score} />`)}
     <p class="blitz-feedback">${game.message}</p>
+    <${TrainerPanel} game=${game} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
     `}
     <div class="actions blackjack-actions">
       ${game?.status === "Playing" ? html`

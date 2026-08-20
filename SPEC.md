@@ -343,6 +343,9 @@ Mark each milestone done here as it lands.
   runout street; non-leading players with 1-9 immediate outs expose those cards.
 - **V37** All-in showdown odds render as one compact horizontal row; adding
   odds must not wrap center content into the viewer card area.
+- **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
+  shoe choice, penetration percent, visible-card Hi-Lo tutor/log, post-hand
+  running-count quiz, and server-side basic-strategy analyzer feedback.
 
 ## §T Build tasks
 
@@ -373,6 +376,7 @@ T13|x|add resumable one-live-game blackjack lifecycle|V22
 T14|x|share island helpers and surface blitz/blackjack UI errors and actions|V23
 T15|x|persist live blackjack games and restore them after restart|V1,V24
 T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
+T21|x|add blackjack card-counting and strategy trainer settings|V24,V25,V27,V28,V31,V38
 
 ## §B Bug log
 

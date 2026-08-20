@@ -260,10 +260,31 @@ fn blackjack_island_has_game_contracts() {
         "game.can_hit && html",
         "game.can_double && html",
         "actions blackjack-actions",
+        "TRAINER_KEYS",
+        "blackjack-trainer-decks",
+        "blackjack-penetration",
+        "counting_tutor",
+        "counting_quiz",
+        "bet_analyzer",
+        "blackjack-trainer-count",
+        "blackjack-trainer-log",
+        "blackjack-quiz",
+        "blackjack-analysis",
     ] {
         assert!(
             BLACKJACK_JS.contains(literal),
             "missing blackjack.js contract: {literal}"
+        );
+    }
+    for literal in [
+        ".blackjack-trainer-count",
+        ".blackjack-trainer-log",
+        ".blackjack-quiz",
+        ".blackjack-analysis",
+    ] {
+        assert!(
+            APP_CSS.contains(literal),
+            "missing blackjack trainer CSS contract: {literal}"
         );
     }
 }

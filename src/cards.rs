@@ -170,10 +170,17 @@ pub struct Deck {
 }
 impl Deck {
     pub fn seeded(seed: u64) -> Self {
-        let mut cards = Vec::with_capacity(52);
-        for rank in Rank::ALL {
-            for suit in Suit::ALL {
-                cards.push(Card::new(rank, suit));
+        Self::shoe_seeded(seed, 1)
+    }
+
+    pub fn shoe_seeded(seed: u64, decks: u8) -> Self {
+        let deck_count = decks.max(1);
+        let mut cards = Vec::with_capacity(52 * usize::from(deck_count));
+        for _ in 0..deck_count {
+            for rank in Rank::ALL {
+                for suit in Suit::ALL {
+                    cards.push(Card::new(rank, suit));
+                }
             }
         }
         let mut rng = StdRng::seed_from_u64(seed);

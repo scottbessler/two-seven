@@ -60,7 +60,7 @@ export function useCardSettings() {
   return [settings, setSettings];
 }
 
-export function CardSettings({ settings: providedSettings, setSettings: providedSetSettings, interactive = false, concealable = false, trigger = true } = {}) {
+export function CardSettings({ settings: providedSettings, setSettings: providedSetSettings, interactive = false, concealable = false, trigger = true, children = null } = {}) {
   const [localSettings, localSetSettings] = useCardSettings();
   const settings = providedSettings || localSettings;
   const setSettings = providedSetSettings || localSetSettings;
@@ -85,6 +85,7 @@ export function CardSettings({ settings: providedSettings, setSettings: provided
         ${concealable && html`<label class="card-option-toggle"><input name="paranoid" type="checkbox" checked=${settings.paranoid} onChange=${toggle("paranoid", CARD_SETTING_KEYS.paranoid)} /><span><b>Paranoid mode</b><small>Keep your hole cards face down until you hover or hold them</small></span></label>`}
         ${concealable && html`<label class="card-option-toggle"><input name="confirm-fold" type="checkbox" checked=${settings.confirmFold} onChange=${toggle("confirmFold", CARD_SETTING_KEYS.confirmFold)} /><span><b>Confirm folds</b><small>Ask before folding your hand</small></span></label>`}
         ${concealable && html`<label class="card-option-toggle"><input name="confirm-all-in" type="checkbox" checked=${settings.confirmAllIn} onChange=${toggle("confirmAllIn", CARD_SETTING_KEYS.confirmAllIn)} /><span><b>Confirm all-in</b><small>Ask before putting every chip in</small></span></label>`}
+        ${children}
       </form>
     </dialog>`;
   return trigger

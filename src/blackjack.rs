@@ -64,6 +64,11 @@ pub struct BlackjackView {
     pub insurance: Cents,
     pub hands: Vec<BlackjackHandView>,
     pub active_hand: usize,
+    pub settings: BlackjackTrainerSettings,
+    pub count: Option<BlackjackCountView>,
+    pub trainer_log: Vec<String>,
+    pub quiz: Option<BlackjackCountQuiz>,
+    pub analysis: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -73,6 +78,66 @@ pub struct BlackjackHandView {
     pub score: u8,
     pub status: BlackjackHandStatus,
     pub blackjack: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlackjackTrainerSettings {
+    #[serde(default = "default_decks")]
+    pub decks: u8,
+    #[serde(default = "default_penetration_percent")]
+    pub penetration_percent: u8,
+    #[serde(default)]
+    pub counting_tutor: bool,
+    #[serde(default)]
+    pub counting_quiz: bool,
+    #[serde(default)]
+    pub bet_analyzer: bool,
+}
+
+impl Default for BlackjackTrainerSettings {
+    fn default() -> Self {
+        Self {
+            decks: default_decks(),
+            penetration_percent: default_penetration_percent(),
+            counting_tutor: false,
+            counting_quiz: false,
+            bet_analyzer: false,
+        }
+    }
+}
+
+impl BlackjackTrainerSettings {
+    pub fn sanitized(self) -> Self {
+        Self {
+            decks: match self.decks {
+                1 | 2 | 8 => self.decks,
+                _ => default_decks(),
+            },
+            penetration_percent: self.penetration_percent.clamp(25, 95),
+            counting_tutor: self.counting_tutor,
+            counting_quiz: self.counting_quiz,
+            bet_analyzer: self.bet_analyzer,
+        }
+    }
+
+    fn shoe_cards(&self) -> usize {
+        usize::from(self.decks) * 52
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BlackjackCountView {
+    pub running: i16,
+    pub true_count: f32,
+    pub visible_cards: usize,
+    pub penetration_percent: u8,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BlackjackCountQuiz {
+    pub prompt: String,
+    pub choices: Vec<i16>,
+    pub answer: i16,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -123,6 +188,24 @@ struct BlackjackGame {
     dealer_peeked: bool,
     status: BlackjackStatus,
     payout: Cents,
+    #[serde(default)]
+    settings: BlackjackTrainerSettings,
+    #[serde(default)]
+    decisions: Vec<BlackjackDecision>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct BlackjackDecision {
+    action: Action,
+    recommended: Action,
+}
+
+fn default_decks() -> u8 {
+    8
+}
+
+fn default_penetration_percent() -> u8 {
+    75
 }
 
 const MAX_HANDS: usize = 4;
@@ -204,6 +287,7 @@ impl BlackjackStore {
         bet: Cents,
         id: Uuid,
         balance: Cents,
+        settings: BlackjackTrainerSettings,
     ) -> Result<BlackjackView, BlackjackError> {
         if !valid_game_amount(bet) {
             return Err(BlackjackError::IllegalAction("bet must be at least $1"));
@@ -216,7 +300,8 @@ impl BlackjackStore {
             return Err(BlackjackError::ActiveGame);
         }
         guard.retain(|_, game| game.user != user || game.status == BlackjackStatus::Playing);
-        let mut deck = Deck::seeded(rand::thread_rng().r#gen());
+        let settings = settings.sanitized();
+        let mut deck = Deck::shoe_seeded(rand::thread_rng().r#gen(), settings.decks);
         let player = vec![deck.deal().expect("card"), deck.deal().expect("card")];
         let dealer = vec![deck.deal().expect("card"), deck.deal().expect("card")];
         let natural = score(&player).0 == 21;
@@ -229,6 +314,11 @@ impl BlackjackStore {
             dealer_peeked: false,
             payout: 0,
             status: BlackjackStatus::Playing,
+            settings,
+            decisions: vec![BlackjackDecision {
+                action: Action::Bet,
+                recommended: Action::Bet,
+            }],
             hands: vec![BlackjackHand {
                 cards: player,
                 bet,
@@ -259,6 +349,7 @@ impl BlackjackStore {
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         game.wager(Action::Hit, balance)?;
+        game.record_decision(Action::Hit);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
             return Ok(game.view(false, balance));
@@ -282,6 +373,7 @@ impl BlackjackStore {
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         game.wager(Action::Stand, balance)?;
+        game.record_decision(Action::Stand);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
             return Ok(game.view(true, balance));
@@ -302,6 +394,7 @@ impl BlackjackStore {
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         let wager = game.wager(Action::Double, balance)?;
+        game.record_decision(Action::Double);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
             return Ok((game.view(false, balance), 0));
@@ -329,6 +422,7 @@ impl BlackjackStore {
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         let wager = game.wager(Action::Split, balance)?;
+        game.record_decision(Action::Split);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
             return Ok((game.view(false, balance), 0));
@@ -368,13 +462,15 @@ impl BlackjackStore {
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         let wager = game.wager(Action::Insure, balance)?;
+        game.record_decision(Action::Insure);
         game.insurance = wager;
         game.peek_if_needed();
         Ok((game.view(false, balance - wager), wager))
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 enum Action {
+    Bet,
     Hit,
     Stand,
     Double,
@@ -402,6 +498,7 @@ impl BlackjackGame {
         let i = self.active_index();
         let hand = self.hands.get(i).ok_or(BlackjackError::Finished)?;
         let legal = match a {
+            Action::Bet => false,
             Action::Hit => self.can_hit(),
             Action::Stand => self.can_stand(),
             Action::Double => self.can_double(balance),
@@ -410,6 +507,7 @@ impl BlackjackGame {
         };
         if !legal {
             return Err(BlackjackError::IllegalAction(match a {
+                Action::Bet => "bet is not legal during a hand",
                 Action::Hit => "hit is not legal",
                 Action::Stand => "stand is not legal",
                 Action::Double => "double is not legal or you cannot afford the additional wager",
@@ -430,6 +528,43 @@ impl BlackjackGame {
             ));
         }
         Ok(wager)
+    }
+
+    fn record_decision(&mut self, action: Action) {
+        if self.settings.bet_analyzer {
+            self.decisions.push(BlackjackDecision {
+                action,
+                recommended: self.recommended_action(),
+            });
+        }
+    }
+
+    fn recommended_action(&self) -> Action {
+        let i = self.active_index();
+        let Some(hand) = self.hands.get(i) else {
+            return Action::Stand;
+        };
+        if self.can_insure(i64::MAX) {
+            return if count(&self.visible_cards(false)) >= 3 {
+                Action::Insure
+            } else {
+                Action::Stand
+            };
+        }
+        let dealer = self.dealer[0].rank as u8;
+        if self.can_split(i64::MAX) && should_split(hand.cards[0].rank as u8, dealer) {
+            return Action::Split;
+        }
+        let (total, soft) = score(&hand.cards);
+        if hand.cards.len() == 2 && self.can_double(i64::MAX) && should_double(total, soft, dealer)
+        {
+            return Action::Double;
+        }
+        if should_hit(total, soft, dealer) {
+            Action::Hit
+        } else {
+            Action::Stand
+        }
     }
 
     fn can_hit(&self) -> bool {
@@ -601,6 +736,9 @@ impl BlackjackGame {
             })
             .collect();
         let first = self.hands.first().expect("hand");
+        let visible = self.visible_cards(reveal || finished);
+        let count_view = (self.settings.counting_tutor || self.settings.counting_quiz)
+            .then(|| count_view(&visible, &self.settings));
         BlackjackView {
             id: self.id,
             bet: first.bet,
@@ -619,8 +757,164 @@ impl BlackjackGame {
             insurance: self.insurance,
             hands,
             active_hand: active,
+            settings: self.settings.clone(),
+            count: count_view,
+            trainer_log: if self.settings.counting_tutor {
+                count_log(&visible)
+            } else {
+                Vec::new()
+            },
+            quiz: if self.settings.counting_quiz && finished {
+                Some(count_quiz(count(&visible)))
+            } else {
+                None
+            },
+            analysis: if self.settings.bet_analyzer {
+                self.analysis()
+            } else {
+                Vec::new()
+            },
         }
     }
+
+    fn visible_cards(&self, reveal_dealer_hole: bool) -> Vec<(String, Card)> {
+        let mut cards = Vec::new();
+        if let Some(card) = self.dealer.first() {
+            cards.push(("Dealer up".into(), *card));
+        }
+        if reveal_dealer_hole {
+            for card in self.dealer.iter().skip(1) {
+                cards.push(("Dealer".into(), *card));
+            }
+        }
+        for (index, hand) in self.hands.iter().enumerate() {
+            for card in &hand.cards {
+                cards.push((format!("Hand {}", index + 1), *card));
+            }
+        }
+        cards
+    }
+
+    fn analysis(&self) -> Vec<String> {
+        self.decisions
+            .iter()
+            .filter_map(|decision| {
+                (decision.action != decision.recommended).then(|| {
+                    format!(
+                        "{} was off; basic strategy prefers {} here.",
+                        decision.action.label(),
+                        decision.recommended.label()
+                    )
+                })
+            })
+            .collect()
+    }
+}
+
+impl Action {
+    fn label(self) -> &'static str {
+        match self {
+            Action::Bet => "Bet",
+            Action::Hit => "Hit",
+            Action::Stand => "Stand",
+            Action::Double => "Double",
+            Action::Split => "Split",
+            Action::Insure => "Insurance",
+        }
+    }
+}
+
+fn count_value(card: Card) -> i16 {
+    match card.rank as u8 {
+        2..=6 => 1,
+        10..=14 => -1,
+        _ => 0,
+    }
+}
+
+fn count(cards: &[(String, Card)]) -> i16 {
+    cards.iter().map(|(_, card)| count_value(*card)).sum()
+}
+
+fn count_view(cards: &[(String, Card)], settings: &BlackjackTrainerSettings) -> BlackjackCountView {
+    let running = count(cards);
+    let shoe_cards = settings.shoe_cards();
+    let visible_cards = cards.len();
+    let remaining_cards = shoe_cards.saturating_sub(visible_cards).max(1);
+    let decks_remaining = (remaining_cards as f32 / 52.0).max(0.25);
+    BlackjackCountView {
+        running,
+        true_count: running as f32 / decks_remaining,
+        visible_cards,
+        penetration_percent: ((visible_cards * 100) / shoe_cards.max(1)) as u8,
+    }
+}
+
+fn count_log(cards: &[(String, Card)]) -> Vec<String> {
+    let mut running = 0;
+    cards
+        .iter()
+        .map(|(label, card)| {
+            let delta = count_value(*card);
+            running += delta;
+            let signed = if delta >= 0 {
+                format!("+{delta}")
+            } else {
+                delta.to_string()
+            };
+            format!("{label} {card}: {signed} -> {running}")
+        })
+        .collect()
+}
+
+fn count_quiz(answer: i16) -> BlackjackCountQuiz {
+    let mut choices = vec![answer - 2, answer - 1, answer, answer + 1];
+    choices.sort_unstable();
+    choices.dedup();
+    BlackjackCountQuiz {
+        prompt: "What is the running count?".into(),
+        choices,
+        answer,
+    }
+}
+
+fn dealer_value(rank: u8) -> u8 {
+    rank.min(10)
+}
+
+fn should_split(rank: u8, dealer: u8) -> bool {
+    let dealer = dealer_value(dealer);
+    match rank {
+        14 | 8 => true,
+        10 | 5 => false,
+        9 => matches!(dealer, 2..=6 | 8 | 9),
+        7 => matches!(dealer, 2..=7),
+        6 => matches!(dealer, 2..=6),
+        4 => matches!(dealer, 5 | 6),
+        3 | 2 => matches!(dealer, 2..=7),
+        _ => false,
+    }
+}
+
+fn should_double(total: u8, soft: bool, dealer: u8) -> bool {
+    let dealer = dealer_value(dealer);
+    if soft {
+        return matches!(
+            (total, dealer),
+            (13 | 14, 5 | 6) | (15 | 16, 4..=6) | (17, 3..=6) | (18, 2..=6)
+        );
+    }
+    matches!((total, dealer), (9, 3..=6) | (10, 2..=9) | (11, 2..=10))
+}
+
+fn should_hit(total: u8, soft: bool, dealer: u8) -> bool {
+    let dealer = dealer_value(dealer);
+    if soft {
+        return total <= 17 || (total == 18 && dealer >= 9);
+    }
+    total <= 11
+        || (total == 12 && !matches!(dealer, 4..=6))
+        || (13..=16).contains(&total) && dealer >= 7
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BlackjackError {
@@ -691,6 +985,8 @@ mod tests {
             dealer_peeked: false,
             status: BlackjackStatus::Playing,
             payout: 0,
+            settings: BlackjackTrainerSettings::default(),
+            decisions: Vec::new(),
         }
     }
 
@@ -833,7 +1129,10 @@ mod tests {
             let mut live = None;
             for _ in 0..50 {
                 let candidate = Uuid::new_v4();
-                let view = store.start(user, 500, candidate, 0).await.unwrap();
+                let view = store
+                    .start(user, 500, candidate, 0, BlackjackTrainerSettings::default())
+                    .await
+                    .unwrap();
                 if view.status == BlackjackStatus::Playing {
                     live = Some(candidate);
                     break;
@@ -899,5 +1198,57 @@ mod tests {
         assert_eq!(wager, 100);
         assert!(!view.can_double);
         assert!(!view.can_split);
+    }
+
+    #[test]
+    fn counting_tutor_uses_visible_cards_until_reveal() {
+        let mut game = game(
+            vec![hand(
+                vec![card(Rank::Two), card(Rank::King)],
+                100,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Six), card(Rank::Ace)],
+        );
+        game.settings.counting_tutor = true;
+        game.settings.counting_quiz = true;
+        let hidden = game.view(false, 0);
+        assert_eq!(hidden.count.as_ref().unwrap().running, 1);
+        assert!(
+            hidden
+                .trainer_log
+                .iter()
+                .any(|line| line.contains("Dealer up")),
+            "dealer upcard is counted"
+        );
+        assert!(
+            hidden.trainer_log.iter().all(|line| !line.contains("As")),
+            "dealer hole card is hidden from the count"
+        );
+        assert!(hidden.quiz.is_none());
+
+        game.hands[0].status = BlackjackHandStatus::Stand;
+        game.advance();
+        let revealed = game.view(false, 0);
+        assert_eq!(revealed.count.as_ref().unwrap().running, 0);
+        assert_eq!(revealed.quiz.as_ref().unwrap().answer, 0);
+    }
+
+    #[test]
+    fn analyzer_reports_basic_strategy_misses() {
+        let mut game = game(
+            vec![hand(
+                vec![card(Rank::Ten), card(Rank::Six)],
+                100,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Ten), card(Rank::Seven)],
+        );
+        game.settings.bet_analyzer = true;
+        game.record_decision(Action::Stand);
+        assert!(
+            game.view(false, 0).analysis[0].contains("Hit"),
+            "16 against 10 should prefer a hit"
+        );
     }
 }
