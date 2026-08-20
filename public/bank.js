@@ -18,12 +18,23 @@ function netChangeInLastHour(entries) {
 }
 
 if (balance && widget && panel) {
+  const summary = widget.querySelector("summary");
+  document.addEventListener("click", (event) => {
+    if (widget.open && !widget.contains(event.target)) widget.open = false;
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && widget.open) {
+      widget.open = false;
+      summary.focus();
+    }
+  });
   const showBank = (account) => {
     balance.textContent = money(account.balance);
     const recentNet = netChangeInLastHour(account.entries || []);
     delta.textContent = recentNet ? ` (${recentNet >= 0 ? "+" : ""}${money(recentNet)})` : "";
+    const canReUp = account.can_re_up === true;
     for (const button of document.querySelectorAll(".re-up-form button")) {
-      button.disabled = account.balance >= 10_000;
+      button.disabled = !canReUp;
     }
     panel.replaceChildren();
     const heading = document.createElement("strong");
@@ -41,7 +52,7 @@ if (balance && widget && panel) {
     reUp.type = "button";
     reUp.className = "re-up-button";
     reUp.textContent = "Re-up $1,000";
-    reUp.disabled = account.balance >= 10_000;
+    reUp.disabled = !canReUp;
     reUp.addEventListener("click", (event) => {
       event.stopPropagation();
       reUp.disabled = true;
@@ -53,7 +64,7 @@ if (balance && widget && panel) {
         .then((response) => (response.ok ? response.json() : Promise.reject(response)))
         .then((updated) => announceBank(updated))
         .catch(() => {
-          reUp.disabled = account.balance >= 10_000;
+          reUp.disabled = !canReUp;
         });
     });
     panel.append(reUp);

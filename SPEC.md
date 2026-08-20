@@ -21,7 +21,7 @@ Goals
 - Cash tables in two flavours: **limit** and **no-limit** (see §4 Bank).
 - Tournaments (single table first).
 - A persistent **bank**: every player (and every bot type) has an account.
-  Accounts never go negative; users may re-up $1,000 only while below $100,
+  Accounts never go negative; users may re-up $1,000 only while below $1,000,
   repay loans from the coin menu, and see their current loan count.
 - Variant-agnostic plumbing: tables/bank/bots/tournaments should not assume
   Hold'em, so Omaha / 2-7 triple draw can be added later.
@@ -75,7 +75,7 @@ Rules
 - A new user's account starts at **$0**. Bot accounts are created lazily, also at $0.
 - Every debit must leave the account balance ≥ $0; each gameplay buy-in, entry,
   or wager ≤ $10,000.
-- A signed-in user may re-up $1,000 when their balance is < $100. Each re-up
+- A signed-in user may re-up $1,000 when their balance is < $1,000. Each re-up
   appends a `ReUp` ledger entry and increments `loan_count`.
 - Each loan is exactly $1,000, so debt is `loan_count * $1,000`. The coin menu
   can repay one loan when the balance covers $1,000; repayment appends a
@@ -94,8 +94,10 @@ Rules
 UI: the header shows the signed-in user's balance next to their username, with a
 coin icon; hovering/tapping it opens a small panel with the current balance,
 outstanding debt, net balance, loan count badge, re-up action, repayment action
-for the newest loan when affordable, and the most recent ledger deltas. Seat
-labels at a table show the seat owner's bank balance the same way (bots included).
+for the newest loan when affordable, and the most recent ledger deltas. The
+panel closes when clicking or tapping outside it or pressing Escape, returning
+focus to the coin-menu summary. Seat labels at a table show the seat owner's
+bank balance the same way (bots included).
 The signed-in player page shows account summary, recent ledger rows, and a
 ledger-derived finances-over-time chart.
 
@@ -274,7 +276,7 @@ Mark each milestone done here as it lands.
 - **V4** Pot distribution pays out exactly the pot: the sum of awards equals the
   sum of contributions, for any all-in/side-pot configuration.
 - **V5** Bank accounts never go below zero; user re-up is only allowed below
-  $100 and increments `loan_count`; repayment requires $1,000 and decrements
+  $1,000 and increments `loan_count`; repayment requires $1,000 and decrements
   `loan_count` by one.
 - **V6** Every reachable hand state has at least one legal action for the player
   on turn, and the engine rejects any action not in that set.

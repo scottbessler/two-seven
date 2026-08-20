@@ -156,12 +156,13 @@ test("builds a tournament one question at a time", async ({ page }) => {
 test("cash table buy-ins refresh the header balance", async ({ page }) => {
   let account = {
     balance: 100_000,
+    can_re_up: false,
     loan_count: 1,
     entries: [{ delta: 100_000, memo: "re-up loan" }],
   };
   await page.route("**/api/bank", async (route) => {
     if (route.request().method() === "POST") {
-      account = { ...account, balance: account.balance + 100_000, entries: [...account.entries, { delta: 100_000, memo: "re-up loan" }] };
+      account = { ...account, balance: account.balance + 100_000, can_re_up: false, entries: [...account.entries, { delta: 100_000, memo: "re-up loan" }] };
     }
     await route.fulfill({ json: account });
   });
@@ -191,12 +192,13 @@ test("cash table buy-ins refresh the header balance", async ({ page }) => {
 test("cash table commands notice a same-page re-up", async ({ page }) => {
   let account = {
     balance: 0,
+    can_re_up: true,
     loan_count: 0,
     entries: [],
   };
   await page.route("**/api/bank", async (route) => {
     if (route.request().method() === "POST") {
-      account = { ...account, balance: 100_000, loan_count: 1, entries: [{ delta: 100_000, memo: "re-up loan" }] };
+      account = { ...account, balance: 100_000, can_re_up: false, loan_count: 1, entries: [{ delta: 100_000, memo: "re-up loan" }] };
     }
     await route.fulfill({ json: account });
   });
