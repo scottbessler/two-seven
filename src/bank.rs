@@ -20,6 +20,8 @@ pub enum AccountOwner {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum LedgerKind {
     ReUp,
+    LoanRepayment,
+    LoanInterest,
     BuyIn { table: Uuid },
     CashOut { table: Uuid },
     TournamentBuyIn { tournament: Uuid },
@@ -48,6 +50,28 @@ pub struct Account {
     pub entries: Vec<LedgerEntry>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+impl Account {
+    pub fn loan_debt(&self) -> Cents {
+        self.loan_count as Cents * BankStore::RE_UP_AMOUNT
+    }
+    pub fn net_balance(&self) -> Cents {
+        self.balance - self.loan_debt()
+    }
+    pub fn next_loan_repayment_amount(&self) -> Option<Cents> {
+        (self.loan_count > 0).then_some(BankStore::RE_UP_AMOUNT)
+    }
+}
+pub fn account_json(account: &Account) -> serde_json::Value {
+    let mut value = serde_json::to_value(account).expect("account serializes");
+    let object = value.as_object_mut().expect("account is an object");
+    object.insert("loan_debt".into(), account.loan_debt().into());
+    object.insert("net_balance".into(), account.net_balance().into());
+    object.insert(
+        "next_repayment_amount".into(),
+        account.next_loan_repayment_amount().into(),
+    );
+    value
 }
 struct Inner {
     accounts: HashMap<AccountOwner, Account>,
@@ -231,17 +255,21 @@ impl BankStore {
             );
         }
         if matches!(owner, AccountOwner::Bot(_)) || !no_debt {
-            // Buy-ins can self-fund. Lending a fixed thousand at a time meant
-            // a $1,000,000 table cost a thousand loans and ledger lines.
             let balance = guard.accounts[&owner].balance;
             if balance < amount {
-                let shortfall = (amount - balance).max(Self::RE_UP_AMOUNT);
+                let shortfall = amount - balance;
+                let loans = ((shortfall + Self::RE_UP_AMOUNT - 1) / Self::RE_UP_AMOUNT) as u64;
+                let loan_amount = loans as Cents * Self::RE_UP_AMOUNT;
                 Self::append_locked(
                     guard.accounts.get_mut(&owner).expect("account"),
                     LedgerKind::ReUp,
-                    shortfall,
-                    "re-up loan".into(),
-                    true,
+                    loan_amount,
+                    if loans == 1 {
+                        "re-up loan".into()
+                    } else {
+                        format!("re-up loan ({loans} loans)")
+                    },
+                    loans,
                 );
             }
         }
@@ -254,7 +282,7 @@ impl BankStore {
             LedgerKind::BuyIn { table },
             -amount,
             "table buy-in".into(),
-            false,
+            0,
         );
         let result = account.clone();
         self.persist(&result).await?;
@@ -285,7 +313,42 @@ impl BankStore {
             LedgerKind::ReUp,
             Self::RE_UP_AMOUNT,
             "re-up loan".into(),
-            true,
+            1,
+        );
+        let result = account.clone();
+        self.persist(&result).await?;
+        Ok(result)
+    }
+    pub async fn repay_loan(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
+        let mut guard = self.inner.lock().await;
+        if !guard.accounts.contains_key(&owner) {
+            let now = Utc::now();
+            guard.accounts.insert(
+                owner.clone(),
+                Account {
+                    owner: owner.clone(),
+                    balance: 0,
+                    loan_count: 0,
+                    entries: Vec::new(),
+                    created_at: now,
+                    updated_at: now,
+                },
+            );
+        }
+        let account = guard.accounts.get_mut(&owner).expect("account");
+        if account.loan_count == 0 {
+            return Err(anyhow::anyhow!("no outstanding loans"));
+        }
+        if account.balance < Self::RE_UP_AMOUNT {
+            return Err(anyhow::anyhow!("not enough to pay back that loan"));
+        }
+        account.loan_count -= 1;
+        Self::append_locked(
+            account,
+            LedgerKind::LoanRepayment,
+            -Self::RE_UP_AMOUNT,
+            "loan repayment".into(),
+            0,
         );
         let result = account.clone();
         self.persist(&result).await?;
@@ -297,13 +360,60 @@ impl BankStore {
         table: Uuid,
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
-        self.append(
-            owner,
+        let mut guard = self.inner.lock().await;
+        if !guard.accounts.contains_key(&owner) {
+            let now = Utc::now();
+            guard.accounts.insert(
+                owner.clone(),
+                Account {
+                    owner: owner.clone(),
+                    balance: 0,
+                    loan_count: 0,
+                    entries: Vec::new(),
+                    created_at: now,
+                    updated_at: now,
+                },
+            );
+        }
+        let account = guard.accounts.get_mut(&owner).expect("account");
+        let loan_count = account.loan_count.min(10);
+        let staked = account
+            .entries
+            .iter()
+            .fold(0, |total, entry| match &entry.kind {
+                LedgerKind::BuyIn { table: entry_table } if *entry_table == table => {
+                    total - entry.delta
+                }
+                LedgerKind::CashOut { table: entry_table } if *entry_table == table => {
+                    total - entry.delta
+                }
+                _ => total,
+            })
+            .max(0);
+        let winnings = amount - staked;
+        Self::append_locked(
+            account,
             LedgerKind::CashOut { table },
             amount,
             "table cash-out".into(),
-        )
-        .await
+            0,
+        );
+        if matches!(&owner, AccountOwner::User(_)) && loan_count > 0 && winnings > 0 {
+            let rate = loan_count as Cents;
+            let fee = winnings / 100 * rate + winnings % 100 * rate / 100;
+            if fee > 0 {
+                Self::append_locked(
+                    account,
+                    LedgerKind::LoanInterest,
+                    -fee,
+                    format!("loan interest ({rate}%)"),
+                    0,
+                );
+            }
+        }
+        let result = account.clone();
+        self.persist(&result).await?;
+        Ok(result)
     }
     pub async fn hand_blitz_buy_in(
         &self,
@@ -389,13 +499,11 @@ impl BankStore {
         kind: LedgerKind,
         delta: Cents,
         memo: String,
-        loan: bool,
+        loan_count: u64,
     ) {
         account.balance += delta;
         account.updated_at = Utc::now();
-        if loan {
-            account.loan_count += 1;
-        }
+        account.loan_count += loan_count;
         account.entries.push(LedgerEntry {
             id: Uuid::new_v4(),
             at: account.updated_at,
@@ -439,7 +547,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_bot_covers_a_big_seat_with_one_loan() {
+    async fn a_bot_covers_a_big_seat_with_many_loans_in_one_entry() {
         let root = std::env::temp_dir().join(format!("two-seven-bigseat-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
         let bot = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
@@ -449,12 +557,14 @@ mod tests {
             .buy_in(bot.clone(), table, 100_000_000, false)
             .await
             .unwrap();
-        assert_eq!(account.loan_count, 1, "one seat, one loan");
+        assert_eq!(account.loan_count, 1_000, "one thousand fixed-size loans");
         assert_eq!(
             account.entries.len(),
             2,
-            "a loan and a buy-in, not a thousand of each"
+            "one loan entry and a buy-in, not a thousand of each"
         );
+        assert_eq!(account.entries[0].delta, 100_000_000);
+        assert_eq!(account.entries[0].memo, "re-up loan (1000 loans)");
         assert_eq!(account.balance, 0);
     }
 
@@ -499,13 +609,248 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn re_up_requires_low_balance_and_tracks_shame() {
+    async fn re_up_requires_low_balance_and_tracks_loans() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
         let owner = AccountOwner::User(Uuid::new_v4());
         let account = bank.re_up(owner.clone()).await.unwrap();
         assert_eq!(account.balance, BankStore::RE_UP_AMOUNT);
         assert_eq!(account.loan_count, 1);
         assert!(bank.re_up(owner).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn repayment_decrements_loan_count_and_costs_one_thousand() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(owner.clone()).await.unwrap();
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            -BankStore::RE_UP_AMOUNT,
+            "spend".into(),
+        )
+        .await
+        .unwrap();
+        bank.re_up(owner.clone()).await.unwrap();
+        let account = bank.repay_loan(owner).await.unwrap();
+        assert_eq!(account.balance, 0);
+        assert_eq!(account.loan_count, 1);
+        assert_eq!(account.loan_debt(), BankStore::RE_UP_AMOUNT);
+        assert_eq!(account.net_balance(), -BankStore::RE_UP_AMOUNT);
+    }
+
+    #[tokio::test]
+    async fn repayment_requires_an_outstanding_loan_and_enough_balance() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        assert_eq!(
+            bank.repay_loan(owner.clone())
+                .await
+                .unwrap_err()
+                .to_string(),
+            "no outstanding loans"
+        );
+        bank.re_up(owner.clone()).await.unwrap();
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            -(BankStore::RE_UP_AMOUNT - 1),
+            "spend".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            bank.repay_loan(owner).await.unwrap_err().to_string(),
+            "not enough to pay back that loan"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_large_buy_in_uses_one_entry_and_repaid_loans_one_at_a_time() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
+        let table = Uuid::new_v4();
+        let account = bank
+            .buy_in(owner.clone(), table, 100_000_000, false)
+            .await
+            .unwrap();
+        assert_eq!(account.loan_count, 1_000);
+        assert_eq!(account.loan_debt(), 100_000_000);
+        let account = bank
+            .append(
+                owner.clone(),
+                LedgerKind::Adjustment,
+                100_000_000,
+                "repayment funds".into(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(account.balance, 100_000_000);
+        let account = bank.repay_loan(owner).await.unwrap();
+        assert_eq!(account.balance, 99_900_000);
+        assert_eq!(account.loan_debt(), 99_900_000);
+        assert_eq!(account.loan_count, 999);
+    }
+
+    #[tokio::test]
+    async fn cash_out_interest_is_based_on_winnings_and_capped() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        for _ in 0..12 {
+            bank.re_up(owner.clone()).await.unwrap();
+            bank.append(
+                owner.clone(),
+                LedgerKind::Adjustment,
+                -BankStore::RE_UP_AMOUNT,
+                "spend".into(),
+            )
+            .await
+            .unwrap();
+        }
+        let table = Uuid::new_v4();
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            10_000,
+            "stake".into(),
+        )
+        .await
+        .unwrap();
+        bank.buy_in(owner.clone(), table, 10_000, true)
+            .await
+            .unwrap();
+        let account = bank.cash_out(owner, table, 20_000).await.unwrap();
+        let interest = account.entries.last().unwrap();
+        assert_eq!(interest.kind, LedgerKind::LoanInterest);
+        assert_eq!(interest.delta, -1_000);
+        assert_eq!(interest.memo, "loan interest (10%)");
+        assert_eq!(account.balance, 19_000);
+    }
+
+    #[tokio::test]
+    async fn cash_out_interest_skips_no_winnings_and_no_loans() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let no_loan = AccountOwner::User(Uuid::new_v4());
+        let table = Uuid::new_v4();
+        bank.append(
+            no_loan.clone(),
+            LedgerKind::Adjustment,
+            10_000,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+        bank.buy_in(no_loan.clone(), table, 10_000, true)
+            .await
+            .unwrap();
+        let account = bank.cash_out(no_loan, table, 10_000).await.unwrap();
+        assert!(
+            !account
+                .entries
+                .iter()
+                .any(|entry| matches!(entry.kind, LedgerKind::LoanInterest))
+        );
+
+        let owner = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(owner.clone()).await.unwrap();
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            -BankStore::RE_UP_AMOUNT + 10_000,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+        bank.buy_in(owner.clone(), table, 10_000, true)
+            .await
+            .unwrap();
+        let account = bank.cash_out(owner, table, 10_000).await.unwrap();
+        assert!(
+            !account
+                .entries
+                .iter()
+                .any(|entry| matches!(entry.kind, LedgerKind::LoanInterest))
+        );
+    }
+
+    #[tokio::test]
+    async fn cash_out_interest_skips_bots() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
+        let table = Uuid::new_v4();
+        bank.re_up(owner.clone()).await.unwrap();
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            10_000,
+            "stake".into(),
+        )
+        .await
+        .unwrap();
+        bank.buy_in(owner.clone(), table, 10_000, true)
+            .await
+            .unwrap();
+        let account = bank.cash_out(owner, table, 20_000).await.unwrap();
+        assert_eq!(account.balance, 120_000);
+        assert!(
+            !account
+                .entries
+                .iter()
+                .any(|entry| matches!(entry.kind, LedgerKind::LoanInterest))
+        );
+    }
+
+    #[tokio::test]
+    async fn cash_out_winnings_account_for_rebuys_at_the_same_table() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(owner.clone()).await.unwrap();
+        let table = Uuid::new_v4();
+        bank.buy_in(owner.clone(), table, 10_000, false)
+            .await
+            .unwrap();
+        bank.cash_out(owner.clone(), table, 5_000).await.unwrap();
+        bank.append(owner.clone(), LedgerKind::Adjustment, 5_000, "seed".into())
+            .await
+            .unwrap();
+        bank.buy_in(owner.clone(), table, 10_000, true)
+            .await
+            .unwrap();
+        let account = bank.cash_out(owner, table, 25_000).await.unwrap();
+        let interest = account.entries.last().unwrap();
+        assert_eq!(interest.kind, LedgerKind::LoanInterest);
+        assert_eq!(interest.delta, -100);
+        assert_eq!(interest.memo, "loan interest (1%)");
+    }
+
+    #[tokio::test]
+    async fn repayment_and_interest_preserve_ledger_balances() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(owner.clone()).await.unwrap();
+        let account = bank.repay_loan(owner.clone()).await.unwrap();
+        assert_eq!(account.balance, 0);
+        bank.re_up(owner.clone()).await.unwrap();
+        let table = Uuid::new_v4();
+        bank.buy_in(owner.clone(), table, 10_000, false)
+            .await
+            .unwrap();
+        let account = bank.cash_out(owner, table, 20_000).await.unwrap();
+        assert_eq!(
+            account.balance,
+            account
+                .entries
+                .iter()
+                .map(|entry| entry.delta)
+                .sum::<Cents>()
+        );
+        assert!(account.entries.iter().enumerate().all(|(index, entry)| {
+            entry.balance_after
+                == account.entries[..=index]
+                    .iter()
+                    .map(|item| item.delta)
+                    .sum::<Cents>()
+        }));
     }
 
     #[tokio::test]

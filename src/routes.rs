@@ -691,7 +691,7 @@ pub struct HistoryQuery {
 
 /// The table's hand history. Answers JSON when asked for it, so a debugging
 /// session can read the raw records without scraping the page.
-/// The leaderboard: richest first, and a tie goes to whoever borrowed less.
+/// The leaderboard: highest net worth first, and a tie goes to whoever borrowed less.
 pub const LEADERBOARD_SIZE: usize = 20;
 
 /// A regular of that kind who is not already sitting at this table.
@@ -718,11 +718,11 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
         .into_iter()
         .map(|account| (account.owner.clone(), account))
         .collect();
-    // Richest first; a tie goes to whoever borrowed less to get there.
+    // Highest net worth first; a tie goes to whoever borrowed less to get there.
     ranked.sort_by(|(left_owner, left), (right_owner, right)| {
         right
-            .balance
-            .cmp(&left.balance)
+            .net_balance()
+            .cmp(&left.net_balance())
             .then(left.loan_count.cmp(&right.loan_count))
             .then_with(|| format!("{left_owner:?}").cmp(&format!("{right_owner:?}")))
     });
@@ -756,6 +756,7 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
                 name,
                 house,
                 balance: account.balance,
+                net_balance: account.net_balance(),
                 loan_count: account.loan_count,
                 poker,
                 blitz: crate::blitz::BlitzDifficulty::ALL
@@ -1483,11 +1484,11 @@ pub async fn bot_table(
 pub async fn bank_state(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-) -> Result<Json<crate::bank::Account>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     s.bank
         .account(AccountOwner::User(user))
         .await
-        .map(Json)
+        .map(|account| Json(crate::bank::account_json(&account)))
         .map_err(AppError::internal)
 }
 
@@ -1495,10 +1496,21 @@ pub async fn bank_re_up(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
     Json(_input): Json<EmptyRequest>,
-) -> Result<Json<crate::bank::Account>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     s.bank
         .re_up(AccountOwner::User(user))
         .await
-        .map(Json)
+        .map(|account| Json(crate::bank::account_json(&account)))
         .map_err(|_| AppError::bad_request("re-up is only available below $100"))
+}
+pub async fn bank_repay(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(_input): Json<EmptyRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    s.bank
+        .repay_loan(AccountOwner::User(user))
+        .await
+        .map(|account| Json(crate::bank::account_json(&account)))
+        .map_err(|error| AppError::bad_request(error.to_string()))
 }

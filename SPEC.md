@@ -21,8 +21,8 @@ Goals
 - Cash tables in two flavours: **limit** and **no-limit** (see §4 Bank).
 - Tournaments (single table first).
 - A persistent **bank**: every player (and every bot type) has an account.
-  Accounts never go negative; users may re-up $1,000 only while below $100, and
-  loan count is shown as a badge of shame.
+  Accounts never go negative; users may re-up $1,000 only while below $100,
+  repay loans from the coin menu, and see their current loan count.
 - Variant-agnostic plumbing: tables/bank/bots/tournaments should not assume
   Hold'em, so Omaha / 2-7 triple draw can be added later.
 
@@ -66,7 +66,7 @@ Environment variables: `PORT` (8080), `DATA_PATH` (`data`), `RP_ID`,
 Account { owner: AccountOwner, balance: Cents, loan_count: u64, entries: Vec<LedgerEntry>, created_at, updated_at }
 AccountOwner = User(Uuid) | Bot(BotKind)     // one shared account per bot kind
 LedgerEntry  { id, at, kind, delta: Cents, balance_after: Cents, memo }
-LedgerKind   = ReUp | BuyIn{table} | CashOut{table} | TournamentBuyIn{tournament}
+LedgerKind   = ReUp | LoanRepayment | LoanInterest | BuyIn{table} | CashOut{table} | TournamentBuyIn{tournament}
              | TournamentPrize{tournament} | Adjustment
 ```
 
@@ -77,6 +77,12 @@ Rules
   or wager ≤ $10,000.
 - A signed-in user may re-up $1,000 when their balance is < $100. Each re-up
   appends a `ReUp` ledger entry and increments `loan_count`.
+- Each loan is exactly $1,000, so debt is `loan_count * $1,000`. The coin menu
+  can repay one loan when the balance covers $1,000; repayment appends a
+  `LoanRepayment` entry and reduces `loan_count` by one.
+- A user's poker cash-out with winnings charges 1% of those winnings per loan,
+  capped at 10 loans; the rounded-down fee is a separate `LoanInterest` entry.
+  Bot cash-outs do not pay loan interest.
 - Bot buy-ins auto re-up as needed so cash tables remain fillable.
 - Legacy bank account JSON is wiped once on the non-debt bank migration.
 - Cash-out returns the seat's remaining stack to the account.
@@ -86,9 +92,10 @@ Rules
 - Every account's `balance` must equal the sum of its ledger deltas (§V2).
 
 UI: the header shows the signed-in user's balance next to their username, with a
-coin icon; hovering/tapping it opens a small panel with the current balance, loan
-count badge, re-up action, and the most recent ledger deltas. Seat labels at a
-table show the seat owner's bank balance the same way (bots included).
+coin icon; hovering/tapping it opens a small panel with the current balance,
+outstanding debt, net balance, loan count badge, re-up action, repayment action
+for the newest loan when affordable, and the most recent ledger deltas. Seat
+labels at a table show the seat owner's bank balance the same way (bots included).
 The signed-in player page shows account summary, recent ledger rows, and a
 ledger-derived finances-over-time chart.
 
@@ -187,7 +194,8 @@ and the board) — the same redacted view a human gets (§V3).
 | POST | `/tables/{id}/action` | `{kind: fold\|check\|call\|bet\|raise, amount?}` |
 | GET | `/tournaments/new`, POST `/tournaments` | Create a sit-and-go |
 | POST | `/tournaments/{id}/register` | Buy in to the first open seat: `{}` |
-| GET | `/api/bank` | Balance + recent ledger entries |
+| GET | `/api/bank` | Balance, derived debt/net/next repayment + recent ledger entries |
+| POST | `/api/bank/repay` | Repay the newest outstanding loan principal |
 
 HTML routes return an escaped error page (`AppError`); JSON routes return
 `{"error": "..."}` with 400/401/404/409/422.
@@ -266,7 +274,8 @@ Mark each milestone done here as it lands.
 - **V4** Pot distribution pays out exactly the pot: the sum of awards equals the
   sum of contributions, for any all-in/side-pot configuration.
 - **V5** Bank accounts never go below zero; user re-up is only allowed below
-  $100 and increments `loan_count`.
+  $100 and increments `loan_count`; repayment requires $1,000 and decrements
+  `loan_count` by one.
 - **V6** Every reachable hand state has at least one legal action for the player
   on turn, and the engine rejects any action not in that set.
 - **V7** The shared card face renders all 52 cards with bold corner ranks,
@@ -276,7 +285,13 @@ Mark each milestone done here as it lands.
   wrapping all 13 cards within its visible width; no suit row scrolls horizontally.
 - **V9** ∀ positive configured stake, blind, ante, buy-in, entry fee, or wager ≥ 100 cents.
 - **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 1,000,000 cents;
-  cumulative `loan_count` remains unbounded.
+  a buy-in auto-loan adds one `loan_count` per required $1,000 loan.
+- **V16** Every loan is exactly $1,000; debt equals `loan_count * $1,000`,
+  repayment costs $1,000, decrements `loan_count` by one, and cannot make an
+  account balance negative.
+- **V17** A user's poker cash-out charges at most 10% of positive table winnings
+  for loan interest, rounded down and recorded separately; no fee is charged
+  without winnings or loans, and bots never pay this fee.
 - **V11** `TableView` exposes redacted action events + per-seat hand state; UI shows
   current actor, dealer, blinds, street wager, folded/all-in state, and recent log.
 - **V12** Every cash table has one fixed buy-in; human joins, bot seats, and rebuys

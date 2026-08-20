@@ -311,9 +311,11 @@ pub fn player_page(
         )
     };
     let body = format!(
-        r#"<section class="player-page"><header class="history-top"><div><h1>{}</h1><p>Your bankroll over time.</p></div><nav><a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a></nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section><section class="finance-panel"><h2>Finances</h2>{}</section><section class="finance-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        r#"<section class="player-page"><header class="history-top"><div><h1>{}</h1><p>Your bankroll over time.</p></div><nav><a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a></nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section><section class="finance-panel"><h2>Finances</h2>{}</section><section class="finance-panel"><h2>Recent ledger</h2>{}</section></section>"#,
         escape(name),
         format_cents(account.balance),
+        format_cents(account.loan_debt()),
+        format_cents(account.net_balance()),
         account.loan_count,
         format_cents(poker.net),
         blitz.accuracy_percent(),
@@ -463,11 +465,12 @@ pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
                 })
                 .collect::<String>();
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}%</td><td class=\"money\">{}</td>{}</tr>",
+                "<tr><td class=\"rank\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td class=\"money\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}%</td><td class=\"money\">{}</td>{}</tr>",
                 row.rank,
                 escape(&row.name),
                 if row.house { " <i class=\"house-tag\">house</i>" } else { "" },
                 format_cents(row.balance),
+                format_cents(row.net_balance),
                 row.loan_count,
                 row.poker.hands,
                 row.poker.vpip_percent(),
@@ -482,13 +485,13 @@ pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
         "<p class=\"loading\">Nobody has played yet.</p>".to_string()
     } else {
         format!(
-            "<table class=\"leaderboard-table\"><thead><tr><th></th><th>Player</th><th>Balance</th><th>Loans</th><th colspan=\"5\">Poker</th>{headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th></th><th></th><th></th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Biggest pot</th>{subheaders}</tr></thead><tbody>{body}</tbody></table>"
+            "<table class=\"leaderboard-table\"><thead><tr><th></th><th>Player</th><th>Balance</th><th>Net</th><th>Loans</th><th colspan=\"5\">Poker</th>{headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th></th><th></th><th></th><th></th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Biggest pot</th>{subheaders}</tr></thead><tbody>{body}</tbody></table>"
         )
     };
     layout(
         "Leaderboard",
         &format!(
-            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by balance, house players included. A tie goes to whoever took fewer loans.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{table}</section>",
+            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by net balance, house players included. A tie goes to whoever took fewer loans.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{table}</section>",
             crate::routes::LEADERBOARD_SIZE
         ),
         "",

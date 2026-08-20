@@ -1013,7 +1013,7 @@ mod tests {
         assert_eq!(
             table_chips + bank_chips,
             initial_chips,
-            "cash bot chips must be conserved across table and bot bank accounts: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
+            "cash bot chips must be conserved: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
         );
     }
 
@@ -1095,16 +1095,16 @@ mod tests {
         drop(table);
         let mut bank_chips = 0;
         for kind in kinds {
-            bank_chips += bank
+            let account = bank
                 .account(AccountOwner::Bot(crate::table::Bot::new(kind, 0)))
                 .await
-                .unwrap()
-                .balance;
+                .unwrap();
+            bank_chips += account.balance;
         }
         assert_eq!(
             table_chips + bank_chips,
             initial_chips,
-            "cash bot chips must be conserved across table and bot bank accounts: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
+            "cash bot chips must be conserved: initial={initial_chips}, table={table_chips}, bank={bank_chips}"
         );
     }
 
