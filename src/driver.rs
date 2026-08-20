@@ -23,6 +23,7 @@ pub async fn tick_once(state: &AppState) -> Result<(), anyhow::Error> {
     tick_once_at(state, Utc::now()).await
 }
 
+#[allow(clippy::collapsible_if)]
 pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), anyhow::Error> {
     state.blitz.expire(now).await;
     let mut ids = state.tables.ids().await;

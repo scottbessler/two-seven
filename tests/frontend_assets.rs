@@ -264,9 +264,8 @@ fn blackjack_island_has_game_contracts() {
         "actions blackjack-actions",
         "TRAINER_KEYS",
         "blackjack-trainer-decks",
-        "blackjack-trainer-penetration-hands",
-        "blackjack-penetration-hands",
-        "penetration_hands",
+        "blackjack-trainer-penetration-percent",
+        "blackjack-penetration-percent",
         "penetration_percent",
         "counting_tutor",
         "counting_quiz",
@@ -276,6 +275,11 @@ fn blackjack_island_has_game_contracts() {
         "blackjack-quiz",
         "blackjack-analysis",
         "blackjack-status-row",
+        "blackjack-shoe",
+        "blackjack-shoe-bar",
+        "blackjack-shoe-marker",
+        "blackjack-shoe-text",
+        "Fresh shuffle",
         "trigger=${false}",
     ] {
         assert!(
@@ -293,6 +297,10 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-play-area .blackjack-hand:first-child",
         ".blackjack-play-area .blackjack-hand:nth-child(2):last-child",
         ".blackjack-status-row",
+        ".blackjack-shoe",
+        ".blackjack-shoe-bar",
+        ".blackjack-shoe-marker",
+        ".blackjack-shoe-text",
     ] {
         assert!(
             APP_CSS.contains(literal),

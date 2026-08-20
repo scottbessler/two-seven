@@ -69,6 +69,7 @@ pub struct BlackjackView {
     pub trainer_log: Vec<String>,
     pub quiz: Option<BlackjackCountQuiz>,
     pub analysis: Vec<String>,
+    pub shoe: BlackjackShoeView,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -84,8 +85,8 @@ pub struct BlackjackHandView {
 pub struct BlackjackTrainerSettings {
     #[serde(default = "default_decks")]
     pub decks: u8,
-    #[serde(default = "default_penetration_hands", alias = "penetration_percent")]
-    pub penetration_hands: u8,
+    #[serde(default = "default_penetration_percent", alias = "penetration_hands")]
+    pub penetration_percent: u8,
     #[serde(default)]
     pub counting_tutor: bool,
     #[serde(default)]
@@ -98,7 +99,7 @@ impl Default for BlackjackTrainerSettings {
     fn default() -> Self {
         Self {
             decks: default_decks(),
-            penetration_hands: default_penetration_hands(),
+            penetration_percent: default_penetration_percent(),
             counting_tutor: false,
             counting_quiz: false,
             bet_analyzer: false,
@@ -113,7 +114,7 @@ impl BlackjackTrainerSettings {
                 1 | 2 | 8 => self.decks,
                 _ => default_decks(),
             },
-            penetration_hands: self.penetration_hands.clamp(1, 100),
+            penetration_percent: self.penetration_percent.clamp(25, 90),
             counting_tutor: self.counting_tutor,
             counting_quiz: self.counting_quiz,
             bet_analyzer: self.bet_analyzer,
@@ -123,6 +124,18 @@ impl BlackjackTrainerSettings {
     fn shoe_cards(&self) -> usize {
         usize::from(self.decks) * 52
     }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BlackjackShoeView {
+    pub decks: u8,
+    pub total_cards: usize,
+    pub dealt_cards: usize,
+    pub remaining_cards: usize,
+    pub cut_card: usize,
+    pub penetration_percent: u8,
+    pub hands_dealt: usize,
+    pub fresh_shuffle: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -165,7 +178,9 @@ pub enum BlackjackHandStatus {
 #[derive(Clone)]
 pub struct BlackjackStore {
     inner: Arc<Mutex<HashMap<Uuid, BlackjackGame>>>,
+    shoes: Arc<Mutex<HashMap<Uuid, BlackjackShoe>>>,
     path: Option<PathBuf>,
+    shoes_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -192,6 +207,24 @@ struct BlackjackGame {
     settings: BlackjackTrainerSettings,
     #[serde(default)]
     decisions: Vec<BlackjackDecision>,
+    #[serde(default)]
+    base_count: i16,
+    #[serde(default)]
+    base_exposed_cards: usize,
+    #[serde(default)]
+    fresh_shuffle: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct BlackjackShoe {
+    decks: u8,
+    deck: Deck,
+    cut_card: usize,
+    hands_dealt: usize,
+    running_count: i16,
+    exposed_cards: usize,
+    #[serde(default)]
+    fresh_shuffle: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -204,17 +237,20 @@ fn default_decks() -> u8 {
     8
 }
 
-fn default_penetration_hands() -> u8 {
-    5
+fn default_penetration_percent() -> u8 {
+    50
 }
 
 const MAX_HANDS: usize = 4;
+const SAFE_RESERVE_CARDS: usize = 20;
 
 impl Default for BlackjackStore {
     fn default() -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
+            shoes: Arc::new(Mutex::new(HashMap::new())),
             path: None,
+            shoes_path: None,
         }
     }
 }
@@ -227,8 +263,14 @@ impl BlackjackStore {
         let dir = root.as_ref().join("blackjack");
         tokio::fs::create_dir_all(&dir).await?;
         let path = dir.join("games.json");
+        let shoes_path = dir.join("shoes.json");
         let games = match tokio::fs::read(&path).await {
             Ok(bytes) => serde_json::from_slice::<HashMap<Uuid, BlackjackGame>>(&bytes)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+            Err(error) => return Err(error.into()),
+        };
+        let shoes = match tokio::fs::read(&shoes_path).await {
+            Ok(bytes) => serde_json::from_slice::<HashMap<Uuid, BlackjackShoe>>(&bytes)?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
             Err(error) => return Err(error.into()),
         };
@@ -239,7 +281,9 @@ impl BlackjackStore {
                     .filter(|(_, game)| game.status == BlackjackStatus::Playing)
                     .collect(),
             )),
+            shoes: Arc::new(Mutex::new(shoes)),
             path: Some(path),
+            shoes_path: Some(shoes_path),
         })
     }
 
@@ -255,10 +299,17 @@ impl BlackjackStore {
             .filter(|(_, game)| game.status == BlackjackStatus::Playing)
             .map(|(id, game)| (*id, game.clone()))
             .collect::<HashMap<_, _>>();
+        let shoes = self.shoes.lock().await.clone();
         let data = serde_json::to_vec_pretty(&games)?;
         let tmp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
         tokio::fs::write(&tmp, data).await?;
         tokio::fs::rename(tmp, path).await?;
+        if let Some(shoes_path) = &self.shoes_path {
+            let data = serde_json::to_vec_pretty(&shoes)?;
+            let tmp = shoes_path.with_extension(format!("tmp-{}", Uuid::new_v4()));
+            tokio::fs::write(&tmp, data).await?;
+            tokio::fs::rename(tmp, shoes_path).await?;
+        }
         Ok(())
     }
 
@@ -269,16 +320,18 @@ impl BlackjackStore {
         balance: Cents,
     ) -> Result<BlackjackView, BlackjackError> {
         let guard = self.inner.lock().await;
+        let shoes = self.shoes.lock().await;
         let game = guard.get(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
-        Ok(game.view(false, balance))
+        Ok(game.view(false, balance, shoes.get(&user)))
     }
     pub async fn resume(&self, user: Uuid, balance: Cents) -> Option<BlackjackView> {
         let guard = self.inner.lock().await;
+        let shoes = self.shoes.lock().await;
         guard
             .values()
             .find(|game| game.user == user && game.status == BlackjackStatus::Playing)
-            .map(|game| game.view(false, balance))
+            .map(|game| game.view(false, balance, shoes.get(&user)))
     }
 
     pub async fn start(
@@ -293,6 +346,7 @@ impl BlackjackStore {
             return Err(BlackjackError::IllegalAction("bet must be at least $1"));
         }
         let mut guard = self.inner.lock().await;
+        let mut shoes = self.shoes.lock().await;
         if guard
             .values()
             .any(|game| game.user == user && game.status == BlackjackStatus::Playing)
@@ -301,7 +355,25 @@ impl BlackjackStore {
         }
         guard.retain(|_, game| game.user != user || game.status == BlackjackStatus::Playing);
         let settings = settings.sanitized();
-        let mut deck = Deck::shoe_seeded(rand::thread_rng().r#gen(), settings.decks);
+        let mut fresh_shuffle = !shoes.contains_key(&user);
+        let shoe = shoes
+            .entry(user)
+            .or_insert_with(|| BlackjackShoe::new(settings.decks, settings.penetration_percent));
+        let effective_cut = cut_card(shoe.deck.cards_len(), settings.penetration_percent);
+        if shoe.decks != settings.decks
+            || shoe.dealt_cards() >= effective_cut
+            || shoe.deck.remaining() < SAFE_RESERVE_CARDS
+        {
+            *shoe = BlackjackShoe::new(settings.decks, settings.penetration_percent);
+            fresh_shuffle = true;
+        } else {
+            shoe.cut_card = effective_cut;
+        }
+        shoe.fresh_shuffle = fresh_shuffle;
+        let base_count = shoe.running_count;
+        let base_exposed_cards = shoe.exposed_cards;
+        shoe.hands_dealt += 1;
+        let mut deck = shoe.deck.clone();
         let player = vec![deck.deal().expect("card"), deck.deal().expect("card")];
         let dealer = vec![deck.deal().expect("card"), deck.deal().expect("card")];
         let natural = score(&player).0 == 21;
@@ -330,11 +402,17 @@ impl BlackjackStore {
                 split: false,
                 split_aces: false,
             }],
+            base_count,
+            base_exposed_cards,
+            fresh_shuffle,
         };
         if !game.can_insure(balance) {
             game.peek();
         }
-        let view = game.view(false, balance);
+        if game.status != BlackjackStatus::Playing {
+            shoe.settle(&game);
+        }
+        let view = game.view(false, balance, Some(shoe));
         guard.insert(id, game);
         Ok(view)
     }
@@ -346,21 +424,27 @@ impl BlackjackStore {
         balance: Cents,
     ) -> Result<BlackjackView, BlackjackError> {
         let mut guard = self.inner.lock().await;
+        let mut shoes = self.shoes.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         game.wager(Action::Hit, balance)?;
         game.record_decision(Action::Hit);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok(game.view(false, balance));
+            settle_game(&mut shoes, game);
+            return Ok(game.view(false, balance, shoes.get(&user)));
         }
         let i = game.active_index();
-        game.hands[i].cards.push(game.deck.deal().expect("card"));
+        let card = game.deal_card();
+        game.hands[i].cards.push(card);
         if score(&game.hands[i].cards).0 > 21 {
             game.hands[i].status = BlackjackHandStatus::Bust;
             game.advance();
         }
-        Ok(game.view(false, balance))
+        if game.status != BlackjackStatus::Playing {
+            settle_game(&mut shoes, game);
+        }
+        Ok(game.view(false, balance, shoes.get(&user)))
     }
 
     pub async fn stand(
@@ -370,18 +454,23 @@ impl BlackjackStore {
         balance: Cents,
     ) -> Result<BlackjackView, BlackjackError> {
         let mut guard = self.inner.lock().await;
+        let mut shoes = self.shoes.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         game.wager(Action::Stand, balance)?;
         game.record_decision(Action::Stand);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok(game.view(true, balance));
+            settle_game(&mut shoes, game);
+            return Ok(game.view(true, balance, shoes.get(&user)));
         }
         let i = game.active_index();
         game.hands[i].status = BlackjackHandStatus::Stand;
         game.advance();
-        Ok(game.view(true, balance))
+        if game.status != BlackjackStatus::Playing {
+            settle_game(&mut shoes, game);
+        }
+        Ok(game.view(true, balance, shoes.get(&user)))
     }
 
     pub async fn double(
@@ -391,17 +480,20 @@ impl BlackjackStore {
         balance: Cents,
     ) -> Result<(BlackjackView, Cents), BlackjackError> {
         let mut guard = self.inner.lock().await;
+        let mut shoes = self.shoes.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         let wager = game.wager(Action::Double, balance)?;
         game.record_decision(Action::Double);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok((game.view(false, balance), 0));
+            settle_game(&mut shoes, game);
+            return Ok((game.view(false, balance, shoes.get(&user)), 0));
         }
         let i = game.active_index();
         game.hands[i].bet += wager;
-        game.hands[i].cards.push(game.deck.deal().expect("card"));
+        let card = game.deal_card();
+        game.hands[i].cards.push(card);
         game.hands[i].status = if score(&game.hands[i].cards).0 > 21 {
             BlackjackHandStatus::Bust
         } else {
@@ -409,7 +501,10 @@ impl BlackjackStore {
         };
         game.advance();
         // The stake just placed is still in the balance the route read.
-        Ok((game.view(true, balance - wager), wager))
+        if game.status != BlackjackStatus::Playing {
+            settle_game(&mut shoes, game);
+        }
+        Ok((game.view(true, balance - wager, shoes.get(&user)), wager))
     }
 
     pub async fn split(
@@ -419,13 +514,15 @@ impl BlackjackStore {
         balance: Cents,
     ) -> Result<(BlackjackView, Cents), BlackjackError> {
         let mut guard = self.inner.lock().await;
+        let mut shoes = self.shoes.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         let wager = game.wager(Action::Split, balance)?;
         game.record_decision(Action::Split);
         game.peek_if_needed();
         if game.status != BlackjackStatus::Playing {
-            return Ok((game.view(false, balance), 0));
+            settle_game(&mut shoes, game);
+            return Ok((game.view(false, balance, shoes.get(&user)), 0));
         }
         let i = game.active_index();
         let first = game.hands[i].cards.remove(1);
@@ -440,8 +537,8 @@ impl BlackjackStore {
         game.hands[i].split = true;
         game.hands[i].split_aces = split_aces;
         game.hands.insert(i + 1, second);
-        let first_card = game.deck.deal().expect("card");
-        let second_card = game.deck.deal().expect("card");
+        let first_card = game.deal_card();
+        let second_card = game.deal_card();
         game.hands[i].cards.push(first_card);
         game.hands[i + 1].cards.push(second_card);
         if split_aces {
@@ -449,7 +546,10 @@ impl BlackjackStore {
             game.hands[i + 1].status = BlackjackHandStatus::Stand;
             game.advance();
         }
-        Ok((game.view(false, balance - wager), wager))
+        if game.status != BlackjackStatus::Playing {
+            settle_game(&mut shoes, game);
+        }
+        Ok((game.view(false, balance - wager, shoes.get(&user)), wager))
     }
 
     pub async fn insure(
@@ -459,15 +559,90 @@ impl BlackjackStore {
         balance: Cents,
     ) -> Result<(BlackjackView, Cents), BlackjackError> {
         let mut guard = self.inner.lock().await;
+        let mut shoes = self.shoes.lock().await;
         let game = guard.get_mut(&id).ok_or(BlackjackError::NotFound)?;
         game.check_user(user)?;
         let wager = game.wager(Action::Insure, balance)?;
         game.record_decision(Action::Insure);
         game.insurance = wager;
         game.peek_if_needed();
-        Ok((game.view(false, balance - wager), wager))
+        if game.status != BlackjackStatus::Playing {
+            settle_game(&mut shoes, game);
+        }
+        Ok((game.view(false, balance - wager, shoes.get(&user)), wager))
     }
 }
+
+impl BlackjackShoe {
+    fn new(decks: u8, penetration_percent: u8) -> Self {
+        let decks = decks.max(1);
+        let total_cards = usize::from(decks) * 52;
+        Self {
+            decks,
+            deck: Deck::shoe_seeded(rand::thread_rng().r#gen(), decks),
+            cut_card: cut_card(total_cards, penetration_percent),
+            hands_dealt: 0,
+            running_count: 0,
+            exposed_cards: 0,
+            fresh_shuffle: false,
+        }
+    }
+
+    fn dealt_cards(&self) -> usize {
+        self.deck.dealt()
+    }
+
+    fn settle(&mut self, game: &BlackjackGame) {
+        let visible = game.visible_cards(true);
+        self.deck = game.deck.clone();
+        self.running_count = game.base_count + count(&visible);
+        self.exposed_cards = game.base_exposed_cards + visible.len();
+    }
+
+    fn view(&self, game: &BlackjackGame, settings: &BlackjackTrainerSettings) -> BlackjackShoeView {
+        let total_cards = settings.shoe_cards();
+        let remaining_cards = game.deck.remaining();
+        BlackjackShoeView {
+            decks: self.decks,
+            total_cards,
+            dealt_cards: total_cards.saturating_sub(remaining_cards),
+            remaining_cards,
+            cut_card: self.cut_card,
+            penetration_percent: settings.penetration_percent,
+            hands_dealt: self.hands_dealt,
+            fresh_shuffle: game.fresh_shuffle,
+        }
+    }
+}
+
+impl BlackjackShoeView {
+    fn from_game(game: &BlackjackGame, settings: &BlackjackTrainerSettings) -> Self {
+        let total_cards = settings.shoe_cards();
+        let remaining_cards = game.deck.remaining();
+        Self {
+            decks: settings.decks,
+            total_cards,
+            dealt_cards: total_cards.saturating_sub(remaining_cards),
+            remaining_cards,
+            cut_card: cut_card(total_cards, settings.penetration_percent),
+            penetration_percent: settings.penetration_percent,
+            hands_dealt: 1,
+            fresh_shuffle: game.fresh_shuffle,
+        }
+    }
+}
+
+fn cut_card(total_cards: usize, penetration_percent: u8) -> usize {
+    let maximum_cut = total_cards.saturating_sub(SAFE_RESERVE_CARDS);
+    ((total_cards * usize::from(penetration_percent) + 50) / 100).clamp(4, maximum_cut.max(4))
+}
+
+fn settle_game(shoes: &mut HashMap<Uuid, BlackjackShoe>, game: &BlackjackGame) {
+    if let Some(shoe) = shoes.get_mut(&game.user) {
+        shoe.settle(game);
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 enum Action {
     Bet,
@@ -482,6 +657,17 @@ impl BlackjackGame {
         (self.user == user)
             .then_some(())
             .ok_or(BlackjackError::NotFound)
+    }
+
+    fn deal_card(&mut self) -> Card {
+        if let Some(card) = self.deck.deal() {
+            return card;
+        }
+        self.deck = Deck::shoe_seeded(rand::thread_rng().r#gen(), self.settings.decks);
+        self.base_count = 0;
+        self.base_exposed_cards = 0;
+        self.fresh_shuffle = true;
+        self.deck.deal().expect("fresh shoe has a card")
     }
 
     fn active_index(&self) -> usize {
@@ -657,7 +843,8 @@ impl BlackjackGame {
             return;
         }
         while score(&self.dealer).0 < 17 {
-            self.dealer.push(self.deck.deal().expect("card"));
+            let card = self.deal_card();
+            self.dealer.push(card);
         }
         let dealer_score = score(&self.dealer).0;
         for hand in &mut self.hands {
@@ -716,7 +903,7 @@ impl BlackjackGame {
         }
     }
 
-    fn view(&self, reveal: bool, balance: Cents) -> BlackjackView {
+    fn view(&self, reveal: bool, balance: Cents, shoe: Option<&BlackjackShoe>) -> BlackjackView {
         let finished = self.status != BlackjackStatus::Playing;
         let dealer = if reveal || finished {
             self.dealer.clone()
@@ -737,8 +924,17 @@ impl BlackjackGame {
             .collect();
         let first = self.hands.first().expect("hand");
         let visible = self.visible_cards(reveal || finished);
+        let running = self.base_count + count(&visible);
+        let exposed_cards = self.base_exposed_cards + visible.len();
+        let dealt_cards = self
+            .settings
+            .shoe_cards()
+            .saturating_sub(self.deck.remaining());
         let count_view = (self.settings.counting_tutor || self.settings.counting_quiz)
-            .then(|| count_view(&visible, &self.settings));
+            .then(|| count_view(running, exposed_cards, dealt_cards, &self.settings));
+        let shoe_view = shoe
+            .map(|shoe| shoe.view(self, &self.settings))
+            .unwrap_or_else(|| BlackjackShoeView::from_game(self, &self.settings));
         BlackjackView {
             id: self.id,
             bet: first.bet,
@@ -760,12 +956,12 @@ impl BlackjackGame {
             settings: self.settings.clone(),
             count: count_view,
             trainer_log: if self.settings.counting_tutor {
-                count_log(&visible)
+                count_log(&visible, self.base_count)
             } else {
                 Vec::new()
             },
             quiz: if self.settings.counting_quiz && finished {
-                Some(count_quiz(count(&visible)))
+                Some(count_quiz(running))
             } else {
                 None
             },
@@ -774,6 +970,7 @@ impl BlackjackGame {
             } else {
                 Vec::new()
             },
+            shoe: shoe_view,
         }
     }
 
@@ -798,14 +995,13 @@ impl BlackjackGame {
     fn analysis(&self) -> Vec<String> {
         self.decisions
             .iter()
-            .filter_map(|decision| {
-                (decision.action != decision.recommended).then(|| {
-                    format!(
-                        "{} was off; basic strategy prefers {} here.",
-                        decision.action.label(),
-                        decision.recommended.label()
-                    )
-                })
+            .filter(|decision| decision.action != decision.recommended)
+            .map(|decision| {
+                format!(
+                    "{} was off; basic strategy prefers {} here.",
+                    decision.action.label(),
+                    decision.recommended.label()
+                )
             })
             .collect()
     }
@@ -836,35 +1032,37 @@ fn count(cards: &[(String, Card)]) -> i16 {
     cards.iter().map(|(_, card)| count_value(*card)).sum()
 }
 
-fn count_view(cards: &[(String, Card)], settings: &BlackjackTrainerSettings) -> BlackjackCountView {
-    let running = count(cards);
+fn count_view(
+    running: i16,
+    exposed_cards: usize,
+    dealt_cards: usize,
+    settings: &BlackjackTrainerSettings,
+) -> BlackjackCountView {
     let shoe_cards = settings.shoe_cards();
-    let visible_cards = cards.len();
-    let remaining_cards = shoe_cards.saturating_sub(visible_cards).max(1);
+    let remaining_cards = shoe_cards.saturating_sub(exposed_cards).max(1);
     let decks_remaining = (remaining_cards as f32 / 52.0).max(0.25);
     BlackjackCountView {
         running,
         true_count: running as f32 / decks_remaining,
-        visible_cards,
-        penetration_percent: ((visible_cards * 100) / shoe_cards.max(1)) as u8,
+        visible_cards: exposed_cards,
+        penetration_percent: ((dealt_cards * 100) / shoe_cards.max(1)) as u8,
     }
 }
 
-fn count_log(cards: &[(String, Card)]) -> Vec<String> {
-    let mut running = 0;
-    cards
-        .iter()
-        .map(|(label, card)| {
-            let delta = count_value(*card);
-            running += delta;
-            let signed = if delta >= 0 {
-                format!("+{delta}")
-            } else {
-                delta.to_string()
-            };
-            format!("{label} {card}: {signed} -> {running}")
-        })
-        .collect()
+fn count_log(cards: &[(String, Card)], base_count: i16) -> Vec<String> {
+    let mut running = base_count;
+    let mut lines = vec![format!("Carry-in running count: {base_count}")];
+    lines.extend(cards.iter().map(|(label, card)| {
+        let delta = count_value(*card);
+        running += delta;
+        let signed = if delta >= 0 {
+            format!("+{delta}")
+        } else {
+            delta.to_string()
+        };
+        format!("{label} {card}: {signed} -> {running}")
+    }));
+    lines
 }
 
 fn count_quiz(answer: i16) -> BlackjackCountQuiz {
@@ -987,6 +1185,9 @@ mod tests {
             payout: 0,
             settings: BlackjackTrainerSettings::default(),
             decisions: Vec::new(),
+            base_count: 0,
+            base_exposed_cards: 0,
+            fresh_shuffle: false,
         }
     }
 
@@ -1067,7 +1268,7 @@ mod tests {
             )],
             vec![card(Rank::Nine), card(Rank::Seven)],
         );
-        assert!(!game.view(false, 0).hands[0].blackjack);
+        assert!(!game.view(false, 0, None).hands[0].blackjack);
     }
 
     #[test]
@@ -1212,7 +1413,7 @@ mod tests {
         );
         game.settings.counting_tutor = true;
         game.settings.counting_quiz = true;
-        let hidden = game.view(false, 0);
+        let hidden = game.view(false, 0, None);
         assert_eq!(hidden.count.as_ref().unwrap().running, 1);
         assert!(
             hidden
@@ -1229,7 +1430,7 @@ mod tests {
 
         game.hands[0].status = BlackjackHandStatus::Stand;
         game.advance();
-        let revealed = game.view(false, 0);
+        let revealed = game.view(false, 0, None);
         assert_eq!(revealed.count.as_ref().unwrap().running, 0);
         assert_eq!(revealed.quiz.as_ref().unwrap().answer, 0);
     }
@@ -1247,7 +1448,7 @@ mod tests {
         game.settings.bet_analyzer = true;
         game.record_decision(Action::Stand);
         assert!(
-            game.view(false, 0).analysis[0].contains("Hit"),
+            game.view(false, 0, None).analysis[0].contains("Hit"),
             "16 against 10 should prefer a hit"
         );
     }
@@ -1265,8 +1466,137 @@ mod tests {
         game.settings.bet_analyzer = true;
         game.record_decision(Action::Hit);
         assert!(
-            game.view(false, 0).analysis.is_empty(),
+            game.view(false, 0, None).analysis.is_empty(),
             "hard 5 should hit even when insurance was available"
         );
+    }
+
+    #[test]
+    fn settled_count_carries_into_the_next_hand() {
+        let mut shoe = BlackjackShoe::new(1, 50);
+        let mut first = game(
+            vec![hand(
+                vec![card(Rank::Two), card(Rank::King)],
+                100,
+                BlackjackHandStatus::Stand,
+            )],
+            vec![card(Rank::Six), card(Rank::Nine)],
+        );
+        first.base_count = 0;
+        first.base_exposed_cards = 0;
+        shoe.hands_dealt = 1;
+        shoe.settle(&first);
+        let carried = shoe.running_count;
+        let mut second = game(
+            vec![hand(
+                vec![card(Rank::Five), card(Rank::Ten)],
+                100,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Seven), card(Rank::Ace)],
+        );
+        second.base_count = shoe.running_count;
+        second.base_exposed_cards = shoe.exposed_cards;
+        second.settings.counting_tutor = true;
+        let view = second.view(false, 0, Some(&shoe));
+        assert_eq!(view.count.unwrap().running, carried);
+    }
+
+    #[tokio::test]
+    async fn cut_card_reshuffle_resets_count_and_dealt_cards() {
+        let store = BlackjackStore::new();
+        let user = Uuid::new_v4();
+        let mut shoe = BlackjackShoe::new(1, 25);
+        shoe.running_count = 4;
+        shoe.exposed_cards = 4;
+        for _ in 0..13 {
+            shoe.deck.deal();
+        }
+        store.shoes.lock().await.insert(user, shoe);
+        let view = store
+            .start(
+                user,
+                100,
+                Uuid::new_v4(),
+                0,
+                BlackjackTrainerSettings {
+                    decks: 1,
+                    penetration_percent: 25,
+                    counting_tutor: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(view.shoe.fresh_shuffle);
+        assert_eq!(view.shoe.dealt_cards, 4);
+        assert_eq!(view.shoe.remaining_cards, 48);
+        assert_eq!(
+            store.inner.lock().await.values().next().unwrap().base_count,
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn changing_deck_count_reshuffles_the_shoe() {
+        let store = BlackjackStore::new();
+        let user = Uuid::new_v4();
+        store
+            .shoes
+            .lock()
+            .await
+            .insert(user, BlackjackShoe::new(1, 50));
+        let view = store
+            .start(
+                user,
+                100,
+                Uuid::new_v4(),
+                0,
+                BlackjackTrainerSettings {
+                    decks: 2,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(view.shoe.fresh_shuffle);
+        assert_eq!(view.shoe.decks, 2);
+        assert_eq!(view.shoe.remaining_cards, 100);
+    }
+
+    #[test]
+    fn settling_twice_does_not_double_count() {
+        let mut shoe = BlackjackShoe::new(1, 50);
+        let game = game(
+            vec![hand(
+                vec![card(Rank::Two), card(Rank::King)],
+                100,
+                BlackjackHandStatus::Stand,
+            )],
+            vec![card(Rank::Six), card(Rank::Nine)],
+        );
+        shoe.settle(&game);
+        let first = (shoe.running_count, shoe.exposed_cards);
+        shoe.settle(&game);
+        assert_eq!((shoe.running_count, shoe.exposed_cards), first);
+    }
+
+    #[test]
+    fn exhausted_hand_deal_reshuffles_instead_of_panicking() {
+        let mut game = game(
+            vec![hand(
+                vec![card(Rank::Two), card(Rank::Three)],
+                100,
+                BlackjackHandStatus::Playing,
+            )],
+            vec![card(Rank::Six), card(Rank::Nine)],
+        );
+        game.settings.decks = 1;
+        game.deck = Deck::shoe_seeded(1, 1);
+        while game.deck.deal().is_some() {}
+        let _ = game.deal_card();
+        assert!(game.fresh_shuffle);
+        assert_eq!(game.base_count, 0);
+        assert_eq!(game.base_exposed_cards, 0);
     }
 }
