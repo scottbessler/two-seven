@@ -339,6 +339,8 @@ Mark each milestone done here as it lands.
   when enabled, only that chosen action requires an explicit confirmation step.
 - **V35** The player page finance chart is derived from ledger entry
   `balance_after` values and shows the current signed-in player's account only.
+- **V36** All-in showdown summaries expose per-seat equity at reveal and each
+  runout street; non-leading players with 1-9 immediate outs expose those cards.
 
 ## §T Build tasks
 

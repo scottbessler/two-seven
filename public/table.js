@@ -14,7 +14,7 @@ const RUNOUT_STEP_MS = 5_000;
 // ended decides how much of it is face up and who is currently ahead.
 function runoutState(showdown, elapsed) {
   const steps = showdown?.runout || [];
-  if (steps.length === 0) return { cards: showdown?.board?.length ?? 0, leaders: [] };
+  if (steps.length === 0) return { cards: showdown?.board?.length ?? 0, leaders: [], odds: showdown?.reveal_odds || [] };
   const taken = Math.min(steps.length, Math.floor(elapsed / RUNOUT_STEP_MS));
   const step = taken > 0 ? steps[taken - 1] : null;
   return {
@@ -22,6 +22,7 @@ function runoutState(showdown, elapsed) {
     // Somebody is ahead the moment the hands are turned over, not only once a
     // card has landed on top of them.
     leaders: step?.leaders || showdown.reveal_leaders || [],
+    odds: step?.odds || showdown.reveal_odds || [],
   };
 }
 
@@ -191,6 +192,29 @@ function eventLabel(event, seats) {
     Deal: `${streetName(event.street)} dealt`,
     Award: `${name} wins${amount}`,
   }[event.kind] || event.kind;
+}
+
+function cardText(card) {
+  const suitCode = card.slice(-1);
+  const rawRank = card.slice(0, -1);
+  const rank = rawRank === "T" ? "10" : rawRank;
+  return `${rank}${{ h: "♥", d: "♦", c: "♣", s: "♠" }[suitCode] || suitCode}`;
+}
+
+function oddsPercent(permille) {
+  if (permille == null) return "—";
+  return `${(permille / 10).toFixed(permille % 10 === 0 ? 0 : 1)}%`;
+}
+
+function ShowdownOdds({ odds, seats }) {
+  if (!odds?.length) return null;
+  return html`<div class="showdown-odds" aria-label="Showdown odds">
+    ${odds.map((entry) => {
+      const seat = seats.find((candidate) => candidate.index === entry.seat);
+      const name = seat?.display_name || seat?.occupant || `Seat ${entry.seat}`;
+      return html`<span><b>${name}</b><strong>${oddsPercent(entry.equity_permille)}</strong>${entry.outs?.length ? html`<small>Outs ${entry.outs.map(cardText).join(" ")}</small>` : null}</span>`;
+    })}
+  </div>`;
 }
 
 function winnerLines(summary, seats) {
@@ -397,6 +421,7 @@ function TableApp() {
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
+          ${showdown && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} />`}
           <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
           ${showdown && html`<p class="showdown-result">${result}</p>`}
         </div>

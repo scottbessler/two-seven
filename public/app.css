@@ -201,6 +201,11 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-metrics small{color:var(--muted);font-size:.62rem;text-transform:uppercase}
 .table-metrics b{color:var(--accent)}
 .table-metrics b{font-size:.9rem}
+.showdown-odds{display:flex;justify-content:center;gap:.35rem;flex-wrap:wrap;max-width:100%;font-size:.68rem}
+.showdown-odds span{display:grid;grid-template-columns:auto auto;column-gap:.35rem;align-items:center;min-width:5.5rem;padding:.2rem .45rem;border:1px solid #527d6c;border-radius:6px;background:#10241fcc}
+.showdown-odds b{overflow:hidden;color:var(--muted);font-size:.62rem;text-overflow:ellipsis;white-space:nowrap}
+.showdown-odds strong{color:#f1d56e;font-size:.78rem;font-variant-numeric:tabular-nums}
+.showdown-odds small{grid-column:1/-1;color:#7fd4a8;font-weight:800;white-space:normal}
 .showdown-result{margin:0;color:var(--muted);font-size:.82rem;text-align:center;white-space:normal}
 .showdown-result{color:#f1d56e;font-weight:800}
 .seat.acting{border-color:var(--accent)}

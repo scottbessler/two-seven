@@ -18,13 +18,19 @@ pub use round::RoundStatus;
 pub use street::StreetTransition;
 
 use crate::{
-    cards::{Card, Deck},
-    eval::{EvaluatedHand, evaluate},
+    cards::{Card, Deck, Rank, Suit},
+    eval::{EvaluatedHand, HandRank, evaluate},
     money::Cents,
     table::Stakes,
 };
+use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{
+    collections::{BTreeMap, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+};
+
+const PREFLOP_EQUITY_SAMPLES: usize = 400;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Street {
@@ -109,6 +115,10 @@ pub struct HandSummary {
     /// Who is ahead as the hands are turned over, before the runout starts.
     #[serde(default)]
     pub reveal_leaders: Vec<usize>,
+    /// Equity for each live player as the hands are turned over, before the
+    /// runout starts.
+    #[serde(default)]
+    pub reveal_odds: Vec<ShowdownOdds>,
 }
 
 /// A rough order for two cards with no board out: a pair beats anything else,
@@ -127,6 +137,17 @@ fn hole_strength(cards: &[Card]) -> (u8, u8, u8) {
 pub struct RunoutStep {
     pub cards: usize,
     pub leaders: Vec<usize>,
+    #[serde(default)]
+    pub odds: Vec<ShowdownOdds>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ShowdownOdds {
+    pub seat: usize,
+    /// Equity share in tenths of a percent: 625 means 62.5%.
+    pub equity_permille: u16,
+    #[serde(default)]
+    pub outs: Vec<Card>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -521,6 +542,7 @@ impl Hand {
             .collect();
         self.summary = Some(HandSummary {
             reveal_leaders: self.leaders_at_reveal(runout_from),
+            reveal_odds: self.odds_at(&self.board[..runout_from]),
             stacks_before_awards,
             board: self.board.clone(),
             runout: self.runout_steps(runout_from),
@@ -554,8 +576,105 @@ impl Hand {
             .map(|cards| RunoutStep {
                 cards,
                 leaders: self.leaders_on(&self.board[..cards]),
+                odds: self.odds_at(&self.board[..cards]),
             })
             .collect()
+    }
+
+    fn odds_at(&self, board: &[Card]) -> Vec<ShowdownOdds> {
+        let live: Vec<&Player> = self
+            .players
+            .iter()
+            .filter(|player| !player.folded)
+            .collect();
+        if live.is_empty() {
+            return Vec::new();
+        }
+        let missing = 5usize.saturating_sub(board.len());
+        let mut used = board.to_vec();
+        for player in &live {
+            used.extend(player.hole_cards.iter().copied());
+        }
+        let deck: Vec<Card> = Rank::ALL
+            .into_iter()
+            .flat_map(|rank| Suit::ALL.into_iter().map(move |suit| Card::new(rank, suit)))
+            .filter(|card| !used.contains(card))
+            .collect();
+        let mut shares = vec![0f64; live.len()];
+        let mut total = 0f64;
+        visit_board_completions(board, &deck, missing, &mut |extra| {
+            let full_board = board
+                .iter()
+                .chain(extra.iter())
+                .copied()
+                .collect::<Vec<_>>();
+            let ranks = live
+                .iter()
+                .map(|player| {
+                    let cards = player
+                        .hole_cards
+                        .iter()
+                        .chain(full_board.iter())
+                        .copied()
+                        .collect::<Vec<_>>();
+                    evaluate(&cards).rank
+                })
+                .collect::<Vec<_>>();
+            let best = ranks.iter().max().expect("live ranks");
+            let winners = ranks
+                .iter()
+                .enumerate()
+                .filter_map(|(index, rank)| (rank == best).then_some(index))
+                .collect::<Vec<_>>();
+            let share = 1.0 / winners.len() as f64;
+            for winner in winners {
+                shares[winner] += share;
+            }
+            total += 1.0;
+        });
+        let leaders = if board.len() >= 3 {
+            self.leaders_on(board)
+        } else {
+            self.leaders_at_reveal(board.len())
+        };
+        live.iter()
+            .enumerate()
+            .map(|(index, player)| ShowdownOdds {
+                seat: player.seat,
+                equity_permille: if total > 0.0 {
+                    ((shares[index] * 1000.0) / total).round() as u16
+                } else {
+                    0
+                },
+                outs: self.short_outs_for(player.seat, board, &deck, &leaders),
+            })
+            .collect()
+    }
+
+    fn short_outs_for(
+        &self,
+        seat: usize,
+        board: &[Card],
+        deck: &[Card],
+        leaders: &[usize],
+    ) -> Vec<Card> {
+        if !(3..5).contains(&board.len()) || leaders.contains(&seat) {
+            return Vec::new();
+        }
+        let outs = deck
+            .iter()
+            .copied()
+            .filter(|card| {
+                let mut next = board.to_vec();
+                next.push(*card);
+                self.leaders_on(&next).contains(&seat)
+            })
+            .collect::<Vec<_>>();
+        if (1..10).contains(&outs.len()) {
+            outs
+        } else {
+            Vec::new()
+        }
     }
 
     /// Who is ahead the moment the cards go on their backs, before any of the
@@ -582,7 +701,7 @@ impl Hand {
 
     /// The live seats holding the best hand against a partial board.
     fn leaders_on(&self, board: &[Card]) -> Vec<usize> {
-        let ranked: Vec<(usize, crate::eval::HandRank)> = self
+        let ranked: Vec<(usize, HandRank)> = self
             .players
             .iter()
             .filter(|player| !player.folded)
@@ -614,6 +733,47 @@ impl Hand {
                 % self.players.len()
         });
         seats
+    }
+}
+
+fn enumerate_missing(
+    deck: &[Card],
+    missing: usize,
+    start: usize,
+    picked: &mut Vec<Card>,
+    visit: &mut impl FnMut(&[Card]),
+) {
+    if picked.len() == missing {
+        visit(picked);
+        return;
+    }
+    for index in start..deck.len() {
+        picked.push(deck[index]);
+        enumerate_missing(deck, missing, index + 1, picked, visit);
+        picked.pop();
+    }
+}
+
+fn visit_board_completions(
+    board: &[Card],
+    deck: &[Card],
+    missing: usize,
+    visit: &mut impl FnMut(&[Card]),
+) {
+    if missing <= 2 {
+        let mut picked = Vec::with_capacity(missing);
+        enumerate_missing(deck, missing, 0, &mut picked, visit);
+        return;
+    }
+    let mut hasher = DefaultHasher::new();
+    board.hash(&mut hasher);
+    deck.hash(&mut hasher);
+    missing.hash(&mut hasher);
+    let mut rng = StdRng::seed_from_u64(hasher.finish());
+    let mut sampled = deck.to_vec();
+    for _ in 0..PREFLOP_EQUITY_SAMPLES {
+        sampled.shuffle(&mut rng);
+        visit(&sampled[..missing]);
     }
 }
 
@@ -680,6 +840,31 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![30, 20, 10]
         );
+    }
+
+    #[test]
+    fn showdown_odds_include_short_outs_v36() {
+        let mut hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            &[100, 100],
+            0,
+            6,
+        );
+        hand.players[0].hole_cards = h("As Ad");
+        hand.players[1].hole_cards = h("Kh Kd");
+        hand.board = h("2c 7s 9h Qc");
+
+        let odds = hand.odds_at(&hand.board);
+        let aces = odds.iter().find(|entry| entry.seat == 0).unwrap();
+        let kings = odds.iter().find(|entry| entry.seat == 1).unwrap();
+
+        assert_eq!(aces.equity_permille + kings.equity_permille, 1000);
+        assert_eq!(aces.outs, Vec::<Card>::new());
+        assert_eq!(kings.outs, h("Kc Ks"));
+        assert_eq!(kings.equity_permille, 45);
     }
 
     #[test]

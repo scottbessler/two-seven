@@ -235,12 +235,14 @@ mod bot_kind_tests {
             events: Vec::new(),
             runout_from: 0,
             reveal_leaders: Vec::new(),
+            reveal_odds: Vec::new(),
             stacks_before_awards: BTreeMap::new(),
             runout: runout
                 .into_iter()
                 .map(|cards| crate::holdem::RunoutStep {
                     cards,
                     leaders: Vec::new(),
+                    odds: Vec::new(),
                 })
                 .collect(),
         };

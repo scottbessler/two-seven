@@ -147,6 +147,7 @@ impl Hand {
             runout_from: self.board.len(),
             runout: Vec::new(),
             reveal_leaders: Vec::new(),
+            reveal_odds: Vec::new(),
             stacks_before_awards: self
                 .players
                 .iter()

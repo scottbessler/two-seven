@@ -398,6 +398,7 @@ mod tests {
             runout: Vec::new(),
             stacks_before_awards: BTreeMap::new(),
             reveal_leaders: vec![0],
+            reveal_odds: Vec::new(),
         });
         table
     }
