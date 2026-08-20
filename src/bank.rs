@@ -264,7 +264,11 @@ impl BankStore {
                     guard.accounts.get_mut(&owner).expect("account"),
                     LedgerKind::ReUp,
                     loan_amount,
-                    format!("re-up loan ({loans} loans)"),
+                    if loans == 1 {
+                        "re-up loan".into()
+                    } else {
+                        format!("re-up loan ({loans} loans)")
+                    },
                     loans,
                 );
             }
