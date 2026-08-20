@@ -270,6 +270,8 @@ fn blackjack_island_has_game_contracts() {
         "blackjack-trainer-log",
         "blackjack-quiz",
         "blackjack-analysis",
+        "blackjack-status-row",
+        "trigger=${false}",
     ] {
         assert!(
             BLACKJACK_JS.contains(literal),
@@ -281,6 +283,8 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-trainer-log",
         ".blackjack-quiz",
         ".blackjack-analysis",
+        ".blackjack-play-area",
+        ".blackjack-status-row",
     ] {
         assert!(
             APP_CSS.contains(literal),

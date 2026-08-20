@@ -225,13 +225,15 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
 }
 
 pub fn blackjack() -> String {
-    layout(
+    layout_with_header(
         "Blackjack",
-        r#"<section class="blitz-shell blackjack-shell"><div class="blitz-top"><div><h1>Blackjack</h1><p>Beat the dealer to 21. Blackjack pays 3:2.</p></div><a href="/tables">Lobby</a></div><div id="blackjack-app"><section class="blitz-table blackjack-table"><div class="actions blackjack-actions"><span class="deal-broke">Loading your stakes…</span></div></section></div></section>"#,
+        r#"<section class="blackjack-shell"><div id="blackjack-app"><section class="blackjack-table"><div class="actions blackjack-actions"><span class="deal-broke">Loading your stakes…</span></div></section></div></section>"#,
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/blackjack.js")
         ),
+        Some("Blackjack"),
+        r#"<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" commandfor="card-config" command="show-modal">⚙</button>"#,
     )
 }
 

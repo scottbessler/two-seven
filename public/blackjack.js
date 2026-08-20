@@ -158,31 +158,36 @@ function App() {
 
   const bets = betOptions(balance);
   const trainerControls = html`<${TrainerSettings} settings=${trainerSettings} setSettings=${setTrainerSettings} />`;
-  return html`<section class="blitz-table blackjack-table">
-    <${CardSettings} interactive=${true} children=${trainerControls} />
-    ${game && html`<div class="blitz-score">
-      <span><b>${money(game.bet)}</b> bet</span>
-      <span><b>${game.payout ? money(game.payout) : "—"}</b> payout</span>
-      <span><b>${game.status}</b> status</span>
-    </div>
-    <${Hand} title="Dealer" cards=${game.dealer} score=${game.dealer_score} hidden=${game.dealer_score == null} />
-    ${game.hands.map((hand, index) => html`<${Hand} title=${`Hand ${index + 1}${index === game.active_hand ? " · Active" : ""}`} cards=${hand.cards} score=${hand.score} />`)}
-    <p class="blitz-feedback">${game.message}</p>
-    <${TrainerPanel} game=${game} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
-    `}
-    <div class="actions blackjack-actions">
-      ${game?.status === "Playing" ? html`
-        ${game.can_hit && html`<button type="button" disabled=${busy} onClick=${() => act("hit")}>Hit</button>`}
-        ${game.can_stand && html`<button type="button" disabled=${busy} onClick=${() => act("stand")}>Stand</button>`}
-        ${game.can_double && html`<button type="button" disabled=${busy} onClick=${() => act("double")}>Double</button>`}
-        ${game.can_split && html`<button type="button" disabled=${busy} onClick=${() => act("split")}>Split</button>`}
-        ${game.can_insure && html`<button type="button" disabled=${busy} onClick=${() => act("insurance")}>Insurance</button>`}
-      ` : bets.length === 0
-        ? html`<span class="deal-broke">Re-up from the coin menu to play a hand.</span>`
-        : bets.map((amount) => html`<button class="deal-action" type="button" disabled=${busy} onClick=${() => start(amount)}>Deal ${wholeDollarMoney(amount)}</button>`)}
-    </div>
-    ${error && html`<p class="error">${error}</p>`}
-  </section>`;
+  return html`
+    <${CardSettings} interactive=${true} trigger=${false} children=${trainerControls} />
+    <section class="blackjack-table">
+      ${game && html`
+        <div class="blackjack-status-row">
+          <span><b>${money(game.bet)}</b> bet</span>
+          <span><b>${game.payout ? money(game.payout) : "—"}</b> payout</span>
+          <span><b>${game.status}</b> status</span>
+        </div>
+        <div class="blackjack-play-area">
+          <${Hand} title="Dealer" cards=${game.dealer} score=${game.dealer_score} hidden=${game.dealer_score == null} />
+          ${game.hands.map((hand, index) => html`<${Hand} title=${`Hand ${index + 1}${index === game.active_hand ? " · Active" : ""}`} cards=${hand.cards} score=${hand.score} />`)}
+        </div>
+        <p class="blitz-feedback">${game.message}</p>
+        <${TrainerPanel} game=${game} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
+      `}
+      <div class="actions blackjack-actions">
+        ${game?.status === "Playing" ? html`
+          ${game.can_hit && html`<button type="button" disabled=${busy} onClick=${() => act("hit")}>Hit</button>`}
+          ${game.can_stand && html`<button type="button" disabled=${busy} onClick=${() => act("stand")}>Stand</button>`}
+          ${game.can_double && html`<button type="button" disabled=${busy} onClick=${() => act("double")}>Double</button>`}
+          ${game.can_split && html`<button type="button" disabled=${busy} onClick=${() => act("split")}>Split</button>`}
+          ${game.can_insure && html`<button type="button" disabled=${busy} onClick=${() => act("insurance")}>Insurance</button>`}
+        ` : bets.length === 0
+          ? html`<span class="deal-broke">Re-up from the coin menu to play a hand.</span>`
+          : bets.map((amount) => html`<button class="deal-action" type="button" disabled=${busy} onClick=${() => start(amount)}>Deal ${wholeDollarMoney(amount)}</button>`)}
+      </div>
+      ${error && html`<p class="error">${error}</p>`}
+    </section>
+  `;
 }
 
 if (root) render(html`<${App} />`, root);

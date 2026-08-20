@@ -98,3 +98,25 @@ test("blackjack trainer settings drive tutor quiz and analyzer", async ({ page }
   await page.getByRole("button", { name: "-3" }).click();
   await expect(page.locator(".blackjack-quiz")).toContainText("Correct");
 });
+
+test("blackjack gear lives in the header and the table uses stable rows", async ({ page }) => {
+  await signIn(page, "blackjacklayout");
+  await page.request.post("/api/bank", { data: {} });
+  await page.goto("/blackjack");
+
+  await expect(page.locator(".site-header .table-config-button")).toBeVisible();
+  await expect(page.locator(".blackjack-table > .card-settings")).toHaveCount(0);
+  await expect(page.locator(".header-context")).toHaveText("Blackjack");
+
+  const geometry = await page.locator(".page").evaluate((pageRoot) => {
+    const header = pageRoot.querySelector(".site-header").getBoundingClientRect();
+    const settings = pageRoot.querySelector(".table-config-button").getBoundingClientRect();
+    const table = pageRoot.querySelector(".blackjack-table").getBoundingClientRect();
+    return {
+      settingsInHeader: settings.top >= header.top && settings.bottom <= header.bottom,
+      tableBelowHeader: table.top >= header.bottom,
+    };
+  });
+  expect(geometry.settingsInHeader, "blackjack settings gear should sit in the app header").toBe(true);
+  expect(geometry.tableBelowHeader, "blackjack table should start below the app header").toBe(true);
+});

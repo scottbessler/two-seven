@@ -346,6 +346,9 @@ Mark each milestone done here as it lands.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
   shoe choice, penetration percent, visible-card Hi-Lo tutor/log, post-hand
   running-count quiz, and server-side basic-strategy analyzer feedback.
+- **V39** Blackjack settings use the shared page header gear like poker; the
+  game body renders stable rows for status, hands, trainer feedback, and actions
+  without an in-table settings control.
 
 ## §T Build tasks
 
@@ -377,6 +380,7 @@ T14|x|share island helpers and surface blitz/blackjack UI errors and actions|V23
 T15|x|persist live blackjack games and restore them after restart|V1,V24
 T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 T21|x|add blackjack card-counting and strategy trainer settings|V24,V25,V27,V28,V31,V38
+T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
 
 ## §B Bug log
 
