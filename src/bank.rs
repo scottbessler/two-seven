@@ -68,6 +68,10 @@ pub fn account_json(account: &Account) -> serde_json::Value {
     object.insert("loan_debt".into(), account.loan_debt().into());
     object.insert("net_balance".into(), account.net_balance().into());
     object.insert(
+        "can_re_up".into(),
+        (account.balance < BankStore::RE_UP_THRESHOLD).into(),
+    );
+    object.insert(
         "next_repayment_amount".into(),
         account.next_loan_repayment_amount().into(),
     );
@@ -83,7 +87,7 @@ pub struct BankStore {
 }
 impl BankStore {
     pub const RE_UP_AMOUNT: Cents = 100_000;
-    pub const RE_UP_THRESHOLD: Cents = 10_000;
+    pub const RE_UP_THRESHOLD: Cents = Self::RE_UP_AMOUNT;
     /// Bump this to start the house over on the next boot: money, loans,
     /// history and their playing record.
     pub const HOUSE_RESET_MARKER: &'static str = "bank-house-reset-2.marker";
@@ -305,7 +309,7 @@ impl BankStore {
             );
         }
         if guard.accounts[&owner].balance >= Self::RE_UP_THRESHOLD {
-            return Err(anyhow::anyhow!("re-up is only available below $100"));
+            return Err(anyhow::anyhow!("re-up is only available below $1,000"));
         }
         let account = guard.accounts.get_mut(&owner).expect("account");
         Self::append_locked(
@@ -609,13 +613,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn re_up_requires_low_balance_and_tracks_loans() {
+    async fn re_up_requires_balance_below_one_thousand_and_tracks_loans() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
         let owner = AccountOwner::User(Uuid::new_v4());
         let account = bank.re_up(owner.clone()).await.unwrap();
         assert_eq!(account.balance, BankStore::RE_UP_AMOUNT);
         assert_eq!(account.loan_count, 1);
-        assert!(bank.re_up(owner).await.is_err());
+        bank.append(owner.clone(), LedgerKind::Adjustment, -1, "spend".into())
+            .await
+            .unwrap();
+        let account = bank.account(owner.clone()).await.unwrap();
+        assert_eq!(account_json(&account)["can_re_up"], true);
+        let account = bank.re_up(owner.clone()).await.unwrap();
+        assert_eq!(account.balance, BankStore::RE_UP_AMOUNT * 2 - 1);
+        assert_eq!(account.loan_count, 2);
+        assert_eq!(account_json(&account)["can_re_up"], false);
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            -(BankStore::RE_UP_AMOUNT - 1),
+            "spend".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            bank.account(owner.clone()).await.unwrap().balance,
+            BankStore::RE_UP_AMOUNT
+        );
+        let account = bank.account(owner.clone()).await.unwrap();
+        assert_eq!(account_json(&account)["can_re_up"], false);
+        assert_eq!(
+            bank.re_up(owner).await.unwrap_err().to_string(),
+            "re-up is only available below $1,000"
+        );
     }
 
     #[tokio::test]

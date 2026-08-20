@@ -1501,7 +1501,7 @@ pub async fn bank_re_up(
         .re_up(AccountOwner::User(user))
         .await
         .map(|account| Json(crate::bank::account_json(&account)))
-        .map_err(|_| AppError::bad_request("re-up is only available below $100"))
+        .map_err(|_| AppError::bad_request("re-up is only available below $1,000"))
 }
 pub async fn bank_repay(
     AuthUser(user): AuthUser,

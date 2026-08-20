@@ -151,6 +151,9 @@ fn bank_widget_fetches_signed_in_balance() {
     assert!(BANK_JS.contains("60 * 60 * 1000"));
     assert!(BANK_JS.contains("bank-panel"));
     assert!(BANK_JS.contains("bank:updated"));
+    assert!(BANK_JS.contains("can_re_up"));
+    assert!(BANK_JS.contains("document.addEventListener(\"click\""));
+    assert!(BANK_JS.contains("event.key === \"Escape\""));
     assert!(!BANK_JS.contains("aria-expanded"));
 }
 

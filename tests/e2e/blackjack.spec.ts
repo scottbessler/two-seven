@@ -28,7 +28,17 @@ test("coin menu repays a loan", async ({ page }) => {
   await page.request.post("/api/bank", { data: {} });
   await page.goto("/blackjack");
 
-  await page.locator(".bank-widget summary").click();
+  const widget = page.locator(".bank-widget");
+  const summary = widget.locator("summary");
+  await summary.click();
+  await expect(widget).toHaveAttribute("open", "");
+  await page.keyboard.press("Escape");
+  await expect(widget).not.toHaveAttribute("open", "");
+  await expect(summary).toBeFocused();
+  await summary.click();
+  await page.locator(".blackjack-shell").click({ position: { x: 10, y: 10 } });
+  await expect(widget).not.toHaveAttribute("open", "");
+  await summary.click();
   await expect(page.getByRole("button", { name: "Pay back $1,000" })).toBeEnabled();
   await page.getByRole("button", { name: "Pay back $1,000" }).click();
 
