@@ -102,7 +102,24 @@ function wagerOptions(hand) {
   return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
 }
 
-function Actions({ hand, tableId: actionTableId, refresh }) {
+function ConfirmableAction({ id, label, className, enabled, title, message, confirmLabel, submit }) {
+  if (!enabled) return html`<button class=${className} onClick=${submit}>${label}</button>`;
+  return html`<span class="action-confirm">
+    <button class=${className} type="button" commandfor=${id} command="show-modal">${label}</button>
+    <dialog id=${id} class="confirm-dialog">
+      <form method="dialog">
+        <header><h2>${title}</h2></header>
+        <p>${message}</p>
+        <footer>
+          <button type="submit" value="cancel">Cancel</button>
+          <button class=${className} type="button" commandfor=${id} command="close" onClick=${submit}>${confirmLabel}</button>
+        </footer>
+      </form>
+    </dialog>
+  </span>`;
+}
+
+function Actions({ hand, tableId: actionTableId, settings, refresh }) {
   const actions = new Set((hand?.legal_actions?.actions || []).map(actionName));
   const submit = async (kind, amount) => {
     const response = await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount }) });
@@ -112,11 +129,11 @@ function Actions({ hand, tableId: actionTableId, refresh }) {
   const wagerKind = actions.has("Bet") ? "bet" : "raise";
   const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   return html`<div class="actions" aria-label="Actions">
-    ${actions.has("Fold") && html`<button class="danger" onClick=${() => submit("fold")}>Fold</button>`}
+    ${actions.has("Fold") && html`<${ConfirmableAction} id="confirm-fold-action" label="Fold" className="danger" enabled=${settings.confirmFold} title="Fold this hand?" message="Your cards will be mucked and you cannot win this pot." confirmLabel="Fold" submit=${() => submit("fold")} />`}
     ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
     ${actions.has("Call") && html`<button class="primary-action" onClick=${() => submit("call")}>Call ${money(hand.legal_actions.to_call)}</button>`}
     ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}>${wagerLabel} ${money(option.total)}</button>`)}
-    ${actions.has("AllIn") && html`<button class="wager-action all-in-action" onClick=${() => submit("all_in")}>All In</button>`}
+    ${actions.has("AllIn") && html`<${ConfirmableAction} id="confirm-all-in-action" label="All In" className="wager-action all-in-action" enabled=${settings.confirmAllIn} title="Go all in?" message="This will commit every chip in your stack." confirmLabel="All In" submit=${() => submit("all_in")} />`}
     ${!hand.legal_actions.wager && hand.legal_actions.wagers_capped && html`<span class="capped-note">Betting capped · call or fold</span>`}
   </div>`;
 }
@@ -391,7 +408,7 @@ function TableApp() {
       : showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions
-        ? html`<${Actions} hand=${hand} tableId=${tableId} refresh=${refresh} />`
+        ? html`<${Actions} hand=${hand} tableId=${tableId} settings=${settings} refresh=${refresh} />`
         : state.can_deal
           ? html`<${DealHouseHand} refresh=${refresh} />`
           : null}</section>

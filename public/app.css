@@ -200,6 +200,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .tournament-complete b{color:#f1d56e;font-size:1.05rem}
 .decision-area{position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;padding:.5rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
 .actions{position:static;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
+.actions .action-confirm{display:contents}
 .actions button{min-width:0;height:2.7rem;padding:.45rem .3rem;border-radius:6px;white-space:nowrap}
 .actions .primary-action{background:#d9ad55;color:#1a160d}
 .actions .capped-note{display:grid;grid-column:1/-1;place-items:center;color:var(--muted);font-size:.72rem}

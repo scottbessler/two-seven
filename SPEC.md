@@ -332,6 +332,8 @@ Mark each milestone done here as it lands.
   surrender for every app bot policy.
 - **V33** Terminal tournament winner state is not exposed to the live table view
   until the final hand reveal/runout pause has finished.
+- **V34** Table preferences persist opt-in confirmations for Fold and All In;
+  when enabled, only that chosen action requires an explicit confirmation step.
 
 ## §T Build tasks
 

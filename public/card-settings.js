@@ -7,6 +7,8 @@ export const CARD_SETTING_KEYS = {
   rankWeight: "table-rank-weight-percent",
   fourColor: "table-four-color-suits",
   paranoid: "table-paranoid-cards",
+  confirmFold: "table-confirm-fold",
+  confirmAllIn: "table-confirm-all-in",
 };
 
 const DEFAULT_CARD_SCALE = 1.8;
@@ -23,6 +25,8 @@ export function readCardSettings() {
     rankWeight: savedSetting(CARD_SETTING_KEYS.rankWeight),
     fourColor: localStorage.getItem(CARD_SETTING_KEYS.fourColor) === "on",
     paranoid: localStorage.getItem(CARD_SETTING_KEYS.paranoid) === "on",
+    confirmFold: localStorage.getItem(CARD_SETTING_KEYS.confirmFold) === "on",
+    confirmAllIn: localStorage.getItem(CARD_SETTING_KEYS.confirmAllIn) === "on",
   };
 }
 
@@ -79,6 +83,8 @@ export function CardSettings({ settings: providedSettings, setSettings: provided
         <label><span>Rank weight <output>${settings.rankWeight}%</output></span><input name="rank-weight" type="range" min="50" max="200" step="5" value=${settings.rankWeight} onInput=${update("rankWeight", CARD_SETTING_KEYS.rankWeight)} /></label>
         <label class="card-option-toggle"><input name="four-color" type="checkbox" checked=${settings.fourColor} onChange=${toggle("fourColor", CARD_SETTING_KEYS.fourColor)} /><span><b>Four-color suits</b><small>Color clubs blue and diamonds orange</small></span></label>
         ${concealable && html`<label class="card-option-toggle"><input name="paranoid" type="checkbox" checked=${settings.paranoid} onChange=${toggle("paranoid", CARD_SETTING_KEYS.paranoid)} /><span><b>Paranoid mode</b><small>Keep your hole cards face down until you hover or hold them</small></span></label>`}
+        ${concealable && html`<label class="card-option-toggle"><input name="confirm-fold" type="checkbox" checked=${settings.confirmFold} onChange=${toggle("confirmFold", CARD_SETTING_KEYS.confirmFold)} /><span><b>Confirm folds</b><small>Ask before folding your hand</small></span></label>`}
+        ${concealable && html`<label class="card-option-toggle"><input name="confirm-all-in" type="checkbox" checked=${settings.confirmAllIn} onChange=${toggle("confirmAllIn", CARD_SETTING_KEYS.confirmAllIn)} /><span><b>Confirm all-in</b><small>Ask before putting every chip in</small></span></label>`}
       </form>
     </dialog>`;
   return trigger
