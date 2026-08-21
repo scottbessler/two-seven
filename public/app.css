@@ -226,10 +226,10 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-center:has(.showdown-odds) .board{min-height:4.65rem}
 .showdown-odds{display:flex;justify-content:center;gap:.25rem;flex-wrap:nowrap;max-width:100%;overflow-x:auto;overflow-y:hidden;font-size:.64rem;scrollbar-width:none}
 .showdown-odds::-webkit-scrollbar{display:none}
-.showdown-odds span{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.3rem;align-items:center;min-width:0;max-width:7.2rem;padding:.14rem .38rem;border:1px solid #527d6c;border-radius:6px;background:#10241fcc;flex:0 1 7.2rem}
+.showdown-odds span{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.3rem;align-items:center;min-width:0;max-width:8.8rem;padding:.14rem .38rem;border:1px solid #527d6c;border-radius:6px;background:#10241fcc;flex:0 1 8.8rem}
 .showdown-odds b{overflow:hidden;color:var(--muted);font-size:.62rem;text-overflow:ellipsis;white-space:nowrap}
 .showdown-odds strong{color:#f1d56e;font-size:.78rem;font-variant-numeric:tabular-nums}
-.showdown-odds small{grid-column:1/-1;overflow:hidden;color:#7fd4a8;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.showdown-odds small{grid-column:1/-1;overflow:hidden;color:#7fd4a8;font-size:.62rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
 .showdown-result{margin:0;color:var(--muted);font-size:.82rem;text-align:center;white-space:normal}
 .showdown-result{color:#f1d56e;font-weight:800}
 .seat.acting{border-color:var(--accent)}
@@ -360,10 +360,10 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-center:has(.showdown-odds){gap:.18rem}
   .table-center:has(.showdown-odds) .board{min-height:3.55rem}
   .showdown-odds{justify-content:flex-start;gap:.18rem;font-size:.56rem}
-  .showdown-odds span{max-width:5.5rem;padding:.08rem .24rem;flex-basis:5.5rem}
+  .showdown-odds span{max-width:6.8rem;padding:.08rem .24rem;flex-basis:6.8rem}
   .showdown-odds b{font-size:.54rem}
   .showdown-odds strong{font-size:.66rem}
-  .showdown-odds small{font-size:.5rem}
+  .showdown-odds small{font-size:.56rem}
   .showdown-result{margin:.1rem 0 0;font-size:.68rem;text-align:center;transform:none}
 
   .table-stage .seats{grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.3rem}
