@@ -66,7 +66,7 @@ Environment variables: `PORT` (8080), `DATA_PATH` (`data`), `RP_ID`,
 Account { owner: AccountOwner, balance: Cents, loan_count: u64, entries: Vec<LedgerEntry>, created_at, updated_at }
 AccountOwner = User(Uuid) | Bot(BotKind)     // one shared account per bot kind
 LedgerEntry  { id, at, kind, delta: Cents, balance_after: Cents, memo }
-LedgerKind   = ReUp | LoanRepayment | LoanInterest | BuyIn{table} | CashOut{table} | TournamentBuyIn{tournament}
+LedgerKind   = ReUp | HouseStake | LoanRepayment | LoanInterest | BuyIn{table} | CashOut{table} | TournamentBuyIn{tournament}
              | TournamentPrize{tournament} | Adjustment
 ```
 
@@ -77,6 +77,9 @@ Rules
   or wager ≤ $10,000.
 - A signed-in user may re-up $1,000 when their balance is < $1,000. Each re-up
   appends a `ReUp` ledger entry and increments `loan_count`.
+- A bot's first shortfall-funded buy-in appends a `HouseStake` entry rounded up
+  to whole $1,000 loan units without increasing `loan_count`. Later bot
+  shortfalls append `ReUp` entries and increment `loan_count` normally.
 - Each loan is exactly $1,000, so debt is `loan_count * $1,000`. The coin menu
   can repay one loan when the balance covers $1,000; repayment appends a
   `LoanRepayment` entry and reduces `loan_count` by one.
@@ -84,12 +87,20 @@ Rules
   capped at 10 loans; the rounded-down fee is a separate `LoanInterest` entry.
   Bot cash-outs do not pay loan interest.
 - Bot buy-ins auto re-up as needed so cash tables remain fillable.
+- The admin page can forgive all bot loans at once. Forgiveness clears only
+  bot `loan_count` values, leaves balances unchanged, and reports the loans and
+  house players affected; human accounts are untouched.
 - Legacy bank account JSON is wiped once on the non-debt bank migration.
 - Cash-out returns the seat's remaining stack to the account.
 - The bank is the settlement layer: chips only enter play through a `BuyIn` and
   only leave through a `CashOut`/prize, so `sum(balances) + sum(chips in play)`
   is invariant (§V1).
 - Every account's `balance` must equal the sum of its ledger deltas (§V2).
+
+Admin controls: the password-protected admin page can reset all money and
+loans, reset poker or Blitz stats, and forgive all bot loans without changing
+balances or human accounts. Forgiveness reports the number of loans cleared
+and house players affected.
 
 UI: the header shows the signed-in user's balance next to their username, with a
 coin icon; hovering/tapping it opens a small panel with the current balance,
@@ -276,7 +287,8 @@ Mark each milestone done here as it lands.
 - **V4** Pot distribution pays out exactly the pot: the sum of awards equals the
   sum of contributions, for any all-in/side-pot configuration.
 - **V5** Bank accounts never go below zero; user re-up is only allowed below
-  $1,000 and increments `loan_count`; repayment requires $1,000 and decrements
+  $1,000 and increments `loan_count`; a bot's first shortfall-funded buy-in
+  uses a non-loan `HouseStake`; repayment requires $1,000 and decrements
   `loan_count` by one.
 - **V6** Every reachable hand state has at least one legal action for the player
   on turn, and the engine rejects any action not in that set.
@@ -287,13 +299,17 @@ Mark each milestone done here as it lands.
   wrapping all 13 cards within its visible width; no suit row scrolls horizontally.
 - **V9** ∀ positive configured stake, blind, ante, buy-in, entry fee, or wager ≥ 100 cents.
 - **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 1,000,000 cents;
-  a buy-in auto-loan adds one `loan_count` per required $1,000 loan.
+  a buy-in auto-loan adds one `loan_count` per required $1,000 loan, except
+  the first shortfall-funded bot buy-in uses `HouseStake` instead.
 - **V16** Every loan is exactly $1,000; debt equals `loan_count * $1,000`,
   repayment costs $1,000, decrements `loan_count` by one, and cannot make an
   account balance negative.
 - **V17** A user's poker cash-out charges at most 10% of positive table winnings
   for loan interest, rounded down and recorded separately; no fee is charged
   without winnings or loans, and bots never pay this fee.
+- **V37** Admin bot-loan forgiveness clears `loan_count` on every indebted bot
+  without changing balances or human accounts, and persists the affected
+  accounts.
 - **V11** `TableView` exposes redacted action events + per-seat hand state; UI shows
   current actor, dealer, blinds, street wager, folded/all-in state, and recent log.
 - **V12** Every cash table has one fixed buy-in; human joins, bot seats, and rebuys

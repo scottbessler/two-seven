@@ -77,6 +77,15 @@ pub async fn admin_action(
                 report.accounts, report.tables, report.humans_kicked
             )
         }
+        "forgive-bot-loans" => {
+            let report = crate::admin::forgive_bot_loans(&s)
+                .await
+                .map_err(AppError::internal)?;
+            format!(
+                "Forgave {} loans across {} house players.",
+                report.loans, report.accounts
+            )
+        }
         "poker" => {
             let removed = s.stats.reset_all().await.map_err(AppError::internal)?;
             format!("Reset poker stats for {removed} players.")
