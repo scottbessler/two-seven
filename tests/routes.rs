@@ -348,6 +348,39 @@ async fn admin_money_reset_clears_accounts_and_kicks_people_from_tables() {
 }
 
 #[tokio::test]
+async fn admin_forgives_bot_loans_without_touching_humans() {
+    let t = appx().await;
+    let bot = AccountOwner::Bot(two_seven::table::Bot::new(
+        two_seven::table::BotKind::Fish,
+        0,
+    ));
+    let user = AccountOwner::User(Uuid::new_v4());
+    t.bank.re_up(bot.clone()).await.unwrap();
+    t.bank.re_up(user.clone()).await.unwrap();
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(
+                    "password=test-admin-password&action=forgive-bot-loans",
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("Forgave 1 loans across 1 house players."));
+    assert_eq!(t.bank.account(bot).await.unwrap().loan_count, 0);
+    assert_eq!(t.bank.account(user).await.unwrap().loan_count, 1);
+}
+
+#[tokio::test]
 async fn game_setup_walks_a_stepped_dialog() {
     let t = appx().await;
     let user = Uuid::new_v4();
@@ -2001,7 +2034,8 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
         .await
         .unwrap();
     assert_eq!(account.balance, 90_000);
-    assert_eq!(account.loan_count, 1);
+    assert_eq!(account.loan_count, 0);
+    assert_eq!(account.entries[0].kind, LedgerKind::HouseStake);
     let table = t.tables.get(id).await.unwrap();
     let table = table.lock().await;
     assert_eq!(

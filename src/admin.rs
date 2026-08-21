@@ -1,5 +1,6 @@
 use crate::{
     app::AppState,
+    bank::BotLoanForgivenessReport,
     table::{SeatOccupant, TableMode},
 };
 use anyhow::Result;
@@ -123,6 +124,10 @@ pub async fn reset_money_and_loans(state: &AppState) -> Result<ResetReport> {
         tables,
         humans_kicked,
     })
+}
+
+pub async fn forgive_bot_loans(state: &AppState) -> Result<BotLoanForgivenessReport> {
+    state.bank.forgive_bot_loans().await
 }
 
 pub fn password_matches(actual: &str, supplied: &str) -> bool {

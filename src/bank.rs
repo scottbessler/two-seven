@@ -20,6 +20,7 @@ pub enum AccountOwner {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum LedgerKind {
     ReUp,
+    HouseStake,
     LoanRepayment,
     LoanInterest,
     BuyIn { table: Uuid },
@@ -177,6 +178,27 @@ impl BankStore {
         self.inner.lock().await.accounts.values().cloned().collect()
     }
 
+    pub async fn forgive_bot_loans(&self) -> Result<BotLoanForgivenessReport, anyhow::Error> {
+        let mut guard = self.inner.lock().await;
+        let mut changed = Vec::new();
+        let mut loans = 0;
+        for account in guard.accounts.values_mut() {
+            if matches!(account.owner, AccountOwner::Bot(_)) && account.loan_count > 0 {
+                loans += account.loan_count;
+                account.loan_count = 0;
+                account.updated_at = Utc::now();
+                changed.push(account.clone());
+            }
+        }
+        for account in &changed {
+            self.persist(account).await?;
+        }
+        Ok(BotLoanForgivenessReport {
+            accounts: changed.len(),
+            loans,
+        })
+    }
+
     pub async fn reset_all(&self) -> Result<usize, anyhow::Error> {
         let removed = {
             let mut guard = self.inner.lock().await;
@@ -264,16 +286,26 @@ impl BankStore {
                 let shortfall = amount - balance;
                 let loans = ((shortfall + Self::RE_UP_AMOUNT - 1) / Self::RE_UP_AMOUNT) as u64;
                 let loan_amount = loans as Cents * Self::RE_UP_AMOUNT;
+                let first_bot_funding = matches!(&owner, AccountOwner::Bot(_))
+                    && guard.accounts[&owner].entries.iter().all(|entry| {
+                        !matches!(&entry.kind, LedgerKind::ReUp | LedgerKind::HouseStake)
+                    });
                 Self::append_locked(
                     guard.accounts.get_mut(&owner).expect("account"),
-                    LedgerKind::ReUp,
+                    if first_bot_funding {
+                        LedgerKind::HouseStake
+                    } else {
+                        LedgerKind::ReUp
+                    },
                     loan_amount,
-                    if loans == 1 {
+                    if first_bot_funding {
+                        "house stake".into()
+                    } else if loans == 1 {
                         "re-up loan".into()
                     } else {
                         format!("re-up loan ({loans} loans)")
                     },
-                    loans,
+                    if first_bot_funding { 0 } else { loans },
                 );
             }
         }
@@ -518,6 +550,11 @@ impl BankStore {
         });
     }
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BotLoanForgivenessReport {
+    pub accounts: usize,
+    pub loans: u64,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,25 +588,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_bot_covers_a_big_seat_with_many_loans_in_one_entry() {
+    async fn a_bot_gets_a_house_stake_then_loans_after_busting() {
         let root = std::env::temp_dir().join(format!("two-seven-bigseat-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
         let bot = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
         let table = Uuid::new_v4();
-        // The dearest table costs a thousand times the standard loan.
         let account = bank
             .buy_in(bot.clone(), table, 100_000_000, false)
             .await
             .unwrap();
-        assert_eq!(account.loan_count, 1_000, "one thousand fixed-size loans");
-        assert_eq!(
-            account.entries.len(),
-            2,
-            "one loan entry and a buy-in, not a thousand of each"
-        );
+        assert_eq!(account.loan_count, 0, "the first bot funding is not a loan");
+        assert_eq!(account.entries.len(), 2, "one stake entry and a buy-in");
         assert_eq!(account.entries[0].delta, 100_000_000);
-        assert_eq!(account.entries[0].memo, "re-up loan (1000 loans)");
+        assert_eq!(account.entries[0].kind, LedgerKind::HouseStake);
+        assert_eq!(account.entries[0].memo, "house stake");
         assert_eq!(account.balance, 0);
+        let account = bank.buy_in(bot, Uuid::new_v4(), 100, false).await.unwrap();
+        assert_eq!(account.loan_count, 1);
+        assert_eq!(account.entries[2].kind, LedgerKind::ReUp);
+        assert_eq!(account.entries[2].memo, "re-up loan");
     }
 
     #[tokio::test]
@@ -698,7 +735,7 @@ mod tests {
     #[tokio::test]
     async fn a_large_buy_in_uses_one_entry_and_repaid_loans_one_at_a_time() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
-        let owner = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
+        let owner = AccountOwner::User(Uuid::new_v4());
         let table = Uuid::new_v4();
         let account = bank
             .buy_in(owner.clone(), table, 100_000_000, false)
@@ -720,6 +757,43 @@ mod tests {
         assert_eq!(account.balance, 99_900_000);
         assert_eq!(account.loan_debt(), 99_900_000);
         assert_eq!(account.loan_count, 999);
+    }
+
+    #[tokio::test]
+    async fn forgiving_bot_loans_preserves_balances_and_human_loans() {
+        let root = tempfile_dir();
+        let bank = BankStore::load(&root).await.unwrap();
+        let bot = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
+        let human = AccountOwner::User(Uuid::new_v4());
+        let bot_before = bank.re_up(bot.clone()).await.unwrap();
+        let human_before = bank.re_up(human.clone()).await.unwrap();
+        let report = bank.forgive_bot_loans().await.unwrap();
+        assert_eq!(
+            report,
+            BotLoanForgivenessReport {
+                accounts: 1,
+                loans: 1
+            }
+        );
+        let bot_after = bank.account(bot).await.unwrap();
+        let human_after = bank.account(human).await.unwrap();
+        assert_eq!(bot_after.balance, bot_before.balance);
+        assert_eq!(bot_after.loan_count, 0);
+        assert!(bot_after.updated_at >= bot_before.updated_at);
+        assert_eq!(human_after.balance, human_before.balance);
+        assert_eq!(human_after.loan_count, human_before.loan_count);
+        let reloaded = BankStore::load(&root).await.unwrap();
+        assert_eq!(
+            reloaded
+                .account(AccountOwner::Bot(crate::table::Bot::new(
+                    crate::table::BotKind::Shark,
+                    0
+                )))
+                .await
+                .unwrap()
+                .loan_count,
+            0
+        );
     }
 
     #[tokio::test]
@@ -893,6 +967,7 @@ mod tests {
             .unwrap();
         assert_eq!(account.balance, BankStore::RE_UP_AMOUNT - 100);
         assert_eq!(account.loan_count, 1);
+        assert_eq!(account.entries[0].kind, LedgerKind::ReUp);
     }
 
     #[tokio::test]
