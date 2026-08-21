@@ -206,13 +206,14 @@ function oddsPercent(permille) {
   return `${(permille / 10).toFixed(permille % 10 === 0 ? 0 : 1)}%`;
 }
 
-function ShowdownOdds({ odds, seats }) {
+function ShowdownOdds({ odds, seats, leaders, winners }) {
   if (!odds?.length) return null;
   return html`<div class="showdown-odds" aria-label="Showdown odds">
     ${odds.map((entry) => {
       const seat = seats.find((candidate) => candidate.index === entry.seat);
       const name = seat?.display_name || seat?.occupant || `Seat ${entry.seat}`;
-      return html`<span><b>${name}</b><strong>${oddsPercent(entry.equity_permille)}</strong>${entry.outs?.length ? html`<small>Outs ${entry.outs.map(cardText).join(" ")}</small>` : null}</span>`;
+      const classes = [winners.includes(entry.seat) && "winner", !winners.length && leaders.includes(entry.seat) && "leading"].filter(Boolean).join(" ");
+      return html`<span class=${classes}><b>${name}</b><strong>${oddsPercent(entry.equity_permille)}</strong><small>${entry.outs?.length ? entry.outs.map(cardText).join(" ") : "\u00A0"}</small></span>`;
     })}
   </div>`;
 }
@@ -421,7 +422,7 @@ function TableApp() {
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
-          ${showdown && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} />`}
+          ${showdown && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} leaders=${runout.leaders} winners=${settled ? [...new Set((showdown.awards || []).filter((award) => award.amount > 0).map((award) => award.seat))] : []} />`}
           <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
           ${showdown && html`<p class="showdown-result">${result}</p>`}
         </div>
