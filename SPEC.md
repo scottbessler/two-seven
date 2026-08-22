@@ -369,7 +369,8 @@ Mark each milestone done here as it lands.
 - **V33** Terminal tournament winner state is not exposed to the live table view
   until the final hand reveal/runout pause has finished.
 - **V34** Table preferences persist opt-in confirmations for Fold and All In;
-  when enabled, only that chosen action requires an explicit confirmation step.
+  when enabled, Fold and any action that commits the actor's remaining stack
+  require explicit confirmation without changing the submitted action kind.
 - **V35** The player page finance chart is derived from ledger entry
   `balance_after` values and shows the current signed-in player's account only.
 - **V36** All-in showdown summaries expose per-seat equity at reveal and each
@@ -534,3 +535,6 @@ T23|x|persist blackjack shoes with cut-card count continuity and visualization|V
 - Completed desktop showdown badges hung outside player boxes without being
   included in the rail clearance contract, so winners could overlap table-center
   content; include badges in the desktop geometry invariant under V43.
+- All-in confirmation only wrapped the literal All In button, so a Call that
+  consumed the actor's remaining stack bypassed the warning; classify all-in
+  calls by stack commitment under V34.

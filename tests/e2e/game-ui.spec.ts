@@ -487,6 +487,39 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.map((button) => button.left)).toEqual([...layout].map((button) => button.left).toSorted((a, b) => a - b));
 });
 
+test("confirms a call that spends the rest of your stack", async ({ page }) => {
+  const allInCallState = {
+    ...tableState,
+    seats: tableState.seats.map((seat) => (seat.index === tableState.viewer_seat ? { ...seat, stack: 1_200 } : seat)),
+    hand: {
+      ...tableState.hand,
+      legal_actions: {
+        ...tableState.hand.legal_actions,
+        actions: ["Fold", "Call", "AllIn"],
+        wager: null,
+      },
+    },
+  };
+  const posts = [];
+  await page.route("**/tables/mock/action", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/card-test");
+  await page.evaluate(() => localStorage.setItem("table-confirm-all-in", "on"));
+  await mountTable(page, allInCallState);
+
+  await page.getByRole("button", { name: "Call $12" }).click();
+  const confirm = page.locator("#confirm-call-all-in-action");
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toContainText("This will commit every chip in your stack.");
+  expect(posts, "V34: all-in calls must not post before confirmation").toEqual([]);
+
+  await page.getByRole("button", { name: "Call All In" }).click();
+  await expect(confirm).not.toBeVisible();
+  await expect.poll(() => posts).toEqual([{ kind: "call" }]);
+});
+
 test("keeps compact table header rows from overlapping", async ({ page }) => {
   await page.setViewportSize({ width: 702, height: 900 });
   await mountTable(page, tableState);
