@@ -971,6 +971,7 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
   const rail = await page.locator(".table-stage").evaluate((stage) => {
     const seats = [...stage.querySelectorAll(".seat")];
     const viewer = stage.querySelector(".seat.viewer").getBoundingClientRect();
+    const viewerCards = stage.querySelector(".seat.viewer .seat-cards").getBoundingClientRect();
     const others = seats.filter((seat) => !seat.classList.contains("viewer")).map((seat) => seat.getBoundingClientRect());
     const board = [...stage.querySelectorAll(".board .playing-card, .table-metrics")].map((node) => node.getBoundingClientRect());
     // Browser-evaluated helpers cannot close over test-scope functions.
@@ -981,15 +982,72 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
       viewerWidth: viewer.width,
       otherWidth: Math.max(...others.map((rect) => rect.width)),
       boardOverlap: seats.some((seat) => board.some((card) => overlaps(seat.getBoundingClientRect(), card))),
+      viewerCardsClipped: viewerCards.top < viewer.top - 1 || viewerCards.bottom > viewer.bottom + 1 || viewerCards.left < viewer.left - 1 || viewerCards.right > viewer.right + 1,
+      viewer: { top: viewer.top, right: viewer.right, bottom: viewer.bottom, left: viewer.left },
+      viewerCards: { top: viewerCards.top, right: viewerCards.right, bottom: viewerCards.bottom, left: viewerCards.left },
       stageScrolls: stage.scrollHeight > stage.clientHeight,
     };
   });
   expect(rail.otherRows, "L1: landscape opponents must stay on one row").toBe(1);
   expect(rail.viewerWidth, "L2: the viewer seat must take its own row").toBeGreaterThan(rail.otherWidth * 1.8);
   expect(rail.boardOverlap, "L3: the rail must not collide with the board").toBe(false);
+  expect(rail.viewerCardsClipped, `L5: landscape viewer cards must not be clipped ${JSON.stringify(rail)}`).toBe(false);
   expect(rail.stageScrolls, "L4: a landscape table must fit its stage").toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
   await expect(page).toHaveScreenshot("landscape-table.png", { fullPage: true });
+});
+
+test("packs the table into a portrait phone without scrolling", async ({ page }) => {
+  for (const viewport of [{ width: 412, height: 915 }, { width: 390, height: 844 }, { width: 360, height: 740 }]) {
+    /* oxlint-disable no-await-in-loop */
+    await page.setViewportSize(viewport);
+    await page.goto("/card-test");
+    await page.evaluate(() => localStorage.setItem("table-card-size-percent", "200"));
+    await mountTable(page, tableState);
+    await expect(page.locator(".seat.viewer")).toBeVisible();
+
+    const layout = await page.locator(".table-shell").evaluate((shell) => {
+      const actionButtons = [...shell.querySelectorAll(".actions button")].map((button) => {
+        const rect = button.getBoundingClientRect();
+        const styles = getComputedStyle(button);
+        return {
+          top: Math.round(rect.top),
+          height: Math.round(rect.height),
+          fontSize: styles.fontSize,
+          scrollWidth: button.scrollWidth,
+          clientWidth: button.clientWidth,
+          scrollHeight: button.scrollHeight,
+          clientHeight: button.clientHeight,
+        };
+      });
+      const stage = shell.querySelector(".table-stage");
+      const stageBox = stage.getBoundingClientRect();
+      const viewer = shell.querySelector(".seat.viewer").getBoundingClientRect();
+      const board = [...shell.querySelectorAll(".board .playing-card, .table-metrics")].map((node) => node.getBoundingClientRect());
+      // Browser-evaluated helpers cannot close over test-scope functions.
+      // oxlint-disable-next-line unicorn/consistent-function-scoping
+      const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      return {
+        documentScrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+        stageScrolls: stage.scrollHeight > stage.clientHeight,
+        viewerEscapesStage: viewer.top < stageBox.top - 1 || viewer.bottom > stageBox.bottom + 1,
+        viewerOverlapsBoard: board.some((node) => overlaps(viewer, node)),
+        actionButtons,
+      };
+    });
+    expect(layout.documentScrolls, `V42: portrait poker must not scroll the document at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(layout.stageScrolls, `V42: portrait poker must not scroll inside the table stage at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(layout.viewerEscapesStage, `V42: portrait viewer seat must stay inside the stage at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(layout.viewerOverlapsBoard, `V42: portrait viewer seat must not collide with center cards at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(new Set(layout.actionButtons.map((button) => button.height)).size, "V42: portrait action buttons must share one height").toBe(1);
+    expect(new Set(layout.actionButtons.map((button) => button.fontSize)).size, "V42: portrait action buttons must share one font size").toBe(1);
+    expect(
+      layout.actionButtons.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight),
+      "V42: portrait action labels must fit their buttons",
+    ).toBe(true);
+    /* oxlint-enable no-await-in-loop */
+  }
+  await page.evaluate(() => localStorage.removeItem("table-card-size-percent"));
 });
 
 test("runs an all-in board out one street at a time", async ({ page }) => {

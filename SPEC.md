@@ -390,6 +390,9 @@ Mark each milestone done here as it lands.
   count across hands; a frozen percentage cut card or the safe reserve rule
   triggers reshuffles only at hand start, and the active shoe's dealt cards,
   remaining cards, and exact cut-card marker are always visualized.
+- **V42** Mobile poker and blackjack game surfaces fit portrait and landscape
+  viewports without document or internal stage scrolling; action buttons share
+  one height/font and keep labels contained, and blackjack cards remain readable.
 
 ## §T Build tasks
 
@@ -522,3 +525,7 @@ T23|x|persist blackjack shoes with cut-card count continuity and visualization|V
   content toward the viewer cards; keep odds to one compact horizontal row under V37.
 - Blackjack analyzer treated declining insurance as Stand for the active hand,
   so a hard 5 hit could be called wrong; analyze insurance separately under V40.
+- Mobile game CSS let poker inherit desktop viewer-card height expansion and
+  let generic action-grid rules override blackjack controls, causing internal
+  scroll, tiny cards, inconsistent action sizing, and label overflow; isolate
+  mobile game geometry and action contracts under V42.

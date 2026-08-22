@@ -36,7 +36,7 @@ test("coin menu repays a loan", async ({ page }) => {
   await expect(widget).not.toHaveAttribute("open", "");
   await expect(summary).toBeFocused();
   await summary.click();
-  await page.locator(".blackjack-shell").click({ position: { x: 10, y: 10 } });
+  await page.locator(".brand").click();
   await expect(widget).not.toHaveAttribute("open", "");
   await summary.click();
   await expect(page.getByRole("button", { name: "Pay back $1,000" })).toBeEnabled();
@@ -180,4 +180,82 @@ test("blackjack gear lives in the header and the table uses stable rows", async 
   });
   expect(geometry.settingsInHeader, "blackjack settings gear should sit in the app header").toBe(true);
   expect(geometry.tableBelowHeader, "blackjack table should start below the app header").toBe(true);
+});
+
+test("blackjack mobile uses the available card and action space", async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 });
+  await signIn(page, "blackjackmobile");
+  await page.request.post("/api/bank", { data: {} });
+  await page.route("**/blackjack/start", async (route) => {
+    await route.fulfill({
+      json: {
+        id: "00000000-0000-0000-0000-000000000002",
+        bet: 1000,
+        player: ["2h", "3c"],
+        dealer: ["As"],
+        player_score: 5,
+        dealer_score: null,
+        status: "Playing",
+        message: "Choose an action.",
+        payout: 0,
+        can_hit: true,
+        can_stand: true,
+        can_double: true,
+        can_split: true,
+        can_insure: true,
+        insurance: 0,
+        hands: [{ cards: ["2h", "3c"], bet: 1000, score: 5, status: "Active", blackjack: false }],
+        active_hand: 0,
+        settings: { decks: 8, penetration_percent: 50, counting_tutor: false, counting_quiz: false, bet_analyzer: false },
+        count: null,
+        trainer_log: [],
+        quiz: null,
+        analysis: [],
+        shoe: { decks: 8, total_cards: 416, dealt_cards: 4, remaining_cards: 412, cut_card: 208, penetration_percent: 50, hands_dealt: 1, fresh_shuffle: true },
+      },
+    });
+  });
+
+  await page.goto("/blackjack");
+  await page.getByRole("button", { name: "Deal $10" }).click();
+  await expect(page.locator(".blackjack-actions button")).toHaveText(["Hit", "Stand", "Double", "Split", "Insurance"]);
+
+  const layout = await page.locator(".blackjack-table").evaluate((table) => {
+    const tableBox = table.getBoundingClientRect();
+    const playArea = table.querySelector(".blackjack-play-area").getBoundingClientRect();
+    const hands = [...table.querySelectorAll(".blackjack-hand")].map((hand) => hand.getBoundingClientRect());
+    const cards = [...table.querySelectorAll(".blackjack-play-area .playing-card")].map((card) => card.getBoundingClientRect());
+    const buttons = [...table.querySelectorAll(".blackjack-actions button")].map((button) => {
+      const rect = button.getBoundingClientRect();
+      const styles = getComputedStyle(button);
+      return {
+        height: Math.round(rect.height),
+        fontSize: styles.fontSize,
+        scrollWidth: button.scrollWidth,
+        clientWidth: button.clientWidth,
+        scrollHeight: button.scrollHeight,
+        clientHeight: button.clientHeight,
+        insideTable: rect.left >= tableBox.left - 1 && rect.right <= tableBox.right + 1 && rect.top >= tableBox.top - 1 && rect.bottom <= tableBox.bottom + 1,
+      };
+    });
+    return {
+      documentScrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+      playAreaOpenSpace: playArea.height - hands.reduce((sum, hand) => sum + hand.height, 0),
+      minCardWidth: Math.min(...cards.map((card) => card.width)),
+      maxCardBottom: Math.max(...cards.map((card) => card.bottom)),
+      playAreaBottom: playArea.bottom,
+      buttons,
+    };
+  });
+  expect(layout.documentScrolls, "V42: blackjack mobile must not scroll the document").toBe(false);
+  expect(layout.minCardWidth, `V42: blackjack cards should use mobile space ${JSON.stringify(layout)}`).toBeGreaterThanOrEqual(90);
+  expect(layout.playAreaOpenSpace, `V42: cards should not be tiny in a mostly empty play area ${JSON.stringify(layout)}`).toBeLessThan(260);
+  expect(layout.maxCardBottom, "V42: cards must stay inside the play area").toBeLessThanOrEqual(layout.playAreaBottom + 1);
+  expect(new Set(layout.buttons.map((button) => button.height)).size, "V42: blackjack action buttons must share one height").toBe(1);
+  expect(new Set(layout.buttons.map((button) => button.fontSize)).size, "V42: blackjack action buttons must share one font size").toBe(1);
+  expect(layout.buttons.every((button) => button.insideTable), "V42: blackjack action buttons must stay in table bounds").toBe(true);
+  expect(
+    layout.buttons.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight),
+    "V42: blackjack action labels must fit inside their buttons",
+  ).toBe(true);
 });
