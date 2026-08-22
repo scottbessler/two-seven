@@ -393,6 +393,8 @@ Mark each milestone done here as it lands.
 - **V42** Mobile poker and blackjack game surfaces fit portrait and landscape
   viewports without document or internal stage scrolling; action buttons share
   one height/font and keep labels contained, and blackjack cards remain readable.
+- **V43** Completed desktop showdowns reserve stable clearance for outside
+  outcome badges; seats, cards, and badges never overlap center table content.
 
 ## §T Build tasks
 
@@ -529,3 +531,6 @@ T23|x|persist blackjack shoes with cut-card count continuity and visualization|V
   let generic action-grid rules override blackjack controls, causing internal
   scroll, tiny cards, inconsistent action sizing, and label overflow; isolate
   mobile game geometry and action contracts under V42.
+- Completed desktop showdown badges hung outside player boxes without being
+  included in the rail clearance contract, so winners could overlap table-center
+  content; include badges in the desktop geometry invariant under V43.

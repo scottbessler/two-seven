@@ -313,6 +313,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 @media(min-width:641px){
   .page:has(.table-shell)>#table-app{overflow:hidden}
   .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
+  .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.25rem + var(--viewer-stage-extra,0rem))}
   .decision-area{min-height:3.4rem;padding:.45rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
   .table-shell .actions{grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;width:100%;padding-bottom:0}
   .table-shell .actions button{min-width:0;height:2.9rem;padding:.4rem .25rem;overflow:hidden;line-height:1.1;white-space:normal;overflow-wrap:anywhere}

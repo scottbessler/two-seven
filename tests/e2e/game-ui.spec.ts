@@ -561,7 +561,7 @@ test("keeps seats clear of the board in a short desktop window", async ({ page }
       const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
       const middle = [...stage.querySelectorAll(".board .playing-card, .table-metrics, .showdown-result")]
         .map((node) => node.getBoundingClientRect());
-      const rail = [...stage.querySelectorAll(".seat, .seat-cards")];
+      const rail = [...stage.querySelectorAll(".seat, .seat-cards, .seat-outcome-badges")];
       const box = stage.getBoundingClientRect();
       return {
         onBoard: rail.filter((node) => middle.some((card) => overlaps(node.getBoundingClientRect(), card))).length,
@@ -577,8 +577,51 @@ test("keeps seats clear of the board in a short desktop window", async ({ page }
       await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight),
       `D3: the table must fit a ${height}px window`,
     ).toBe(true);
+    const shellGeometry = await page.locator(".table-shell").evaluate((shell) => {
+      const stage = shell.querySelector(".table-stage");
+      const decision = shell.querySelector(".decision-area");
+      const stageContent = [...stage.querySelectorAll(".seat, .seat-cards, .seat-outcome-badges, .table-center, .showdown-advance")]
+        .map((node) => node.getBoundingClientRect());
+      const contentBottom = Math.max(...stageContent.map((rect) => rect.bottom));
+      const decisionTop = decision.getBoundingClientRect().top;
+      return {
+        contentBottom,
+        decisionTop,
+        overlapsDecision: contentBottom > decisionTop - 8,
+      };
+    });
+    expect(shellGeometry.overlapsDecision, `V43: completed showdown content must clear actions at ${height}px ${JSON.stringify(shellGeometry)}`).toBe(false);
     /* oxlint-enable no-await-in-loop */
   }
+});
+
+test("keeps completed desktop showdowns inside their stage", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await mountTable(page, showdownState);
+  await expect(page.locator(".seat")).toHaveCount(6);
+  await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
+  const geometry = await page.locator(".table-shell").evaluate((shell) => {
+    const stage = shell.querySelector(".table-stage");
+    const decision = shell.querySelector(".decision-area");
+    const center = [...stage.querySelectorAll(".board .playing-card, .table-metrics, .showdown-result, .showdown-advance")]
+      .map((node) => node.getBoundingClientRect());
+    const rail = [...stage.querySelectorAll(".seat, .seat-cards, .seat-outcome-badges")]
+      .map((node) => node.getBoundingClientRect());
+    // Browser-evaluated helpers cannot close over test-scope functions.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
+    const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const contentBottom = Math.max(...[...center, ...rail].map((rect) => rect.bottom));
+    const decisionTop = decision.getBoundingClientRect().top;
+    return {
+      railOverCenter: rail.filter((rect) => center.some((middle) => overlaps(rect, middle))).length,
+      contentBottom,
+      decisionTop,
+      stageBottom: stage.getBoundingClientRect().bottom,
+      overlapsDecision: contentBottom > decisionTop - 8,
+    };
+  });
+  expect(geometry.railOverCenter, `V43: completed showdown rail must clear center content ${JSON.stringify(geometry)}`).toBe(0);
+  expect(geometry.overlapsDecision, `V43: completed showdown content must clear actions ${JSON.stringify(geometry)}`).toBe(false);
 });
 
 test("keeps your own cards off the board at every size", async ({ page }) => {
