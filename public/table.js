@@ -131,11 +131,13 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   const actor = seats.find((seat) => seat.index === hand.legal_actions.seat);
   const callIsAllIn = (hand.legal_actions.to_call || 0) >= (actor?.stack || Infinity);
-  return html`<div class="actions" aria-label="Actions">
+  const wagers = wagerOptions(hand);
+  const actionCount = Number(actions.has("Fold")) + Number(actions.has("Check")) + Number(actions.has("Call")) + wagers.length + Number(actions.has("AllIn"));
+  return html`<div class="actions" aria-label="Actions" style=${`--action-count:${Math.max(1, actionCount)}`}>
     ${actions.has("Fold") && html`<${ConfirmableAction} id="confirm-fold-action" label="Fold" className="danger" enabled=${settings.confirmFold} title="Fold this hand?" message="Your cards will be mucked and you cannot win this pot." confirmLabel="Fold" submit=${() => submit("fold")} />`}
     ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
     ${actions.has("Call") && html`<${ConfirmableAction} id="confirm-call-all-in-action" label=${`Call ${money(hand.legal_actions.to_call)}`} className="primary-action" enabled=${settings.confirmAllIn && callIsAllIn} title="Call all in?" message="This will commit every chip in your stack." confirmLabel="Call All In" submit=${() => submit("call")} />`}
-    ${(actions.has("Bet") || actions.has("Raise")) && wagerOptions(hand).map((option) => html`<button class="wager-action" title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}>${wagerLabel} ${money(option.total)}</button>`)}
+    ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button class="wager-action" title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}>${wagerLabel} ${money(option.total)}</button>`)}
     ${actions.has("AllIn") && html`<${ConfirmableAction} id="confirm-all-in-action" label="All In" className="wager-action all-in-action" enabled=${settings.confirmAllIn} title="Go all in?" message="This will commit every chip in your stack." confirmLabel="All In" submit=${() => submit("all_in")} />`}
     ${!hand.legal_actions.wager && hand.legal_actions.wagers_capped && html`<span class="capped-note">Betting capped · call or fold</span>`}
   </div>`;

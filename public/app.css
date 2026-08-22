@@ -117,7 +117,7 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100%;overflow:hidde
 .blackjack-play-area{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,24rem));justify-content:center;align-items:center;gap:.75rem;min-height:0;overflow:auto}
 .blackjack-play-area .blackjack-hand:first-child{grid-column:1/-1}
 .blackjack-play-area .blackjack-hand:nth-child(2):last-child{grid-column:1/-1}
-.blackjack-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:.5rem}
+.blackjack-actions{display:grid;grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.5rem}
 .blackjack-actions button{display:grid;place-items:center;min-width:0;min-height:2.9rem;overflow:hidden;text-align:center;line-height:1.08;overflow-wrap:anywhere}
 .blackjack-actions .deal-action{background:var(--accent);color:#1a160d}
 .deal-broke{display:grid;place-items:center;min-height:2.9rem;padding:.8rem;color:var(--muted)}
@@ -138,7 +138,7 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100%;overflow:hidde
 .seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid #6caa91;border-radius:10px;background:#10241ff2;min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat b{color:var(--accent)}.seat span{color:var(--muted);font-size:.8rem}
 .hand-info{display:grid;gap:.7rem}.actions:not(.blackjack-actions){display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions:not(.blackjack-actions) input{max-width:10rem}.wager-control{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap}.pot-shortcuts button{padding:.45rem}.fixed-wager{color:var(--muted);padding:.7rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}.showdown-row{display:grid;grid-template-columns:6rem 1fr 8rem;gap:.7rem;border-top:1px solid #346252;padding:.5rem 0}.award-list{display:grid;gap:.35rem}.join-card form{display:flex;flex-wrap:wrap}.join-card input{min-width:8rem;flex:1}
 @media(max-width:640px){body{padding-bottom:5.5rem}.page{padding:.65rem}.blitz-top{align-items:flex-start;flex-direction:column}.blitz-stat-grid,.blitz-score,.difficulty-grid{grid-template-columns:1fr}.blitz-hands{grid-template-columns:repeat(2,minmax(0,1fr));gap:.35rem}.blitz-hands button{min-height:7rem;padding:.3rem}.blitz-hands .board{min-height:4rem}.card-test-grid{--card-w:3.6rem;gap:.45rem;padding:.55rem}.playing-card{--card-w:calc(3.6rem * var(--card-size-scale,1));--card-h:calc(5rem * var(--card-size-scale,1));--corner-gap:calc(.2rem * var(--card-size-scale,1));border-radius:5px}.showdown-row{grid-template-columns:1fr;gap:.2rem}fieldset>div{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:640px){.blackjack-table{gap:.35rem}.blackjack-status-row{gap:.3rem}.blackjack-status-row span{min-height:2.4rem;padding:.25rem;font-size:.68rem}.blackjack-status-row b{font-size:.86rem}.blackjack-shoe-text{font-size:.62rem}.blackjack-play-area{grid-template-columns:1fr;gap:.45rem}.blackjack-hand h2{font-size:.86rem}.blackjack-hand .board{min-height:4.2rem}.blackjack-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:.3rem}.blackjack-actions button{height:2.55rem;min-height:0;padding:.2rem .25rem;font-size:.78rem}.blackjack-trainer-count{gap:.25rem}.blackjack-trainer-count span{font-size:.7rem}.blackjack-quiz div{gap:.25rem}.blackjack-quiz button{font-size:.75rem}}
+@media(max-width:640px){.blackjack-table{gap:.35rem}.blackjack-status-row{gap:.3rem}.blackjack-status-row span{min-height:2.4rem;padding:.25rem;font-size:.68rem}.blackjack-status-row b{font-size:.86rem}.blackjack-shoe-text{font-size:.62rem}.blackjack-play-area{grid-template-columns:1fr;gap:.45rem}.blackjack-hand h2{font-size:.86rem}.blackjack-hand .board{min-height:4.2rem}.blackjack-actions{grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.3rem}.blackjack-actions button{height:2.55rem;min-height:0;padding:.2rem .25rem;font-size:.78rem}.blackjack-trainer-count{gap:.25rem}.blackjack-trainer-count span{font-size:.7rem}.blackjack-quiz div{gap:.25rem}.blackjack-quiz button{font-size:.75rem}}
 
 .page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100dvh;overflow:hidden;padding-top:.6rem}
 html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
@@ -180,7 +180,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-stage .seats{display:grid;gap:.4rem;pointer-events:auto}
 .table-stage .other-seats{grid-template-columns:repeat(auto-fit,minmax(7.2rem,1fr))}
 .table-stage .viewer-seats{grid-template-columns:minmax(0,1fr)}
-.table-stage .seat{position:relative;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(2.85rem,1fr) auto;align-items:start;justify-items:center;min-width:0;height:8rem;min-height:0;overflow:visible;gap:.08rem;padding:.4rem .45rem;border-radius:7px;pointer-events:auto}
+.table-stage .seat{position:relative;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(3.65rem,1fr) auto;align-items:start;justify-items:center;min-width:0;height:8.55rem;min-height:0;overflow:visible;gap:.08rem;padding:.4rem .45rem;border-radius:7px;pointer-events:auto}
 .table-stage .viewer-seats .seat{height:calc(12.8rem + var(--viewer-stage-extra,0rem));grid-template-rows:auto auto auto auto minmax(0,1fr)}
 .seat .player-info{position:relative;display:flex;align-items:center;justify-content:center;gap:.3rem}
 .player-info>strong{max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -249,7 +249,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .tournament-complete small{color:var(--muted);font-size:.68rem;font-weight:800;text-transform:uppercase}
 .tournament-complete b{color:#f1d56e;font-size:1.05rem}
 .decision-area{position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;padding:.5rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
-.table-shell .actions{position:static;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
+.table-shell .actions{position:static;display:grid;grid-template-columns:repeat(var(--action-count,7),minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
 .table-shell .actions .action-confirm{display:contents}
 .table-shell .actions button{min-width:0;height:2.7rem;padding:.45rem .3rem;border-radius:6px;white-space:nowrap}
 .table-shell .actions .primary-action{background:#d9ad55;color:#1a160d}
@@ -313,9 +313,9 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 @media(min-width:641px){
   .page:has(.table-shell)>#table-app{overflow:hidden}
   .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
-  .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.25rem + var(--viewer-stage-extra,0rem))}
+  .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.65rem + var(--viewer-stage-extra,0rem))}
   .decision-area{min-height:3.4rem;padding:.45rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
-  .table-shell .actions{grid-template-columns:repeat(7,minmax(0,1fr));gap:.4rem;width:100%;padding-bottom:0}
+  .table-shell .actions{grid-template-columns:repeat(var(--action-count,7),minmax(0,1fr));gap:.4rem;width:100%;padding-bottom:0}
   .table-shell .actions button{min-width:0;height:2.9rem;padding:.4rem .25rem;overflow:hidden;line-height:1.1;white-space:normal;overflow-wrap:anywhere}
   .game-log{align-self:stretch;height:100%;min-height:0;overflow:auto}
   .game-log ol{grid-template-columns:1fr;align-content:start}
@@ -370,7 +370,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .showdown-result{margin:.1rem 0 0;font-size:.68rem;text-align:center;transform:none}
 
   .table-stage .seats{grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.25rem}
-  .table-stage .seats .seat{height:5.35rem;gap:.08rem;min-width:0;min-height:0;overflow:hidden;padding:.25rem .2rem;font-size:.62rem}
+  .table-stage .seats .seat{height:5.35rem;grid-template-rows:auto auto minmax(2.65rem,1fr) auto;gap:.08rem;min-width:0;min-height:0;overflow:hidden;padding:.25rem .2rem;font-size:.62rem}
   .table-stage .seats.viewer-seats{margin-top:.15rem}
   .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;display:grid;height:14.1rem;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto minmax(0,1fr);justify-items:center;padding:.3rem}
   .seat-corner-badges{position:absolute;right:.1rem;top:.1rem;z-index:6;min-height:0;max-width:calc(100% - .2rem);overflow:hidden;justify-content:flex-end}
@@ -392,7 +392,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell .card-config-preview .playing-card{--card-w:var(--viewer-card-w-mobile);--card-h:var(--viewer-card-h-mobile);--corner-gap:.1rem;margin-left:-.2rem}
 
   .decision-area{min-height:3.2rem;padding:.35rem .15rem}
-  .table-shell .actions{grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-flow:column;gap:.2rem;padding-bottom:0}
+  .table-shell .actions{grid-template-columns:repeat(var(--action-count,7),minmax(0,1fr));grid-auto-flow:column;gap:.2rem;padding-bottom:0}
   .table-shell .actions button{display:grid;place-items:center;height:2.35rem;min-width:0;overflow:hidden;padding:.2rem .08rem;font-size:.6rem;line-height:1.05;text-align:center;white-space:normal;overflow-wrap:anywhere}
   .table-shell .actions .capped-note{grid-column:1/-1;grid-row:2}
   .game-log{height:5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
@@ -417,7 +417,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-stage .seats{margin-top:auto}
   .seat.viewer .seat-cards .playing-card{--card-w:calc(var(--viewer-card-w-mobile)*.78);--card-h:calc(var(--viewer-card-h-mobile)*.78)}
   .game-log{display:none}
-  .table-shell .actions{grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-flow:column;gap:.2rem}
+  .table-shell .actions{grid-template-columns:repeat(var(--action-count,7),minmax(0,1fr));grid-auto-flow:column;gap:.2rem}
   .table-shell .actions button{height:2.1rem;font-size:.55rem}
   .table-controls button{padding:.25rem .5rem;font-size:.65rem}
 }
@@ -426,7 +426,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   body:has(.blitz-shell){padding-bottom:0}
   body:has(.blitz-shell) .page{height:100dvh;overflow:hidden;padding-bottom:0}
   .blitz-shell{min-height:0;overflow:hidden}
-  .blackjack-table .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100vw - 3rem)/3));--card-h:min(calc(8.9rem * var(--card-size-scale,1)),calc((100vw - 3rem)/3 * 1.39));--corner-gap:.2rem}
+  .blackjack-table .playing-card{--card-w:min(calc(7.5rem * var(--card-size-scale,1)),calc((100vw - 3rem)/3));--card-h:min(calc(10.4rem * var(--card-size-scale,1)),calc((100vw - 3rem)/3 * 1.39));--corner-gap:.2rem}
   .blitz-table .playing-card{--card-w:min(calc(3.6rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5));--card-h:min(calc(5rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5 * 1.39))}
   .table-stage .seat-cards.revealed .playing-card{--card-w:2.55rem;--card-h:3.55rem}
 }
@@ -437,10 +437,10 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .blackjack-status-row,.blackjack-shoe,.blackjack-table>.blitz-feedback,.blackjack-table>.blackjack-actions,.blackjack-trainer-count,.blackjack-trainer-log,.blackjack-analysis,.blackjack-quiz{grid-column:1/-1}
   .blackjack-hand h2{margin:.1rem 0;font-size:.8rem}
   .blackjack-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),calc((100dvh - 9rem)/3 * .72));--card-h:min(calc(4.3rem * var(--card-size-scale,1)),calc((100dvh - 9rem)/3))}
-  .blackjack-actions{grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr));gap:.25rem}
+  .blackjack-actions{grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.25rem}
   .blackjack-actions button{height:2rem;min-height:0;box-sizing:border-box;padding:.1rem .2rem;font-size:.7rem}
   .table-stage{gap:.2rem}
-  .table-stage .seats .seat{height:5.4rem;min-height:0;overflow:hidden}
+  .table-stage .seats .seat{height:5.4rem;grid-template-rows:auto auto minmax(2.1rem,1fr) auto;min-height:0;overflow:hidden}
   .table-stage .seats .seat.viewer{height:6.65rem}
   .table-stage .seat-cards .playing-card{--card-w:1.5rem;--card-h:2.1rem}
   .table-stage .seat-cards.revealed .playing-card{--card-w:1.9rem;--card-h:2.65rem}

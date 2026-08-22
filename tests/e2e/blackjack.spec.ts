@@ -228,7 +228,10 @@ test("blackjack mobile uses the available card and action space", async ({ page 
     const buttons = [...table.querySelectorAll(".blackjack-actions button")].map((button) => {
       const rect = button.getBoundingClientRect();
       const styles = getComputedStyle(button);
+      const actionBar = button.closest(".blackjack-actions").getBoundingClientRect();
       return {
+        left: rect.left,
+        right: rect.right,
         height: Math.round(rect.height),
         fontSize: styles.fontSize,
         scrollWidth: button.scrollWidth,
@@ -236,6 +239,8 @@ test("blackjack mobile uses the available card and action space", async ({ page 
         scrollHeight: button.scrollHeight,
         clientHeight: button.clientHeight,
         insideTable: rect.left >= tableBox.left - 1 && rect.right <= tableBox.right + 1 && rect.top >= tableBox.top - 1 && rect.bottom <= tableBox.bottom + 1,
+        barLeft: actionBar.left,
+        barRight: actionBar.right,
       };
     });
     return {
@@ -253,6 +258,8 @@ test("blackjack mobile uses the available card and action space", async ({ page 
   expect(layout.maxCardBottom, "V42: cards must stay inside the play area").toBeLessThanOrEqual(layout.playAreaBottom + 1);
   expect(new Set(layout.buttons.map((button) => button.height)).size, "V42: blackjack action buttons must share one height").toBe(1);
   expect(new Set(layout.buttons.map((button) => button.fontSize)).size, "V42: blackjack action buttons must share one font size").toBe(1);
+  expect(layout.buttons[0].left, "V44: blackjack actions must start at the bar edge").toBeLessThanOrEqual(layout.buttons[0].barLeft + 1);
+  expect(layout.buttons.at(-1).right, "V44: blackjack actions must reach the bar edge").toBeGreaterThanOrEqual(layout.buttons.at(-1).barRight - 1);
   expect(layout.buttons.every((button) => button.insideTable), "V42: blackjack action buttons must stay in table bounds").toBe(true);
   expect(
     layout.buttons.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight),

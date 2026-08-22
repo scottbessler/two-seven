@@ -396,6 +396,9 @@ Mark each milestone done here as it lands.
   one height/font and keep labels contained, and blackjack cards remain readable.
 - **V43** Completed desktop showdowns reserve stable clearance for outside
   outcome badges; seats, cards, and badges never overlap center table content.
+- **V44** Action bars distribute their visible buttons across the full available
+  width; visible content renders in its own layer/row and is not obscured by
+  neighboring cards, rows, controls, or overlays except explicit hover zooms.
 
 ## §T Build tasks
 
@@ -538,3 +541,7 @@ T23|x|persist blackjack shoes with cut-card count continuity and visualization|V
 - All-in confirmation only wrapped the literal All In button, so a Call that
   consumed the actor's remaining stack bypassed the warning; classify all-in
   calls by stack commitment under V34.
+- Action bars hard-coded poker's maximum action count while blackjack used
+  auto-fit columns, leaving short bars partially empty; opponent seat cards
+  could also visually cover wager badges. Drive shared action grids from
+  visible action count and cover row/layer visibility under V44.

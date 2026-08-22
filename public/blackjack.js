@@ -170,6 +170,8 @@ function App() {
   };
 
   const bets = betOptions(balance);
+  const playActionCount = [game?.can_hit, game?.can_stand, game?.can_double, game?.can_split, game?.can_insure].filter(Boolean).length;
+  const actionCount = game?.status === "Playing" ? playActionCount : bets.length;
   const trainerControls = html`<${TrainerSettings} settings=${trainerSettings} setSettings=${setTrainerSettings} />`;
   return html`
     <${CardSettings} interactive=${true} trigger=${false} children=${trainerControls} />
@@ -188,7 +190,7 @@ function App() {
         <p class="blitz-feedback">${game.message}</p>
         <${TrainerPanel} game=${game} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
       `}
-      <div class="actions blackjack-actions">
+      <div class="actions blackjack-actions" style=${`--action-count:${Math.max(1, actionCount)}`}>
         ${game?.status === "Playing" ? html`
           ${game.can_hit && html`<button type="button" disabled=${busy} onClick=${() => act("hit")}>Hit</button>`}
           ${game.can_stand && html`<button type="button" disabled=${busy} onClick=${() => act("stand")}>Stand</button>`}

@@ -362,13 +362,28 @@ test("shows live hand cues and event log", async ({ page }) => {
     && viewerWager.y + viewerWager.height > viewerCards.y;
   expect(wagerBehindCards, "V16: viewer cards must not cover the viewer wager").toBe(false);
   const opponentWagerLayout = await page.locator(".other-seats").evaluate((rail) => [...rail.querySelectorAll(".seat")].map((seat) => {
-    const cards = seat.querySelector(".seat-cards,.seat-card-state")?.getBoundingClientRect();
-    const wager = seat.querySelector(".seat-wager:not(.no-wager)")?.getBoundingClientRect();
-    if (!cards || !wager) return true;
+    const cardNode = seat.querySelector(".seat-cards,.seat-card-state");
+    const wagerNode = seat.querySelector(".seat-wager:not(.no-wager)");
+    const cards = cardNode?.getBoundingClientRect();
+    const wager = wagerNode?.getBoundingClientRect();
+    if (!cards || !wager || !wagerNode) return { ok: true };
     const overlaps = wager.left < cards.right && wager.right > cards.left && wager.top < cards.bottom && wager.bottom > cards.top;
-    return !overlaps && wager.top >= cards.bottom;
-  }).every(Boolean));
-  expect(opponentWagerLayout, "opponent wagers must sit below cards/folded state without overlap").toBe(true);
+    const topmost = document.elementFromPoint(wager.left + wager.width / 2, wager.top + wager.height / 2);
+    const coveredByCard = Boolean(topmost?.closest?.(".seat-cards,.playing-card"));
+    const coveredByControl = Boolean(topmost?.closest?.(".decision-area,.table-controls,.game-log"));
+    return {
+      name: seat.querySelector(".player-info strong")?.textContent,
+      ok: !overlaps && wager.top >= cards.bottom && wager.width > 0 && wager.height > 0 && !coveredByCard && !coveredByControl,
+      overlaps,
+      coveredBy: topmost?.className || topmost?.tagName || null,
+      coveredByCard,
+      coveredByControl,
+      cardsBottom: cards.bottom,
+      wagerTop: wager.top,
+      wagerBottom: wager.bottom,
+    };
+  }));
+  expect(opponentWagerLayout.every((seat) => seat.ok), `V44: opponent wagers must sit below cards/folded state and remain visible ${JSON.stringify(opponentWagerLayout)}`).toBe(true);
   await expect(page.locator(".table-stage > .card-settings")).toHaveCount(0);
   const stageStart = await page.locator(".table-stage").evaluate((stage) => {
     const first = stage.firstElementChild;
@@ -464,6 +479,7 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   await expect(buttons).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In"]);
   const layout = await buttons.evaluateAll((nodes) => {
     const area = nodes[0].closest(".decision-area")?.getBoundingClientRect();
+    const bar = nodes[0].closest(".actions")?.getBoundingClientRect();
     return nodes.map((node) => {
       const rect = node.getBoundingClientRect();
       return {
@@ -477,6 +493,8 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
         scrollHeight: node.scrollHeight,
         clientHeight: node.clientHeight,
         insideActionBar: area ? rect.left >= area.left - 1 && rect.right <= area.right + 1 && rect.top >= area.top - 1 && rect.bottom <= area.bottom + 1 : false,
+        barLeft: bar?.left,
+        barRight: bar?.right,
       };
     });
   });
@@ -485,6 +503,8 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.every((button) => button.insideActionBar), "action buttons must stay inside the action bar").toBe(true);
   expect(layout.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight), "action labels must fit inside their buttons").toBe(true);
   expect(layout.map((button) => button.left)).toEqual([...layout].map((button) => button.left).toSorted((a, b) => a - b));
+  expect(layout[0].left, "V44: first action should start at the action bar edge").toBeLessThanOrEqual(Math.ceil(layout[0].barLeft + 1));
+  expect(layout.at(-1).right, "V44: last action should reach the action bar edge").toBeGreaterThanOrEqual(Math.floor(layout.at(-1).barRight - 1));
 });
 
 test("confirms a call that spends the rest of your stack", async ({ page }) => {
@@ -518,6 +538,37 @@ test("confirms a call that spends the rest of your stack", async ({ page }) => {
   await page.getByRole("button", { name: "Call All In" }).click();
   await expect(confirm).not.toBeVisible();
   await expect.poll(() => posts).toEqual([{ kind: "call" }]);
+});
+
+test("uses the full action bar when only a few actions are available", async ({ page }) => {
+  const shortActionState = {
+    ...tableState,
+    hand: {
+      ...tableState.hand,
+      legal_actions: {
+        ...tableState.hand.legal_actions,
+        actions: ["Fold", "Call", "AllIn"],
+        wager: null,
+      },
+    },
+  };
+  await mountTable(page, shortActionState);
+  const geometry = await page.locator(".actions").evaluate((bar) => {
+    const barBox = bar.getBoundingClientRect();
+    const buttons = [...bar.querySelectorAll("button")].map((button) => button.getBoundingClientRect());
+    return {
+      count: buttons.length,
+      firstLeft: buttons[0].left,
+      lastRight: buttons.at(-1).right,
+      barLeft: barBox.left,
+      barRight: barBox.right,
+      equalWidths: new Set(buttons.map((button) => Math.round(button.width))).size === 1,
+    };
+  });
+  expect(geometry.count).toBe(3);
+  expect(geometry.firstLeft, `V44: short action bar should start full-width ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(geometry.barLeft + 1);
+  expect(geometry.lastRight, `V44: short action bar should end full-width ${JSON.stringify(geometry)}`).toBeGreaterThanOrEqual(geometry.barRight - 1);
+  expect(geometry.equalWidths, "V44: short action buttons should distribute evenly").toBe(true);
 });
 
 test("keeps compact table header rows from overlapping", async ({ page }) => {
