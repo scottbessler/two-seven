@@ -726,6 +726,10 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
         const cornerBadges = seat.querySelector(".seat-corner-badges");
         const cornerBox = cornerBadges?.getBoundingClientRect();
         const playerInfo = seat.querySelector(".player-info")?.getBoundingClientRect();
+        const playerInfoStyle = seat.querySelector(".player-info")
+          ? getComputedStyle(seat.querySelector(".player-info"))
+          : null;
+        const hasCornerBadge = Boolean(cornerBadges && cornerBadges.textContent.trim());
         const outcome = seat.querySelector(".seat-outcome-badges i");
         const outcomeBox = outcome?.getBoundingClientRect();
         return {
@@ -734,6 +738,13 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
           wagerInside: Boolean(wagerBox)
             && wagerBox.top >= seatBox.top - 1
             && wagerBox.bottom <= seatBox.bottom + 1,
+          hasCornerBadge,
+          badgeInfoCentered: !hasCornerBadge || (
+            Boolean(playerInfo && playerInfoStyle)
+            && Math.abs((playerInfo.left + playerInfo.width / 2) - (seatBox.left + seatBox.width / 2)) <= 1
+            && playerInfoStyle.maxWidth === "100%"
+            && playerInfoStyle.justifySelf === "center"
+          ),
           nameOverCorner: Boolean(playerInfo && cornerBox && cornerBadges.textContent.trim())
             && overlaps(playerInfo, cornerBox),
           outcomeVisible: Boolean(outcome && outcomeBox && outcomeBox.width > 0 && outcomeBox.height > 0),
@@ -752,6 +763,9 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
       `V45: visible opponent wagers must stay inside seats ${JSON.stringify(geometry)}`,
     ).toBe(true);
     expect(geometry.every((seat) => !seat.nameOverCorner), `V45: player names must clear corner badges ${JSON.stringify(geometry)}`).toBe(true);
+    const badgeSeats = geometry.filter((seat) => seat.hasCornerBadge);
+    expect(badgeSeats.length).toBeGreaterThan(0);
+    expect(badgeSeats.every((seat) => seat.badgeInfoCentered), `V45: compact opponent names with in-flow badges must stay centered ${JSON.stringify(geometry)}`).toBe(true);
     if (expectOutcome) {
       const outcomes = geometry.filter((seat) => seat.outcomeVisible);
       expect(outcomes.length).toBeGreaterThan(0);
@@ -761,6 +775,20 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
 
   await inspectRail(tableState);
   await inspectRail(tournamentCompleteRailState, true);
+  await mountTable(page, { ...tableState, button: tableState.viewer_seat });
+  const viewerBadgeLayout = await page.locator(".seat.viewer").evaluate((seat) => {
+    const badges = seat.querySelector(".seat-corner-badges");
+    const playerInfo = seat.querySelector(".player-info");
+    const styles = getComputedStyle(playerInfo);
+    return {
+      hasCornerBadge: Boolean(badges && badges.textContent.trim()),
+      maxWidth: styles.maxWidth,
+      justifySelf: styles.justifySelf,
+    };
+  });
+  expect(viewerBadgeLayout.hasCornerBadge).toBe(true);
+  expect(viewerBadgeLayout.maxWidth).not.toBe("100%");
+  expect(viewerBadgeLayout.justifySelf).toBe("start");
 });
 
 test("keeps seats clear of the board in a short desktop window", async ({ page }) => {
