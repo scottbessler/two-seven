@@ -399,6 +399,9 @@ Mark each milestone done here as it lands.
 - **V44** Action bars distribute their visible buttons across the full available
   width; visible content renders in its own layer/row and is not obscured by
   neighboring cards, rows, controls, or overlays except explicit hover zooms.
+- **V45** Compact seats never clip their own rows: wagers, dealer/blind badges,
+  and outcome badges all remain fully visible and non-overlapping at mobile
+  viewports.
 
 ## §T Build tasks
 
@@ -432,6 +435,7 @@ T16|x|expire, resume, and limit Hand Blitz runs server-side|V1,V25
 T21|x|add blackjack card-counting and strategy trainer settings|V24,V25,V27,V28,V31,V38
 T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
 T23|x|persist blackjack shoes with cut-card count continuity and visualization|V38,V41
+T24|x|keep compact mobile seat rows visible and badge-safe|V45
 
 ## §B Bug log
 
@@ -545,3 +549,7 @@ T23|x|persist blackjack shoes with cut-card count continuity and visualization|V
   auto-fit columns, leaving short bars partially empty; opponent seat cards
   could also visually cover wager badges. Drive shared action grids from
   visible action count and cover row/layer visibility under V44.
+- Compact mobile seats fixed their height and clipped overflow, slicing wagers
+  and outcome badges while corner dealer/blind badges could cover long names;
+  size rows to their content, place compact badges in flow, and reserve their
+  clearance under V45.
