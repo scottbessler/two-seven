@@ -402,6 +402,9 @@ Mark each milestone done here as it lands.
 - **V45** Compact seats never clip their own rows: wagers, dealer/blind badges,
   and outcome badges all remain fully visible and non-overlapping at mobile
   viewports.
+- **V46** Interactive controls use one responsive size contract: buttons keep
+  shared heights, contained single-line labels, and usable tap targets across
+  mobile and narrow desktop surfaces.
 
 ## §T Build tasks
 
@@ -436,6 +439,7 @@ T21|x|add blackjack card-counting and strategy trainer settings|V24,V25,V27,V28,
 T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
 T23|x|persist blackjack shoes with cut-card count continuity and visualization|V38,V41
 T24|x|keep compact mobile seat rows visible and badge-safe|V45
+T25|x|unify responsive button sizing and label containment|V46
 
 ## §B Bug log
 
@@ -553,3 +557,7 @@ T24|x|keep compact mobile seat rows visible and badge-safe|V45
   and outcome badges while corner dealer/blind badges could cover long names;
   size rows to their content, place compact badges in flow, and reserve their
   clearance under V45.
+- Button surfaces independently overrode height, padding, and wrapping at
+  different breakpoints, so narrow action bars and confirmation footers could
+  clip or raggedly wrap labels; centralize the responsive control contract and
+  use predictable mobile footer layout under V46.

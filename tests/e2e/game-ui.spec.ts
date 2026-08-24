@@ -530,6 +530,65 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.at(-1).right, "V44: last action should reach the action bar edge").toBeGreaterThanOrEqual(Math.floor(layout.at(-1).barRight - 1));
 });
 
+test("keeps mobile controls uniform and confirmation actions tappable", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  const allInCallState = {
+    ...tableState,
+    seats: tableState.seats.map((seat) => (seat.index === tableState.viewer_seat ? { ...seat, stack: 1_200 } : seat)),
+    hand: {
+      ...tableState.hand,
+      legal_actions: {
+        ...tableState.hand.legal_actions,
+        actions: ["Fold", "Call", "AllIn"],
+        wager: null,
+      },
+    },
+  };
+  await page.goto("/card-test");
+  await page.evaluate(() => localStorage.setItem("table-confirm-all-in", "on"));
+  await mountTable(page, allInCallState);
+  await expect(page.locator(".actions")).toBeVisible();
+
+  const actionLayout = await page.locator(".actions button").evaluateAll((buttons) => buttons.flatMap((button) => {
+    const buttonBox = button.getBoundingClientRect();
+    if (!buttonBox.width || !buttonBox.height) return [];
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const labelBox = range.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    return {
+      height: buttonBox.height,
+      inside: labelBox.left >= buttonBox.left - 1
+        && labelBox.right <= buttonBox.right + 1
+        && labelBox.top >= buttonBox.top - 1
+        && labelBox.bottom <= buttonBox.bottom + 1,
+      fits: button.scrollWidth <= button.clientWidth,
+      lineCount: labelBox.height / lineHeight,
+      tapHeight: buttonBox.height,
+    };
+  }));
+  expect(actionLayout.length).toBeGreaterThan(0);
+  expect(new Set(actionLayout.map((button) => Math.round(button.height))).size, "mobile action controls must share one height").toBe(1);
+  expect(actionLayout.every((button) => button.inside && button.fits && button.lineCount < 2), `V46: mobile action labels must fit ${JSON.stringify(actionLayout)}`).toBe(true);
+  expect(actionLayout.every((button) => button.tapHeight >= 40), "mobile actions must retain a sane tap height").toBe(true);
+
+  await page.getByRole("button", { name: "Call $12" }).click();
+  const confirmButtons = page.locator("#confirm-call-all-in-action footer button");
+  await expect(confirmButtons).toHaveCount(2);
+  const confirmLayout = await confirmButtons.evaluateAll((buttons) => buttons.map((button) => {
+    const buttonBox = button.getBoundingClientRect();
+    const footerBox = button.parentElement.getBoundingClientRect();
+    return {
+      height: buttonBox.height,
+      insideFooter: buttonBox.left >= footerBox.left - 1 && buttonBox.right <= footerBox.right + 1,
+      insideViewport: buttonBox.left >= 0 && buttonBox.right <= innerWidth && buttonBox.top >= 0 && buttonBox.bottom <= innerHeight,
+      fits: button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight,
+    };
+  }));
+  expect(confirmLayout.every((button) => button.height >= 40 && button.insideFooter && button.insideViewport && button.fits), `V46: confirmation actions must fit at 360px ${JSON.stringify(confirmLayout)}`).toBe(true);
+});
+
 test("confirms a call that spends the rest of your stack", async ({ page }) => {
   const allInCallState = {
     ...tableState,
