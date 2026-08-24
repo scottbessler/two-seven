@@ -6,7 +6,7 @@
 .four-color-suits .playing-card.suit-c,.four-color-suits .playing-card.suit-c span,.four-color-suits .playing-card.suit-c b{color:#124f8c!important}
 .four-color-suits .playing-card.suit-d,.four-color-suits .playing-card.suit-d span,.four-color-suits .playing-card.suit-d b{color:darkorange!important}
 /* Shared card-face geometry scales with both card dimensions. */
-:root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57;--control-height:2.7rem;--control-font-size:1rem;--control-padding-block:.45rem;--control-padding-inline:.65rem;--control-line-height:1.1}
+:root{color-scheme:dark;--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57;--control-height:2.7rem;--control-font-size:1rem;--control-padding-block:.45rem;--control-padding-inline:.65rem;--control-line-height:1.1;--control-emphasis-font-size:1rem;--dense-control-height:2.7rem;--dense-control-font-size:1rem;--dense-control-padding-block:.45rem;--dense-control-padding-inline:.65rem}
 *{box-sizing:border-box}
 body{margin:0;background:radial-gradient(circle at top,#1d5948,var(--felt));color:var(--ink);font:16px system-ui,sans-serif;min-height:100vh}
 .page{max-width:1100px;margin:0 auto;padding:1rem}
@@ -118,7 +118,7 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100%;overflow:hidde
 .blackjack-play-area .blackjack-hand:first-child{grid-column:1/-1}
 .blackjack-play-area .blackjack-hand:nth-child(2):last-child{grid-column:1/-1}
 .blackjack-actions{display:grid;grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.5rem}
-.blackjack-actions button{display:grid;place-items:center;min-width:0;overflow:visible;text-align:center}
+.blackjack-actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
 .blackjack-actions .deal-action{background:var(--accent);color:#1a160d}
 .deal-broke{display:grid;place-items:center;min-height:2.9rem;padding:.8rem;color:var(--muted)}
 .blackjack-hand{display:grid;align-content:center;gap:.4rem;min-width:0;min-height:0;text-align:center}
@@ -241,7 +241,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .seat.champion{border-color:#f1d56e;background:linear-gradient(135deg,#1b3d32 0%,#10241f 58%,#423618 100%);box-shadow:0 0 0 2px #f1d56e,0 0 30px 8px #f1d56e99,inset 0 0 24px #f1d56e30}
 .seat.folded{opacity:.58;filter:saturate(.35)}
 .showdown-advance{display:flex;justify-content:center;margin:0}
-.showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-height);padding:var(--control-padding-block) var(--control-padding-inline);overflow:visible;border-radius:6px;border-color:#d9ad55;background:#10241f;color:var(--ink);font-size:var(--control-font-size);line-height:var(--control-line-height);white-space:nowrap}
+.showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-height);padding:var(--control-padding-block) var(--control-padding-inline);overflow:hidden;border-radius:6px;border-color:#d9ad55;background:#10241f;color:var(--ink);font-size:var(--control-emphasis-font-size);line-height:var(--control-line-height);white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid #d9ad55;border-radius:6px}
 .showdown-progress{position:absolute;left:0;top:0;bottom:0;background:#d9ad5540;transition:width .1s linear}
 .house-deal button{background:#245a49;border-color:#6caa91;color:var(--ink)}
@@ -252,7 +252,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .decision-area{position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;padding:.5rem;border-top:1px solid #346252;border-bottom:1px solid #346252;background:#10241f70}
 .table-shell .actions{position:static;display:grid;grid-template-columns:repeat(var(--action-count,7),minmax(0,1fr));gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
 .table-shell .actions .action-confirm{display:contents}
-.table-shell .actions button{min-width:0;border-radius:6px}
+.table-shell .actions>button,.table-shell .actions>.action-confirm>button,.blackjack-actions>button{min-width:0;min-height:var(--dense-control-height);padding:var(--dense-control-padding-block) var(--dense-control-padding-inline);font-size:var(--dense-control-font-size);line-height:var(--control-line-height);overflow:hidden;white-space:nowrap;border-radius:6px}
 .table-shell .actions .primary-action{background:#d9ad55;color:#1a160d}
 .table-shell .actions .capped-note{display:grid;grid-column:1/-1;place-items:center;color:var(--muted);font-size:.72rem}
 .table-shell .actions .wager-action{background:#245a49;color:var(--ink)}
@@ -303,7 +303,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .site-header{padding-top:env(safe-area-inset-top)}
 .table-shell .actions{padding-bottom:calc(.65rem + env(safe-area-inset-bottom))}
 @media(max-width:760px){
-  :root{--control-height:2.7rem;--control-font-size:.72rem;--control-padding-block:.4rem;--control-padding-inline:.25rem}
+  :root{--control-height:2.7rem;--control-font-size:.72rem;--control-padding-block:.4rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.7rem;--dense-control-font-size:.72rem;--dense-control-padding-block:.4rem;--dense-control-padding-inline:.25rem}
   .page:has(.table-shell) .site-header{display:grid;grid-template-columns:minmax(0,1fr) auto 2rem;grid-template-rows:auto auto;align-items:center;align-content:start;gap:.05rem .5rem;height:2.55rem;margin-bottom:.15rem;white-space:nowrap}
   .page:has(.table-shell) .brand{grid-column:1;grid-row:1;align-self:end}
   .page:has(.table-shell) .bank-widget{grid-column:2;grid-row:1/3;align-self:center;justify-self:end;margin-left:0}
@@ -323,6 +323,9 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .game-log{align-self:stretch;height:100%;min-height:0;overflow:auto}
   .game-log ol{grid-template-columns:1fr;align-content:start}
   .game-log li{grid-template-columns:4.25rem 1fr}
+}
+@media(max-width:640px){
+  :root{--control-height:2.7rem;--control-font-size:.72rem;--control-padding-block:.35rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.7rem;--dense-control-font-size:.48rem;--dense-control-padding-block:.35rem;--dense-control-padding-inline:.1rem}
 }
 @media(max-height:500px) and (orientation:landscape){
   .blitz-shell{gap:.25rem}
@@ -346,7 +349,6 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .blackjack-table .playing-card{--card-w:3.1rem;--card-h:4.3rem;--corner-gap:.12rem}
 }
 @media (max-width:640px),(max-height:520px){
-  :root{--control-height:2.7rem;--control-font-size:.48rem;--control-padding-block:.35rem;--control-padding-inline:.2rem}
   html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
   .page:has(.table-shell){display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + env(safe-area-inset-top)) calc(.45rem + env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) calc(.45rem + env(safe-area-inset-left))}
@@ -400,17 +402,17 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 
   .decision-area{min-height:3.2rem;padding:.35rem .15rem}
   .table-shell .actions{grid-template-columns:repeat(var(--action-count,7),minmax(0,1fr));grid-auto-flow:column;gap:.2rem;padding-bottom:0}
-  .table-shell .actions button{display:grid;place-items:center;min-width:0;overflow:visible;text-align:center}
+  .table-shell .actions>button,.table-shell .actions>.action-confirm>button,.blackjack-actions>button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
   .table-shell .actions .capped-note{grid-column:1/-1;grid-row:2}
   .game-log{height:5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.66rem}
   .table-controls{padding-bottom:0}
-  .confirm-dialog footer{grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}
+  .confirm-dialog footer{display:grid;grid-template-columns:1fr;justify-content:stretch}
   .confirm-dialog footer button{width:100%}
   .card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-gap:.16rem}
 }
 @media (max-width:640px) and (max-height:760px) and (orientation:portrait){
-  :root{--control-height:2.5rem;--control-padding-inline:.1rem}
+  :root{--control-height:2.5rem;--control-padding-block:.3rem;--control-padding-inline:.2rem;--dense-control-height:2.5rem;--dense-control-padding-inline:0}
   .table-stage .seats.viewer-seats{margin-top:0}
   .table-stage .seats .seat.viewer{height:8.1rem}
   .seat.viewer .seat-cards .playing-card{--card-w:min(var(--viewer-card-w-mobile),3.9rem);--card-h:min(var(--viewer-card-h-mobile),5.3rem)}
@@ -444,7 +446,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-stage .seat-cards.revealed .playing-card{--card-w:2.55rem;--card-h:3.55rem}
 }
 @media(max-height:520px) and (orientation:landscape){
-  :root{--control-height:2.25rem;--control-font-size:.58rem;--control-padding-block:.3rem;--control-padding-inline:.15rem}
+  :root{--control-height:2.25rem;--control-font-size:.72rem;--control-padding-block:.3rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.25rem;--dense-control-font-size:.58rem;--dense-control-padding-block:.3rem;--dense-control-padding-inline:.15rem}
   .blackjack-shell>#blackjack-app{overflow:hidden}
   .blackjack-table{gap:.2rem;overflow:hidden}
   .blackjack-play-area{grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem;overflow:hidden}

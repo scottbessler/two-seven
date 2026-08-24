@@ -559,5 +559,5 @@ T25|x|unify responsive button sizing and label containment|V46
   clearance under V45.
 - Button surfaces independently overrode height, padding, and wrapping at
   different breakpoints, so narrow action bars and confirmation footers could
-  clip or raggedly wrap labels; centralize the responsive control contract and
-  use predictable mobile footer layout under V46.
+  clip or raggedly wrap labels; centralize readable standard and dense action
+  control tiers and use a predictable stacked mobile footer under V46.

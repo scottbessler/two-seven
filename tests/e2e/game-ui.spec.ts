@@ -581,11 +581,17 @@ test("keeps mobile controls uniform and confirmation actions tappable", async ({
     const footerBox = button.parentElement.getBoundingClientRect();
     return {
       height: buttonBox.height,
+      fontSize: Number.parseFloat(getComputedStyle(button).fontSize),
+      top: buttonBox.top,
+      bottom: buttonBox.bottom,
       insideFooter: buttonBox.left >= footerBox.left - 1 && buttonBox.right <= footerBox.right + 1,
       insideViewport: buttonBox.left >= 0 && buttonBox.right <= innerWidth && buttonBox.top >= 0 && buttonBox.bottom <= innerHeight,
       fits: button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight,
     };
   }));
+  expect(new Set(confirmLayout.map((button) => Math.round(button.height))).size, "confirmation actions must share one height").toBe(1);
+  expect(confirmLayout.every((button) => button.fontSize >= 11.2), "standard mobile controls must remain readable").toBe(true);
+  expect(confirmLayout[1].top).toBeGreaterThanOrEqual(confirmLayout[0].bottom - 1);
   expect(confirmLayout.every((button) => button.height >= 40 && button.insideFooter && button.insideViewport && button.fits), `V46: confirmation actions must fit at 360px ${JSON.stringify(confirmLayout)}`).toBe(true);
 });
 
