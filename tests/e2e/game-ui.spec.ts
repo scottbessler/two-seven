@@ -721,6 +721,40 @@ test("uses the full action bar when only a few actions are available", async ({ 
   expect(geometry.middleWidth, "V47: a lone middle action should consume the flexible region").toBeGreaterThan(geometry.firstWidth * 4);
 });
 
+test("offers only fold and call once a shove caps the pot", async ({ page }) => {
+  // Heads up against a shorter shove: the caller keeps chips behind, so this is
+  // a call rather than an all in, and there is nobody left to raise.
+  const cappedPotState = {
+    ...tableState,
+    hand: {
+      ...tableState.hand,
+      to_call: 1_200,
+      legal_actions: { seat: 2, actions: ["Fold", "Call"], to_call: 1_200, wager: null },
+    },
+  };
+  await mountTable(page, cappedPotState);
+  await expect(page.locator(".actions .fold-action")).toBeVisible();
+  const labels = await page.locator(".actions button").allInnerTexts();
+  expect(labels.map((label) => label.replaceAll(/\s+/g, " ").trim()), "V47: a capped pot leaves one call and no wagers").toEqual([
+    "Fold",
+    "Call $12",
+  ]);
+  // It takes the All In slot and colour, but it still says what it is.
+  const closing = page.locator(".actions .action-edge-right button");
+  await expect(closing).toHaveClass(/all-in-action/);
+  await expect(closing).toHaveAttribute("aria-label", "Call $12");
+  await expect(closing).not.toHaveClass(/hold-action/);
+  expect(await page.locator(".actions .action-middle button").count(), "V47: nothing is left in the middle").toBe(0);
+  const slots = await page.locator(".actions").evaluate((bar) => {
+    const fold = bar.querySelector(".action-edge-left button").getBoundingClientRect();
+    const call = bar.querySelector(".action-edge-right button").getBoundingClientRect();
+    return { barWidth: bar.getBoundingClientRect().width, foldWidth: fold.width, callWidth: call.width, gap: call.left - fold.right };
+  });
+  expect(slots.foldWidth, `V47: Fold keeps its narrow edge slot ${JSON.stringify(slots)}`).toBeLessThanOrEqual(slots.barWidth / 7 + 1);
+  expect(slots.gap, `V47: a dead zone still separates fold from the closing call ${JSON.stringify(slots)}`).toBeGreaterThan(slots.foldWidth);
+  await expect(page).toHaveScreenshot("capped-call-actions.png", { fullPage: true });
+});
+
 test("keeps fixed-limit capped actions on one aligned row", async ({ page }) => {
   const cappedActionState = {
     ...tableState,

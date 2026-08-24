@@ -108,7 +108,14 @@ impl Hand {
         // Fixed-limit streets allow a bet plus three raises; no-limit betting
         // remains open for every full raise.
         let wagers_capped = matches!(self.stakes, Stakes::Limit { .. }) && self.wagers >= 4;
-        let wager = if max > 0 && !wagers_capped && !player.must_call {
+        // A raise needs somebody left who could answer it. Once every other live
+        // player is all in the pot is capped at their shove, so calling is the
+        // most anyone can put at risk.
+        let opponents_can_act = self
+            .players
+            .iter()
+            .any(|other| other.seat != seat && !other.folded && !other.all_in && other.stack > 0);
+        let wager = if max > 0 && !wagers_capped && !player.must_call && opponents_can_act {
             Some(self.wager_bounds(to_call, max))
         } else {
             None
@@ -137,7 +144,10 @@ impl Hand {
                 .is_some_and(|fixed| max <= fixed),
             Stakes::NoLimit { .. } => true,
         };
-        if max > 0 && all_in_allowed && (max <= to_call || (!wagers_capped && !player.must_call)) {
+        if max > 0
+            && all_in_allowed
+            && (max <= to_call || (!wagers_capped && !player.must_call && opponents_can_act))
+        {
             actions.push(Action::AllIn);
         }
         Some(LegalActions {
@@ -450,6 +460,27 @@ mod tests {
         );
         hand.apply_action(Action::Call).unwrap();
         assert_eq!(hand.street, Street::Turn);
+    }
+
+    #[test]
+    fn shove_by_a_shorter_opponent_leaves_only_fold_and_call() {
+        // Heads up, the short stack shoves everything it has. Nobody behind can
+        // act, so raising buys nothing: the pot is already capped at the shove.
+        let mut hand = no_limit(&[100, 40], 21);
+        while hand.current_player != Some(1) {
+            hand.apply_action(Action::Call).unwrap();
+        }
+        hand.apply_action(Action::AllIn).unwrap();
+        assert_eq!(hand.current_player, Some(0), "the big stack still owes a decision");
+
+        let legal = hand.legal_actions().unwrap();
+        assert!(legal.to_call < 100, "the shove is smaller than the caller's stack");
+        assert_eq!(
+            legal.actions,
+            vec![Action::Fold, Action::Call],
+            "a shove with nobody left to act closes the betting: {legal:?}"
+        );
+        assert!(legal.wager.is_none(), "no wager bounds when raising is closed: {legal:?}");
     }
 
     #[test]

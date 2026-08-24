@@ -162,17 +162,25 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   const actor = seats.find((seat) => seat.index === hand.legal_actions.seat);
   const callIsAllIn = Boolean(actor && actions.has("Call") && (hand.legal_actions.to_call || 0) >= actor.stack);
+  // A shove by a shorter stack caps the pot: the call is the last decision of
+  // the hand, so it takes the All In slot and its colour while keeping its own
+  // label -- the caller still has chips behind and is not going all in.
+  const cappedCall = Boolean(
+    actions.has("Call") && !callIsAllIn && !actions.has("Bet") && !actions.has("Raise") && !actions.has("AllIn"),
+  );
   const wagers = wagerOptions(hand).filter((option) => !actor || option.amount < actor.stack);
-  const middleCount = Number(actions.has("Check")) + Number(actions.has("Call") && !callIsAllIn) + wagers.length;
+  const middleCount = Number(actions.has("Check")) + Number(actions.has("Call") && !callIsAllIn && !cappedCall) + wagers.length;
   const showAllIn = actions.has("AllIn") || callIsAllIn;
   return html`<div class="actions" aria-label="Actions">
     <span class="action-edge action-edge-left">${actions.has("Fold") && html`<${HoldAction} label="Fold" className="danger fold-action" hold=${settings.confirmFold} submit=${() => submit("fold")} />`}</span>
     <span class="action-middle" style=${`--middle-action-count:${Math.max(1, middleCount)}`}>
       ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}><span>Check</span></button>`}
-      ${actions.has("Call") && !callIsAllIn && html`<button class="primary-action" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`}
+      ${actions.has("Call") && !callIsAllIn && !cappedCall && html`<button class="primary-action" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`}
       ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button class="wager-action" aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span>${money(option.total)}</span></button>`)}
     </span>
-    <span class="action-edge action-edge-right">${showAllIn && html`<${HoldAction} label="All In" className="wager-action all-in-action" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} />`}</span>
+    <span class="action-edge action-edge-right">${cappedCall
+      ? html`<button class="wager-action all-in-action capped-call" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`
+      : showAllIn && html`<${HoldAction} label="All In" className="wager-action all-in-action" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} />`}</span>
   </div>`;
 }
 

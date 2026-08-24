@@ -412,6 +412,10 @@ Mark each milestone done here as it lands.
   the dense action-row contract.
 - **V47** Poker action bar = Fold edge ≤ 1/7 + ≤5 equal middle actions + All In
   edge ≤ 1/7; stack-consuming calls/wagers render only as right-edge All In.
+  A call that closes a capped pot takes the same right edge slot and colour but
+  keeps its own `Call <amount>` label and submits without a hold, since the
+  caller still has chips behind; Fold keeps its narrow slot and a dead zone
+  separates the two.
 - **V48** Portrait poker: viewer name + stack + wager share 1 row; Pot + Current
   Bet stack left of shared cards; stage clips ⊥; log absorbs spare height;
   History/Leave stay at viewport bottom.
@@ -421,7 +425,9 @@ Mark each milestone done here as it lands.
   safe-area padding ⊥; page bottom padding ≤ .25rem; footer reaches viewport edge.
 - **V51** No-limit streets never cap wager count. Fixed-limit cap state may
   remove wager actions but renders no action-bar status row; visible buttons
-  remain on one aligned row.
+  remain on one aligned row. Raising needs a live opponent: once every other
+  unfolded player is all in, the only legal actions are fold and call — or a
+  short all-in when the call already exceeds the actor's stack.
 - **V52** Eliminated tournament seats remain for payout attribution but render
   as spectators after reload: lobby active-seat state + table viewer state ⊥.
 - **V53** Narrow poker metrics anchor left. Result-state action bar keeps its
@@ -488,6 +494,7 @@ T32|x|separate eliminated tournament payout seat from active viewer|V52
 T33|x|stabilize narrow poker state + bot re-raise policy|V53
 T34|x|emulate the real iPhone PWA viewport and safe-area insets in e2e|V42,V54
 T35|x|full-bleed status bar + reserved centre rail for result and equity|V36,V37,V45,V54,V55
+T36|x|close betting when no opponent can answer a raise|V47,V51
 
 ## §B Bug log
 
@@ -625,3 +632,4 @@ B7|2026-08-24|eliminated tournament occupant restored as active viewer after dep
 B8|2026-08-24|mobile result reflow moved action bar; bots could min-raise loop|V53
 B9|2026-08-24|mobile snapshots emulated a Pixel 7 with zero insets, hiding stage overflow on iPhone PWA heights 761-843 and blackjack hand overlap|V42,V54
 B10|2026-08-24|12ce6a8 put compact dealer/blind badges back in flow, spending a row per seat, and the empty showdown result reserved a full-width band above the viewer seat|V45,V55
+B11|2026-08-24|a full-raise shove left must_call clear, so a caller facing an all-in shorter stack was still offered Raise and All In with nobody able to answer|V47,V51

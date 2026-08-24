@@ -265,6 +265,9 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .table-shell .actions .primary-action{background:#d9ad55;color:#1a160d}
 .table-shell .actions .wager-action{background:#245a49;color:var(--ink)}
 .table-shell .actions .all-in-action{border-color:#d9ad55}
+/* Nothing competes for the middle once the pot is capped, so the closing
+   call gets room to name itself while Fold keeps its narrow edge slot. */
+.table-shell .actions:has(.capped-call){grid-template-columns:minmax(0,1fr) minmax(0,3fr) minmax(0,3fr)}
 .game-log{display:grid;height:8.5rem;overflow:auto;align-content:start;padding:.6rem 0;border-top:1px solid #346252;border-bottom:1px solid #346252}
 .game-log ol{display:grid;grid-template-columns:1fr;gap:.3rem .8rem;align-content:start;margin:0;padding:0;list-style:none}
 .game-log li{display:grid;grid-template-columns:4.25rem 1fr;gap:.45rem;min-width:0;font-size:.76rem}
@@ -424,6 +427,8 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
   .table-shell .actions,.table-shell .actions .action-middle,.table-shell .actions .action-edge{gap:.2rem}
   .table-shell .actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
   .table-shell .actions .action-prefix{display:none}
+  .table-shell .actions .capped-call{grid-auto-flow:column;grid-auto-columns:max-content;justify-content:center;gap:.3em}
+  .table-shell .actions .capped-call .action-prefix{display:inline}
   .game-log{flex:1 1 5rem;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.66rem}
   .table-controls{margin-top:auto;padding-bottom:0}
