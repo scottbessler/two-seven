@@ -601,6 +601,22 @@ impl Table {
 }
 
 impl Table {
+    /// The active human seat for a user. Eliminated tournament players retain
+    /// their occupant for payout attribution, but return to the table as
+    /// spectators.
+    pub fn viewer_seat(&self, user: Uuid) -> Option<usize> {
+        self.seats.iter().enumerate().find_map(|(index, seat)| {
+            matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
+                .then_some(index)
+                .filter(|index| match &self.mode {
+                    TableMode::Tournament(state) => {
+                        self.seats[*index].stack > 0 && !state.finish_order.contains(index)
+                    }
+                    TableMode::Cash { .. } => true,
+                })
+        })
+    }
+
     /// Whether this table is playing for nobody. A person who has been busted
     /// out is not playing: their seat holds no chips, so a cash table with only
     /// busted people at it is a table of house players and waits to be asked.

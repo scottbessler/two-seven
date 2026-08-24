@@ -419,6 +419,8 @@ Mark each milestone done here as it lands.
 - **V51** No-limit streets never cap wager count. Fixed-limit cap state may
   remove wager actions but renders no action-bar status row; visible buttons
   remain on one aligned row.
+- **V52** Eliminated tournament seats remain for payout attribution but render
+  as spectators after reload: lobby active-seat state + table viewer state ⊥.
 
 ## §T Build tasks
 
@@ -460,6 +462,7 @@ T28|x|pin poker edge actions + compact portrait table rows|V42,V44,V47,V48
 T29|x|stabilize coin-menu controls across bank updates|V31,V49
 T30|x|remove duplicated iPhone safe-area padding|V48,V50
 T31|x|remove no-limit wager cap + compact protected actions|V34,V51
+T32|x|separate eliminated tournament payout seat from active viewer|V52
 
 ## §B Bug log
 
@@ -593,3 +596,4 @@ B3|2026-08-23|confirmation dialogs duplicated action state + destabilized bar sl
 B4|2026-08-23|mobile stage absorbed spare height while fixed viewer row clipped cards|V48
 B5|2026-08-23|mobile action kept bottom safe inset + page repeated inset below footer|V50
 B6|2026-08-23|fixed-limit four-wager cap leaked into no-limit + cap note changed action geometry|V51
+B7|2026-08-24|eliminated tournament occupant restored as active viewer after deploy|V52

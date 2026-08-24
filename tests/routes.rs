@@ -1357,6 +1357,110 @@ async fn the_lobby_drops_a_finished_tournament() {
 }
 
 #[tokio::test]
+async fn eliminated_tournament_player_returns_as_a_spectator() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "eliminated".into(),
+            display_name: "Eliminated".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let config = two_seven::table::TournamentConfig {
+        buy_in: 20_000,
+        seat_count: 2,
+        starting_chips: 100_000,
+        levels: vec![two_seven::table::BlindLevel {
+            small_blind: 1_000,
+            big_blind: 2_000,
+            ante: 0,
+            hands: 8,
+        }],
+        payout_percentages: vec![100],
+        no_debt: false,
+    };
+    let mut table = two_seven::table::Table::new(
+        "Eliminated tournament".into(),
+        two_seven::table::Stakes::NoLimit {
+            small_blind: 1_000,
+            big_blind: 2_000,
+        },
+        two_seven::table::TableMode::Tournament(two_seven::table::TournamentState {
+            config,
+            current_level: 0,
+            hands_at_level: 0,
+            finish_order: vec![0],
+            registered: 2,
+            started: true,
+            prize_pool: 40_000,
+            finished: false,
+            paid_out: false,
+        }),
+        2,
+        20_000,
+    );
+    table.seats[0] = two_seven::table::Seat {
+        occupant: two_seven::table::SeatOccupant::Human { user_id: user },
+        stack: 0,
+        sitting_out: false,
+        pending_departure: false,
+    };
+    table.seats[1] = two_seven::table::Seat {
+        occupant: two_seven::table::SeatOccupant::bot(two_seven::table::Bot::new(
+            two_seven::table::BotKind::Fish,
+            0,
+        )),
+        stack: 200_000,
+        sitting_out: false,
+        pending_departure: false,
+    };
+    let id = t.tables.insert(table).await.unwrap();
+    let cookie_value = cookie(&t.key, user);
+
+    let state = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/state"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&to_bytes(state.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(state["viewer_seat"], serde_json::Value::Null);
+
+    let lobby = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/tables")
+                .header(header::COOKIE, cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let lobby_bytes = to_bytes(lobby.into_body(), usize::MAX).await.unwrap();
+    let lobby = String::from_utf8_lossy(&lobby_bytes);
+    let yours = &lobby[..lobby.find("</section>").unwrap()];
+    assert!(
+        !yours.contains("Eliminated tournament"),
+        "V52: eliminated tournament players are spectators, not active seats"
+    );
+    assert!(lobby.contains("Eliminated tournament"));
+}
+
+#[tokio::test]
 async fn tournament_accepts_the_full_ten_thousand_chip_ladder() {
     let t = appx().await;
     let user = Uuid::new_v4();
