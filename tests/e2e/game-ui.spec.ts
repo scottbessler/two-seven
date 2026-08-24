@@ -771,7 +771,10 @@ test("keeps compact table header rows from overlapping", async ({ page }) => {
       contextOverlapsSettings: overlaps(context, settings),
       rightControlCenterDelta: Math.abs((settings.top + settings.height / 2) - (bank.top + bank.height / 2)),
       rowGap: context.top - brand.bottom,
-      headerHeight: header.getBoundingClientRect().height,
+      // Full-bleed rendering hands the header the notch; the band that matters is
+      // what it adds below that inset.
+      headerHeight: header.getBoundingClientRect().height
+        - Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-top")),
     };
   });
   expect(geometry.contextBelowBrand, "compact table name should get its own header row").toBe(true);
@@ -830,9 +833,10 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
           badgeInfoCentered: !hasCornerBadge || (
             Boolean(playerInfo && playerInfoStyle)
             && Math.abs((playerInfo.left + playerInfo.width / 2) - (seatBox.left + seatBox.width / 2)) <= 1
-            && playerInfoStyle.maxWidth === "100%"
             && playerInfoStyle.justifySelf === "center"
           ),
+          badgeSharesNameRow: Boolean(playerInfo && cornerBox && cornerBadges.textContent.trim())
+            && cornerBox.top < playerInfo.bottom,
           nameOverCorner: Boolean(playerInfo && cornerBox && cornerBadges.textContent.trim())
             && overlaps(playerInfo, cornerBox),
           outcomeVisible: Boolean(outcome && outcomeBox && outcomeBox.width > 0 && outcomeBox.height > 0),
@@ -853,7 +857,8 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
     expect(geometry.every((seat) => !seat.nameOverCorner), `V45: player names must clear corner badges ${JSON.stringify(geometry)}`).toBe(true);
     const badgeSeats = geometry.filter((seat) => seat.hasCornerBadge);
     expect(badgeSeats.length).toBeGreaterThan(0);
-    expect(badgeSeats.every((seat) => seat.badgeInfoCentered), `V45: compact opponent names with in-flow badges must stay centered ${JSON.stringify(geometry)}`).toBe(true);
+    expect(badgeSeats.every((seat) => seat.badgeInfoCentered), `V45: compact opponent names must stay centered beside their badges ${JSON.stringify(geometry)}`).toBe(true);
+    expect(badgeSeats.every((seat) => seat.badgeSharesNameRow), `V45: corner badges must not buy their own row ${JSON.stringify(geometry)}`).toBe(true);
     if (expectOutcome) {
       const outcomes = geometry.filter((seat) => seat.outcomeVisible);
       expect(outcomes.length).toBeGreaterThan(0);
@@ -1369,8 +1374,8 @@ test("emulates the target phone's safe-area insets", async ({ page }) => {
     const styles = getComputedStyle(document.documentElement);
     return ["top", "right", "bottom", "left"].map((side) => styles.getPropertyValue(`--safe-${side}`).trim());
   });
-  expect(insets, "V54: the installed PWA keeps the status bar above the web view and the home indicator over it").toEqual([
-    "0px",
+  expect(insets, "V54: the full-bleed PWA takes the notch on top and the home indicator below").toEqual([
+    "59px",
     "0px",
     "34px",
     "0px",
@@ -1547,18 +1552,30 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
     const viewer = stage.querySelector(".seat.viewer").getBoundingClientRect();
     const boardBox = stage.querySelector(".board").getBoundingClientRect();
     const rowCount = new Set(oddsItems.map((item) => Math.round(item.top))).size;
+    const metrics = stage.querySelector(".table-metrics").getBoundingClientRect();
     return {
       rowCount,
+      itemCount: oddsItems.length,
       clearsViewer: odds.bottom <= viewer.top || odds.top >= viewer.bottom,
       boardGap: viewer.top - boardBox.bottom,
+      oddsRightOfBoard: odds.left >= boardBox.right,
+      boardCentred: Math.abs((boardBox.left - metrics.right) - (odds.left - boardBox.right)),
       odds: { top: odds.top, bottom: odds.bottom },
       board: { top: boardBox.top, bottom: boardBox.bottom },
       viewer: { top: viewer.top, bottom: viewer.bottom },
     };
   });
-  expect(revealLayout.rowCount, `V37: odds must stay on one row ${JSON.stringify(revealLayout)}`).toBe(1);
+  if ((page.viewportSize()?.width || 0) <= 640) {
+    // The phone stacks one box per player inside the reserved right rail.
+    expect(revealLayout.rowCount, `V37: rail odds get a row each ${JSON.stringify(revealLayout)}`).toBe(revealLayout.itemCount);
+    expect(revealLayout.oddsRightOfBoard, `V37: rail odds sit right of the shared cards ${JSON.stringify(revealLayout)}`).toBe(true);
+    expect(revealLayout.boardCentred, `V37: shared cards centre between metrics and rail ${JSON.stringify(revealLayout)}`).toBeLessThanOrEqual(8);
+  } else {
+    expect(revealLayout.rowCount, `V37: odds must stay on one row ${JSON.stringify(revealLayout)}`).toBe(1);
+  }
   expect(revealLayout.clearsViewer, `V37: odds must not overlap the viewer seat ${JSON.stringify(revealLayout)}`).toBe(true);
   expect(revealLayout.boardGap, `V37: center content must keep a visible viewer gap ${JSON.stringify(revealLayout)}`).toBeGreaterThanOrEqual(12);
+  await expect(page).toHaveScreenshot("allin-reveal-table.png", { fullPage: true });
   // Nothing may give the ending away while the board is still coming.
   await expect(page.locator(".seat.winner")).toHaveCount(0);
   await expect(page.locator(".game-log")).not.toContainText("wins");
@@ -1597,4 +1614,5 @@ test("uses the short acknowledgement window for a fold result", async ({ page })
   await mountTable(page, foldResultState);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });
+
 

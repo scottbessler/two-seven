@@ -243,13 +243,13 @@ function oddsPercent(permille) {
   return `${(permille / 10).toFixed(permille % 10 === 0 ? 0 : 1)}%`;
 }
 
-function ShowdownOdds({ odds, seats, leaders, winners }) {
+function ShowdownOdds({ odds, seats, leaders }) {
   if (!odds?.length) return null;
   return html`<div class="showdown-odds" aria-label="Showdown odds">
     ${odds.map((entry) => {
       const seat = seats.find((candidate) => candidate.index === entry.seat);
       const name = seat?.display_name || seat?.occupant || `Seat ${entry.seat}`;
-      const classes = [winners.includes(entry.seat) && "winner", !winners.length && leaders.includes(entry.seat) && "leading"].filter(Boolean).join(" ");
+      const classes = leaders.includes(entry.seat) ? "leading" : "";
       return html`<span class=${classes}><b>${name}</b><strong>${oddsPercent(entry.equity_permille)}</strong><small>${entry.outs?.length ? entry.outs.map(cardText).join(" ") : "\u00A0"}</small></span>`;
     })}
   </div>`;
@@ -457,9 +457,11 @@ function TableApp() {
       <div class="felt">
         <div class="table-center">
           ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span><span class=${hand ? "" : "metric-placeholder"}><small>Current bet</small><b>${hand ? money(hand.last_bet) : "\u00A0"}</b></span></div>`}
-          ${showdown && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} leaders=${runout.leaders} winners=${settled ? [...new Set((showdown.awards || []).filter((award) => award.amount > 0).map((award) => award.seat))] : []} />`}
           <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
-          ${(hand || showdown) && html`<p class="showdown-result">${showdown ? result : ""}</p>`}
+          ${(hand || showdown) && html`<div class="table-rail">
+            ${showdown && !settled && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} leaders=${runout.leaders} />`}
+            <p class="showdown-result">${showdown ? result : ""}</p>
+          </div>`}
         </div>
       </div>
       ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}

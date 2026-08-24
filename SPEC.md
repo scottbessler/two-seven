@@ -375,8 +375,10 @@ Mark each milestone done here as it lands.
   `balance_after` values and shows the current signed-in player's account only.
 - **V36** All-in showdown summaries expose per-seat equity at reveal and each
   runout street; non-leading players with 1-9 immediate outs expose those cards.
-- **V37** All-in showdown odds render as one compact horizontal row; adding
-  odds must not wrap center content into the viewer card area.
+- **V37** All-in showdown odds expose one box per player until the result is
+  final: stacked in the reserved right rail on phones, one compact horizontal
+  row on wide screens. Adding odds never wraps center content into the viewer
+  card area.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
   shoe choice, percentage-of-shoe cut-card penetration defaulting to 50%,
   visible-card Hi-Lo tutor/log, post-hand running-count quiz, and server-side
@@ -401,8 +403,9 @@ Mark each milestone done here as it lands.
   neighboring cards, rows, controls, or overlays except explicit hover zooms.
 - **V45** Compact seats never clip their own rows: wagers, dealer/blind badges,
   and outcome badges all remain fully visible and non-overlapping at mobile
-  viewports; names remain centered when badges are in flow while absolutely
-  positioned viewer badges retain their clearance.
+  viewports. Dealer/blind badges never buy a row of their own — they float in
+  the seat corner, sharing the name's row, and the name stays centered with
+  enough width withheld to clear them.
 - **V46** Interactive controls use one responsive size contract: buttons keep
   shared heights, contained single-line labels, and usable tap targets across
   mobile and narrow desktop surfaces; blackjack actions remain readable within
@@ -432,6 +435,14 @@ Mark each milestone done here as it lands.
   to a fixed breakpoint. `viewport-fit=cover` ships with `maximum-scale=1` and
   `user-scalable=no`, insets reach layout only through `--safe-*` custom
   properties, and game shells size with `100vh` (never `100dvh` or `100%`).
+  Height budgets subtract the insets through `--usable-h`. Snapshots paint the
+  device's own chrome — status bar, Dynamic Island, home indicator — so they can
+  be read against a real screenshot.
+- **V55** Portrait poker centre = pot/current-bet left, shared cards centred in
+  what is left, and a reserved right rail. The rail carries the showdown result
+  right-aligned and, until the result is final, one equity/outs box per live
+  player; it holds its width whether or not anything is in it, and the shared
+  cards size to the room that leaves them.
 
 ## §T Build tasks
 
@@ -476,6 +487,7 @@ T31|x|remove no-limit wager cap + compact protected actions|V34,V51
 T32|x|separate eliminated tournament payout seat from active viewer|V52
 T33|x|stabilize narrow poker state + bot re-raise policy|V53
 T34|x|emulate the real iPhone PWA viewport and safe-area insets in e2e|V42,V54
+T35|x|full-bleed status bar + reserved centre rail for result and equity|V36,V37,V45,V54,V55
 
 ## §B Bug log
 
@@ -612,3 +624,4 @@ B6|2026-08-23|fixed-limit four-wager cap leaked into no-limit + cap note changed
 B7|2026-08-24|eliminated tournament occupant restored as active viewer after deploy|V52
 B8|2026-08-24|mobile result reflow moved action bar; bots could min-raise loop|V53
 B9|2026-08-24|mobile snapshots emulated a Pixel 7 with zero insets, hiding stage overflow on iPhone PWA heights 761-843 and blackjack hand overlap|V42,V54
+B10|2026-08-24|12ce6a8 put compact dealer/blind badges back in flow, spending a row per seat, and the empty showdown result reserved a full-width band above the viewer seat|V45,V55
