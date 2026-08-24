@@ -401,10 +401,12 @@ Mark each milestone done here as it lands.
   neighboring cards, rows, controls, or overlays except explicit hover zooms.
 - **V45** Compact seats never clip their own rows: wagers, dealer/blind badges,
   and outcome badges all remain fully visible and non-overlapping at mobile
-  viewports.
+  viewports; names remain centered when badges are in flow while absolutely
+  positioned viewer badges retain their clearance.
 - **V46** Interactive controls use one responsive size contract: buttons keep
   shared heights, contained single-line labels, and usable tap targets across
-  mobile and narrow desktop surfaces.
+  mobile and narrow desktop surfaces; blackjack actions remain readable within
+  the dense action-row contract.
 
 ## §T Build tasks
 
@@ -439,7 +441,8 @@ T21|x|add blackjack card-counting and strategy trainer settings|V24,V25,V27,V28,
 T22|x|move blackjack settings to header and simplify game layout|V28,V31,V39
 T23|x|persist blackjack shoes with cut-card count continuity and visualization|V38,V41
 T24|x|keep compact mobile seat rows visible and badge-safe|V45
-T25|x|unify responsive button sizing and label containment|V46
+T25|x|unify responsive button sizing and label containment|V45,V46
+T26|x|center compact seat names and restore readable blackjack action labels|V42,V45,V46
 
 ## §B Bug log
 
@@ -561,3 +564,10 @@ T25|x|unify responsive button sizing and label containment|V46
   different breakpoints, so narrow action bars and confirmation footers could
   clip or raggedly wrap labels; centralize readable standard and dense action
   control tiers and use a predictable stacked mobile footer under V46.
+- Compact in-flow dealer/blind badges still inherited desktop name clearance,
+  left-aligning and truncating mobile opponent names; scope clearance to
+  absolutely positioned badges while preserving it for compact viewer seats
+  under V45.
+- Blackjack action buttons consumed poker's sub-`.5rem` dense font tier despite
+  having fewer columns, making Hit/Stand and related labels unreadable; give
+  blackjack its own readable shared-contract tier under V42/V46.
