@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { IPHONE_LANDSCAPE, IPHONE_MAX_PORTRAIT, IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, useDevice } from "./devices";
+import { expect, test } from "./fixtures";
 
 let accounts = 0;
 
@@ -219,9 +220,10 @@ test("blackjack mobile uses the available card and action space", async ({ page 
     });
   });
 
-  for (const viewport of [{ width: 412, height: 915 }, { width: 390, height: 844 }, { width: 360, height: 740 }, { width: 932, height: 430 }]) {
+  for (const device of [IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, IPHONE_MAX_PORTRAIT, IPHONE_LANDSCAPE]) {
     /* oxlint-disable no-await-in-loop */
-    await page.setViewportSize(viewport);
+    const viewport = device.viewport;
+    await useDevice(page, device);
     await page.goto("/blackjack");
     await page.getByRole("button", { name: "Deal $10" }).click();
     await expect(page.locator(".blackjack-actions button")).toHaveText(["Hit", "Stand", "Double", "Split", "Insurance"]);

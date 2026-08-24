@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { IPHONE_LANDSCAPE, IPHONE_MAX_PORTRAIT, IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, useDevice } from "./devices";
+import { expect, test } from "./fixtures";
 
 const tableState = {
   id: "mock",
@@ -297,7 +298,10 @@ test("shows live hand cues and event log", async ({ page }) => {
   await sizeSlider.fill("200");
   await expect.poll(cardWidthVariable).toBe("10.8rem");
   const maximumCardBox = await viewerCard.boundingBox();
-  expect(maximumCardBox.width).toBeGreaterThan(enlargedCardBox.width * 1.6);
+  // A portrait phone clamps the top setting to the height it can actually spare,
+  // so the full step only lands where the viewport can afford it.
+  const heightCapped = (page.viewportSize()?.height || 0) < 900;
+  expect(maximumCardBox.width).toBeGreaterThan(enlargedCardBox.width * (heightCapped ? 1.4 : 1.6));
   await sizeSlider.fill("100");
   await expect.poll(cardWidthVariable).toBe("5.4rem");
   expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
@@ -1356,8 +1360,25 @@ test("integrates showdown with players and table log", async ({ page }) => {
   expect(continued).toBe(true);
 });
 
+test("emulates the target phone's safe-area insets", async ({ page }) => {
+  // Chromium reports every inset as 0, so a silent break here would quietly
+  // return mobile snapshots to a notchless phone that nobody owns.
+  test.skip((page.viewportSize()?.width || 0) > 640, "V54: only the phone project pins insets");
+  await page.goto("/card-test");
+  const insets = await page.evaluate(() => {
+    const styles = getComputedStyle(document.documentElement);
+    return ["top", "right", "bottom", "left"].map((side) => styles.getPropertyValue(`--safe-${side}`).trim());
+  });
+  expect(insets, "V54: the installed PWA keeps the status bar above the web view and the home indicator over it").toEqual([
+    "0px",
+    "0px",
+    "34px",
+    "0px",
+  ]);
+});
+
 test("packs the table into a landscape phone without scrolling", async ({ page }) => {
-  await page.setViewportSize({ width: 932, height: 430 });
+  await useDevice(page, IPHONE_LANDSCAPE);
   await mountTable(page, tableState);
   await expect(page.locator(".seat.viewer")).toBeVisible();
   const rail = await page.locator(".table-stage").evaluate((stage) => {
@@ -1390,9 +1411,10 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
 });
 
 test("packs the table into a portrait phone without scrolling", async ({ page }) => {
-  for (const viewport of [{ width: 412, height: 915 }, { width: 390, height: 844 }, { width: 360, height: 740 }]) {
+  for (const device of [IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, IPHONE_MAX_PORTRAIT]) {
     /* oxlint-disable no-await-in-loop */
-    await page.setViewportSize(viewport);
+    const viewport = device.viewport;
+    await useDevice(page, device);
     await page.goto("/card-test");
     await page.evaluate(() => localStorage.setItem("table-card-size-percent", "200"));
     await mountTable(page, tableState);
@@ -1575,3 +1597,4 @@ test("uses the short acknowledgement window for a fold result", async ({ page })
   await mountTable(page, foldResultState);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });
+

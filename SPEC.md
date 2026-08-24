@@ -424,6 +424,14 @@ Mark each milestone done here as it lands.
 - **V53** Narrow poker metrics anchor left. Result-state action bar keeps its
   vertical position; protected controls suppress native selection. Bot raises
   ≤3 per betting street.
+- **V54** Mobile e2e emulation matches the shipped target: an iPhone with a
+  Dynamic Island running the installed PWA (393x793 portrait, 852x393 landscape,
+  375x647 short portrait), with safe-area insets pinned rather than left at
+  Chromium's zero. Every game surface stays fit-to-viewport across that set:
+  viewer and blackjack card heights answer to the height actually available, not
+  to a fixed breakpoint. `viewport-fit=cover` ships with `maximum-scale=1` and
+  `user-scalable=no`, insets reach layout only through `--safe-*` custom
+  properties, and game shells size with `100vh` (never `100dvh` or `100%`).
 
 ## §T Build tasks
 
@@ -467,6 +475,7 @@ T30|x|remove duplicated iPhone safe-area padding|V48,V50
 T31|x|remove no-limit wager cap + compact protected actions|V34,V51
 T32|x|separate eliminated tournament payout seat from active viewer|V52
 T33|x|stabilize narrow poker state + bot re-raise policy|V53
+T34|x|emulate the real iPhone PWA viewport and safe-area insets in e2e|V42,V54
 
 ## §B Bug log
 
@@ -602,3 +611,4 @@ B5|2026-08-23|mobile action kept bottom safe inset + page repeated inset below f
 B6|2026-08-23|fixed-limit four-wager cap leaked into no-limit + cap note changed action geometry|V51
 B7|2026-08-24|eliminated tournament occupant restored as active viewer after deploy|V52
 B8|2026-08-24|mobile result reflow moved action bar; bots could min-raise loop|V53
+B9|2026-08-24|mobile snapshots emulated a Pixel 7 with zero insets, hiding stage overflow on iPhone PWA heights 761-843 and blackjack hand overlap|V42,V54

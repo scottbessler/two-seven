@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test.describe("card test page", () => {
   test("renders the full deck without obvious card-face regressions", async ({ page }) => {
