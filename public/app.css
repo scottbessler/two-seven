@@ -258,11 +258,10 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 .table-shell .actions button>span{position:relative;z-index:1}
 .hold-action{position:relative;isolation:isolate}
 .hold-action::after{content:"";position:absolute;inset:0;z-index:0;background:#fff3;transform:scaleX(0);transform-origin:left}
-.hold-action.holding::after{animation:hold-action-progress 2s linear forwards}
+.hold-action.holding::after{animation:hold-action-progress 1s linear forwards}
 @keyframes hold-action-progress{to{transform:scaleX(1)}}
 .blackjack-actions>button{min-width:0;min-height:var(--blackjack-control-height);padding:var(--blackjack-control-padding-block) var(--blackjack-control-padding-inline);font-size:var(--blackjack-control-font-size);line-height:var(--control-line-height);letter-spacing:var(--blackjack-control-letter-spacing);overflow:hidden;white-space:nowrap;border-radius:6px}
 .table-shell .actions .primary-action{background:#d9ad55;color:#1a160d}
-.table-shell .actions .capped-note{display:grid;grid-column:1/-1;place-items:center;color:var(--muted);font-size:.72rem}
 .table-shell .actions .wager-action{background:#245a49;color:var(--ink)}
 .table-shell .actions .all-in-action{border-color:#d9ad55}
 .game-log{display:grid;height:8.5rem;overflow:auto;align-content:start;padding:.6rem 0;border-top:1px solid #346252;border-bottom:1px solid #346252}
@@ -421,7 +420,6 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell .actions,.table-shell .actions .action-middle,.table-shell .actions .action-edge{gap:.2rem}
   .table-shell .actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
   .table-shell .actions .action-prefix{display:none}
-  .table-shell .actions .capped-note{grid-column:1/-1;grid-row:2}
   .game-log{flex:1 1 5rem;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.66rem}
   .table-controls{margin-top:auto;padding-bottom:0}

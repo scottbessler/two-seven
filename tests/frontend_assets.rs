@@ -41,7 +41,7 @@ fn table_island_has_live_state_and_action_contracts() {
         "raise",
         "all_in",
         "HoldAction",
-        "Hold ${ariaLabel || label} for 2 seconds",
+        "Hold ${ariaLabel || label} for ${holdSeconds} second",
         "action-middle",
         "settings.confirmFold",
         "settings.confirmAllIn",

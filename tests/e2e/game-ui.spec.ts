@@ -582,9 +582,9 @@ test("keeps mobile controls uniform and hold actions tappable", async ({ page })
   expect(actionLayout.every((button) => button.tapHeight >= 40), "mobile actions must retain a sane tap height").toBe(true);
 
   await expect(page.locator(".actions button")).toHaveText(["Fold", "All In"]);
-  const allIn = page.getByRole("button", { name: "Hold All In for 2 seconds" });
+  const allIn = page.getByRole("button", { name: "Hold All In for 1 second" });
   await expect(allIn).toHaveClass(/hold-action/);
-  await expect(allIn).toHaveAttribute("title", "Hold for 2 seconds");
+  await expect(allIn).toHaveAttribute("title", "Hold for 1 second");
 });
 
 test("holds an all-in call in the pinned all-in slot", async ({ page }) => {
@@ -611,17 +611,17 @@ test("holds an all-in call in the pinned all-in slot", async ({ page }) => {
 
   await expect(page.locator(".actions button")).toHaveText(["Fold", "All In"]);
   await expect(page.getByRole("button", { name: /Call/ })).toHaveCount(0);
-  const allIn = page.getByRole("button", { name: "Hold All In for 2 seconds" });
+  const allIn = page.getByRole("button", { name: "Hold All In for 1 second" });
   await allIn.click();
   await page.waitForTimeout(100);
   expect(posts, "V34: a tap must not submit an all-in call").toEqual([]);
   await allIn.dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch", isPrimary: true });
   await expect(allIn).toHaveClass(/holding/);
-  await page.waitForTimeout(2_100);
+  await page.waitForTimeout(1_100);
   await expect.poll(() => posts).toEqual([{ kind: "call" }]);
 });
 
-test("holds a protected fold for two seconds", async ({ page }) => {
+test("holds a protected fold for one second", async ({ page }) => {
   const posts = [];
   await page.route("**/tables/mock/action", async (route) => {
     posts.push(route.request().postDataJSON());
@@ -631,12 +631,12 @@ test("holds a protected fold for two seconds", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("table-confirm-fold", "on"));
   await mountTable(page, tableState);
 
-  const fold = page.getByRole("button", { name: "Hold Fold for 2 seconds" });
+  const fold = page.getByRole("button", { name: "Hold Fold for 1 second" });
   await fold.click();
   await page.waitForTimeout(100);
   expect(posts, "V34: a tap must not submit a protected fold").toEqual([]);
   await fold.dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch", isPrimary: true });
-  await page.waitForTimeout(2_100);
+  await page.waitForTimeout(1_100);
   await expect.poll(() => posts).toEqual([{ kind: "fold" }]);
 });
 
@@ -672,6 +672,32 @@ test("uses the full action bar when only a few actions are available", async ({ 
   expect(geometry.lastRight, `V44: short action bar should end full-width ${JSON.stringify(geometry)}`).toBeGreaterThanOrEqual(geometry.barRight - 1);
   expect(Math.abs(geometry.firstWidth - geometry.lastWidth), "V47: Fold and All In should retain equal edge slots").toBeLessThanOrEqual(1);
   expect(geometry.middleWidth, "V47: a lone middle action should consume the flexible region").toBeGreaterThan(geometry.firstWidth * 4);
+});
+
+test("keeps fixed-limit capped actions on one aligned row", async ({ page }) => {
+  const cappedActionState = {
+    ...tableState,
+    hand: {
+      ...tableState.hand,
+      legal_actions: {
+        ...tableState.hand.legal_actions,
+        actions: ["Fold", "Call"],
+        wager: null,
+        wagers_capped: true,
+      },
+    },
+  };
+  await mountTable(page, cappedActionState);
+
+  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12"]);
+  await expect(page.locator(".capped-note")).toHaveCount(0);
+  const geometry = await page.locator(".actions button").evaluateAll((buttons) => buttons.map((button) => {
+    const box = button.getBoundingClientRect();
+    return { top: box.top, bottom: box.bottom, height: box.height };
+  }));
+  expect(new Set(geometry.map(({ top }) => Math.round(top))).size, `V51: capped actions must share a row ${JSON.stringify(geometry)}`).toBe(1);
+  expect(new Set(geometry.map(({ bottom }) => Math.round(bottom))).size, `V51: capped actions must align ${JSON.stringify(geometry)}`).toBe(1);
+  expect(new Set(geometry.map(({ height }) => Math.round(height))).size).toBe(1);
 });
 
 test("keeps compact table header rows from overlapping", async ({ page }) => {

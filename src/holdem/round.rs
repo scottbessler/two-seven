@@ -105,9 +105,9 @@ impl Hand {
         } else if max > 0 {
             actions.push(Action::Call);
         }
-        // A street allows a bet plus three raises; the blinds count as the
-        // first wager preflop.
-        let wagers_capped = self.wagers >= 4;
+        // Fixed-limit streets allow a bet plus three raises; no-limit betting
+        // remains open for every full raise.
+        let wagers_capped = matches!(self.stakes, Stakes::Limit { .. }) && self.wagers >= 4;
         let wager = if max > 0 && !wagers_capped && !player.must_call {
             Some(self.wager_bounds(to_call, max))
         } else {
@@ -450,6 +450,23 @@ mod tests {
         );
         hand.apply_action(Action::Call).unwrap();
         assert_eq!(hand.street, Street::Turn);
+    }
+
+    #[test]
+    fn no_limit_wagers_are_never_capped() {
+        let mut hand = no_limit(&[100, 100, 100], 12);
+        hand.wagers = 4;
+
+        let legal = hand.legal_actions().unwrap();
+        assert!(!legal.wagers_capped);
+        assert!(legal.wager.is_some());
+        assert!(
+            legal
+                .actions
+                .iter()
+                .any(|action| matches!(action, Action::Raise { .. }))
+        );
+        assert!(legal.actions.contains(&Action::AllIn));
     }
 
     #[test]

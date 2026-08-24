@@ -106,6 +106,7 @@ function wagerOptions(hand) {
 }
 
 function HoldAction({ label, className, hold, submit, ariaLabel }) {
+  const holdSeconds = 1;
   const timer = useRef(null);
   const [holding, setHolding] = useState(false);
   const cancel = () => {
@@ -125,7 +126,7 @@ function HoldAction({ label, className, hold, submit, ariaLabel }) {
       timer.current = null;
       setHolding(false);
       submit();
-    }, 2_000);
+    }, holdSeconds * 1_000);
   };
   const stop = (event) => {
     if (event.type === "keyup" && !["Enter", " "].includes(event.key)) return;
@@ -134,8 +135,8 @@ function HoldAction({ label, className, hold, submit, ariaLabel }) {
   return html`<button
     class=${`${className} ${hold ? "hold-action" : ""} ${holding ? "holding" : ""}`}
     type="button"
-    aria-label=${hold ? `Hold ${ariaLabel || label} for 2 seconds` : ariaLabel}
-    title=${hold ? "Hold for 2 seconds" : undefined}
+    aria-label=${hold ? `Hold ${ariaLabel || label} for ${holdSeconds} second` : ariaLabel}
+    title=${hold ? `Hold for ${holdSeconds} second` : undefined}
     onClick=${hold ? (event) => event.preventDefault() : submit}
     onPointerDown=${start}
     onPointerUp=${stop}
@@ -167,7 +168,6 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
       ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}><span>Check</span></button>`}
       ${actions.has("Call") && !callIsAllIn && html`<button class="primary-action" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`}
       ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button class="wager-action" aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span>${money(option.total)}</span></button>`)}
-      ${!hand.legal_actions.wager && hand.legal_actions.wagers_capped && html`<span class="capped-note">Betting capped · call or fold</span>`}
     </span>
     <span class="action-edge action-edge-right">${showAllIn && html`<${HoldAction} label="All In" className="wager-action all-in-action" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} />`}</span>
   </div>`;
