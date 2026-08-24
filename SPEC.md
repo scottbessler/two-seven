@@ -414,6 +414,8 @@ Mark each milestone done here as it lands.
   History/Leave stay at viewport bottom.
 - **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
   existing controls, successful mutation closes menu, closed panel paints ⊥.
+- **V50** Portrait poker action-band excess ≤ 1rem; non-bottom actions receive
+  safe-area padding ⊥; page bottom padding ≤ .25rem; footer reaches viewport edge.
 
 ## §T Build tasks
 
@@ -453,6 +455,7 @@ T26|x|center compact seat names and restore readable blackjack action labels|V42
 T27|x|replace fold/all-in dialogs with 2-second hold actions|V34,V47
 T28|x|pin poker edge actions + compact portrait table rows|V42,V44,V47,V48
 T29|x|stabilize coin-menu controls across bank updates|V31,V49
+T30|x|remove duplicated iPhone safe-area padding|V48,V50
 
 ## §B Bug log
 
@@ -584,3 +587,4 @@ T29|x|stabilize coin-menu controls across bank updates|V31,V49
 B2|2026-08-23|bank update replaced clicked menu DOM → Safari retained stale paint|V49
 B3|2026-08-23|confirmation dialogs duplicated action state + destabilized bar slots|V34,V47
 B4|2026-08-23|mobile stage absorbed spare height while fixed viewer row clipped cards|V48
+B5|2026-08-23|mobile action kept bottom safe inset + page repeated inset below footer|V50

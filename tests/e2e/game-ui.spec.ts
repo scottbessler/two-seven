@@ -1351,6 +1351,8 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       const metricRows = [...shell.querySelectorAll(".table-metrics > span")].map((node) => node.getBoundingClientRect());
       const sharedCards = shell.querySelector(".table-center > .board").getBoundingClientRect();
       const controls = shell.querySelector(".table-controls").getBoundingClientRect();
+      const decision = shell.querySelector(".decision-area").getBoundingClientRect();
+      const pageNode = shell.closest(".page");
       // Browser-evaluated helpers cannot close over test-scope functions.
       // oxlint-disable-next-line unicorn/consistent-function-scoping
       const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -1364,6 +1366,8 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
         metricsStacked: metricRows.length < 2 || metricRows[1].top >= metricRows[0].bottom,
         metricsLeftOfBoard: metrics.right <= sharedCards.left,
         controlsBottomGap: document.documentElement.clientHeight - controls.bottom,
+        actionBandExcess: decision.height - Math.max(...actionButtons.map((button) => button.height)),
+        pageBottomPadding: Number.parseFloat(getComputedStyle(pageNode).paddingBottom),
         actionButtons,
       };
     });
@@ -1375,6 +1379,8 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
     expect(layout.metricsStacked, `V48: pot and current bet must stack at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.metricsLeftOfBoard, `V48: metrics must sit left of shared cards at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.controlsBottomGap, `V48: table controls must sit at viewport bottom at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(16);
+    expect(layout.actionBandExcess, `V50: action background must hug controls at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(16);
+    expect(layout.pageBottomPadding, `V50: footer must use only compact edge padding at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(4);
     expect(new Set(layout.actionButtons.map((button) => button.height)).size, "V42: portrait action buttons must share one height").toBe(1);
     expect(new Set(layout.actionButtons.map((button) => button.fontSize)).size, "V42: portrait action buttons must share one font size").toBe(1);
     expect(

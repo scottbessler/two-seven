@@ -362,7 +362,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
 @media (max-width:640px),(max-height:520px){
   html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
-  .page:has(.table-shell){display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + env(safe-area-inset-top)) calc(.45rem + env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) calc(.45rem + env(safe-area-inset-left))}
+  .page:has(.table-shell){display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + env(safe-area-inset-top)) calc(.45rem + env(safe-area-inset-right)) .25rem calc(.45rem + env(safe-area-inset-left))}
   .page:has(.table-shell) .site-header{flex:0 0 auto;height:2.55rem;margin-bottom:0;padding-top:0}
   .page:has(.table-shell) .brand{font-size:.9rem}
   .header-context{font-size:.72rem}
@@ -417,6 +417,7 @@ html:has(.table-shell),body:has(.table-shell){height:100%;overflow:hidden}
   .table-shell .card-config-preview .playing-card{--card-w:var(--viewer-card-w-mobile);--card-h:var(--viewer-card-h-mobile);--corner-gap:.1rem;margin-left:-.2rem}
 
   .decision-area{min-height:3.2rem;padding:.35rem .15rem}
+  .table-shell .actions{padding-bottom:0}
   .table-shell .actions,.table-shell .actions .action-middle,.table-shell .actions .action-edge{gap:.2rem}
   .table-shell .actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
   .table-shell .actions .action-prefix{display:none}
