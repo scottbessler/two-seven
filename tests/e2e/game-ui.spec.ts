@@ -90,6 +90,29 @@ const foldResultState = {
   },
 };
 
+const tournamentCompleteRailState = {
+  ...tableState,
+  viewer_seat: null,
+  tournament: { finished: true, finish_order: [3, 2, 1], name: "Friday Night Hold'em" },
+  hand: null,
+  next_hand_at: "2099-01-01T00:00:00Z",
+  seats: tableState.seats.map((seat, index) => (
+    index === 0 ? { ...seat, display_name: "Jaxdragambler" } : seat
+  )),
+  last_hand: {
+    board: ["8c", "Jh", "6s", "3s", "5s"],
+    results: tableState.seats.map((seat) => ({ seat: seat.index, hand: { label: "Pair of eights" } })),
+    awards: [{ seat: 0, amount: 12_200 }],
+    contributions: { 0: 6_100, 1: 6_100 },
+    revealed_hole_cards: tableState.seats.map((seat) => [seat.index, ["8d", "Kd"]]),
+    events: [
+      { street: "Preflop", seat: 1, kind: "SmallBlind", amount: 100 },
+      { street: "Preflop", seat: 0, kind: "BigBlind", amount: 200 },
+      { street: "Complete", seat: 0, kind: "Award", amount: 12_200 },
+    ],
+  },
+};
+
 async function mountTable(page, state) {
   await page.route("**/tables/mock/state", (route) => route.fulfill({ json: state }));
   await page.route("**/tables/mock/events", (route) =>
@@ -507,6 +530,71 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.at(-1).right, "V44: last action should reach the action bar edge").toBeGreaterThanOrEqual(Math.floor(layout.at(-1).barRight - 1));
 });
 
+test("keeps mobile controls uniform and confirmation actions tappable", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  const allInCallState = {
+    ...tableState,
+    seats: tableState.seats.map((seat) => (seat.index === tableState.viewer_seat ? { ...seat, stack: 1_200 } : seat)),
+    hand: {
+      ...tableState.hand,
+      legal_actions: {
+        ...tableState.hand.legal_actions,
+        actions: ["Fold", "Call", "AllIn"],
+        wager: null,
+      },
+    },
+  };
+  await page.goto("/card-test");
+  await page.evaluate(() => localStorage.setItem("table-confirm-all-in", "on"));
+  await mountTable(page, allInCallState);
+  await expect(page.locator(".actions")).toBeVisible();
+
+  const actionLayout = await page.locator(".actions button").evaluateAll((buttons) => buttons.flatMap((button) => {
+    const buttonBox = button.getBoundingClientRect();
+    if (!buttonBox.width || !buttonBox.height) return [];
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    const labelBox = range.getBoundingClientRect();
+    const style = getComputedStyle(button);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    return {
+      height: buttonBox.height,
+      inside: labelBox.left >= buttonBox.left - 1
+        && labelBox.right <= buttonBox.right + 1
+        && labelBox.top >= buttonBox.top - 1
+        && labelBox.bottom <= buttonBox.bottom + 1,
+      fits: button.scrollWidth <= button.clientWidth,
+      lineCount: labelBox.height / lineHeight,
+      tapHeight: buttonBox.height,
+    };
+  }));
+  expect(actionLayout.length).toBeGreaterThan(0);
+  expect(new Set(actionLayout.map((button) => Math.round(button.height))).size, "mobile action controls must share one height").toBe(1);
+  expect(actionLayout.every((button) => button.inside && button.fits && button.lineCount < 2), `V46: mobile action labels must fit ${JSON.stringify(actionLayout)}`).toBe(true);
+  expect(actionLayout.every((button) => button.tapHeight >= 40), "mobile actions must retain a sane tap height").toBe(true);
+
+  await page.getByRole("button", { name: "Call $12" }).click();
+  const confirmButtons = page.locator("#confirm-call-all-in-action footer button");
+  await expect(confirmButtons).toHaveCount(2);
+  const confirmLayout = await confirmButtons.evaluateAll((buttons) => buttons.map((button) => {
+    const buttonBox = button.getBoundingClientRect();
+    const footerBox = button.parentElement.getBoundingClientRect();
+    return {
+      height: buttonBox.height,
+      fontSize: Number.parseFloat(getComputedStyle(button).fontSize),
+      top: buttonBox.top,
+      bottom: buttonBox.bottom,
+      insideFooter: buttonBox.left >= footerBox.left - 1 && buttonBox.right <= footerBox.right + 1,
+      insideViewport: buttonBox.left >= 0 && buttonBox.right <= innerWidth && buttonBox.top >= 0 && buttonBox.bottom <= innerHeight,
+      fits: button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight,
+    };
+  }));
+  expect(new Set(confirmLayout.map((button) => Math.round(button.height))).size, "confirmation actions must share one height").toBe(1);
+  expect(confirmLayout.every((button) => button.fontSize >= 11.2), "standard mobile controls must remain readable").toBe(true);
+  expect(confirmLayout[1].top).toBeGreaterThanOrEqual(confirmLayout[0].bottom - 1);
+  expect(confirmLayout.every((button) => button.height >= 40 && button.insideFooter && button.insideViewport && button.fits), `V46: confirmation actions must fit at 360px ${JSON.stringify(confirmLayout)}`).toBe(true);
+});
+
 test("confirms a call that spends the rest of your stack", async ({ page }) => {
   const allInCallState = {
     ...tableState,
@@ -618,6 +706,61 @@ test("keeps a player tooltip inside a narrow desktop viewport", async ({ page })
   expect(tooltipBox.y, "V20: narrow player tooltip top edge must remain visible").toBeGreaterThanOrEqual(0);
   expect(tooltipBox.x + tooltipBox.width, "V20: narrow player tooltip right edge must remain visible").toBeLessThanOrEqual(702);
   expect(tooltipBox.y + tooltipBox.height, "V20: narrow player tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
+});
+
+test("keeps compact portrait opponent seats visible", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const inspectRail = async (state, expectOutcome = false) => {
+    await mountTable(page, state);
+    await expect(page.locator(".other-seats .seat").first()).toBeVisible();
+    const geometry = await page.locator(".table-stage").evaluate((stage) => {
+      const stageBox = stage.getBoundingClientRect();
+      // Browser-evaluated helpers cannot close over test-scope functions.
+      // oxlint-disable-next-line unicorn/consistent-function-scoping
+      const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const seats = [...stage.querySelectorAll(".other-seats .seat")];
+      return seats.map((seat) => {
+        const seatBox = seat.getBoundingClientRect();
+        const wager = seat.querySelector(".seat-wager");
+        const wagerBox = wager?.getBoundingClientRect();
+        const cornerBadges = seat.querySelector(".seat-corner-badges");
+        const cornerBox = cornerBadges?.getBoundingClientRect();
+        const playerInfo = seat.querySelector(".player-info")?.getBoundingClientRect();
+        const outcome = seat.querySelector(".seat-outcome-badges i");
+        const outcomeBox = outcome?.getBoundingClientRect();
+        return {
+          scrolls: seat.scrollHeight > seat.clientHeight,
+          wagerVisible: wager && getComputedStyle(wager).visibility !== "hidden",
+          wagerInside: Boolean(wagerBox)
+            && wagerBox.top >= seatBox.top - 1
+            && wagerBox.bottom <= seatBox.bottom + 1,
+          nameOverCorner: Boolean(playerInfo && cornerBox && cornerBadges.textContent.trim())
+            && overlaps(playerInfo, cornerBox),
+          outcomeVisible: Boolean(outcome && outcomeBox && outcomeBox.width > 0 && outcomeBox.height > 0),
+          outcomeInsideSeat: Boolean(outcomeBox)
+            && outcomeBox.top >= seatBox.top - 1
+            && outcomeBox.bottom <= seatBox.bottom + 1,
+          outcomeInsideStage: Boolean(outcomeBox)
+            && outcomeBox.top >= stageBox.top - 1
+            && outcomeBox.bottom <= stageBox.bottom + 1,
+        };
+      });
+    });
+    expect(geometry.every((seat) => !seat.scrolls), `V45: compact seats must not scroll ${JSON.stringify(geometry)}`).toBe(true);
+    expect(
+      geometry.filter((seat) => seat.wagerVisible).every((seat) => seat.wagerInside),
+      `V45: visible opponent wagers must stay inside seats ${JSON.stringify(geometry)}`,
+    ).toBe(true);
+    expect(geometry.every((seat) => !seat.nameOverCorner), `V45: player names must clear corner badges ${JSON.stringify(geometry)}`).toBe(true);
+    if (expectOutcome) {
+      const outcomes = geometry.filter((seat) => seat.outcomeVisible);
+      expect(outcomes.length).toBeGreaterThan(0);
+      expect(outcomes.every((seat) => seat.outcomeInsideSeat && seat.outcomeInsideStage), `V45: outcome badges must remain visible ${JSON.stringify(geometry)}`).toBe(true);
+    }
+  };
+
+  await inspectRail(tableState);
+  await inspectRail(tournamentCompleteRailState, true);
 });
 
 test("keeps seats clear of the board in a short desktop window", async ({ page }) => {
@@ -1081,7 +1224,11 @@ test("integrates showdown with players and table log", async ({ page }) => {
       clipped: badgeBox.bottom > stageBox.bottom + 1,
     };
   });
-  expect(winnerBadge.attachedBelow, "S8: the winner badge should hang below the seat").toBe(true);
+  if ((page.viewportSize()?.width || 0) <= 640 || (page.viewportSize()?.height || 0) <= 520) {
+    expect(winnerBadge.attachedBelow, "S8: the compact winner badge should stay inside the seat").toBe(false);
+  } else {
+    expect(winnerBadge.attachedBelow, "S8: the winner badge should hang below the seat").toBe(true);
+  }
   expect(winnerBadge.clipped, "S9: the winner badge must not be clipped").toBe(false);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 6s");
   await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
