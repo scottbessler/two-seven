@@ -368,9 +368,9 @@ Mark each milestone done here as it lands.
   surrender for every app bot policy.
 - **V33** Terminal tournament winner state is not exposed to the live table view
   until the final hand reveal/runout pause has finished.
-- **V34** Table preferences persist opt-in confirmations for Fold and All In;
-  when enabled, Fold and any action that commits the actor's remaining stack
-  require explicit confirmation without changing the submitted action kind.
+- **V34** Table preferences persist opt-in 2-second holds for Fold and All In;
+  when enabled, Fold and any action committing actor's remaining stack submit
+  only after uninterrupted button hold, without changing submitted action kind.
 - **V35** The player page finance chart is derived from ledger entry
   `balance_after` values and shows the current signed-in player's account only.
 - **V36** All-in showdown summaries expose per-seat equity at reveal and each
@@ -407,6 +407,13 @@ Mark each milestone done here as it lands.
   shared heights, contained single-line labels, and usable tap targets across
   mobile and narrow desktop surfaces; blackjack actions remain readable within
   the dense action-row contract.
+- **V47** Poker action bar = Fold edge ≤ 1/7 + ≤5 equal middle actions + All In
+  edge ≤ 1/7; stack-consuming calls/wagers render only as right-edge All In.
+- **V48** Portrait poker: viewer name + stack + wager share 1 row; Pot + Current
+  Bet stack left of shared cards; stage clips ⊥; log absorbs spare height;
+  History/Leave stay at viewport bottom.
+- **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
+  existing controls, successful mutation closes menu, closed panel paints ⊥.
 
 ## §T Build tasks
 
@@ -443,6 +450,9 @@ T23|x|persist blackjack shoes with cut-card count continuity and visualization|V
 T24|x|keep compact mobile seat rows visible and badge-safe|V45
 T25|x|unify responsive button sizing and label containment|V45,V46
 T26|x|center compact seat names and restore readable blackjack action labels|V42,V45,V46
+T27|x|replace fold/all-in dialogs with 2-second hold actions|V34,V47
+T28|x|pin poker edge actions + compact portrait table rows|V42,V44,V47,V48
+T29|x|stabilize coin-menu controls across bank updates|V31,V49
 
 ## §B Bug log
 
@@ -571,3 +581,6 @@ T26|x|center compact seat names and restore readable blackjack action labels|V42
 - Blackjack action buttons consumed poker's sub-`.5rem` dense font tier despite
   having fewer columns, making Hit/Stand and related labels unreadable; give
   blackjack its own readable shared-contract tier under V42/V46.
+B2|2026-08-23|bank update replaced clicked menu DOM → Safari retained stale paint|V49
+B3|2026-08-23|confirmation dialogs duplicated action state + destabilized bar slots|V34,V47
+B4|2026-08-23|mobile stage absorbed spare height while fixed viewer row clipped cards|V48

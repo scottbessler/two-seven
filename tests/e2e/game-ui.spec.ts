@@ -528,9 +528,17 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.map((button) => button.left)).toEqual([...layout].map((button) => button.left).toSorted((a, b) => a - b));
   expect(layout[0].left, "V44: first action should start at the action bar edge").toBeLessThanOrEqual(Math.ceil(layout[0].barLeft + 1));
   expect(layout.at(-1).right, "V44: last action should reach the action bar edge").toBeGreaterThanOrEqual(Math.floor(layout.at(-1).barRight - 1));
+  const slots = await page.locator(".actions").evaluate((bar) => {
+    const barBox = bar.getBoundingClientRect();
+    const edges = [...bar.querySelectorAll(".action-edge")].map((slot) => slot.getBoundingClientRect().width);
+    const middle = [...bar.querySelectorAll(".action-middle button")].map((button) => button.getBoundingClientRect().width);
+    return { barWidth: barBox.width, edges, middle };
+  });
+  expect(slots.edges.every((width) => width <= slots.barWidth / 7), `V47: edge actions must be at most 1/7 of the bar ${JSON.stringify(slots)}`).toBe(true);
+  expect(Math.max(...slots.middle) - Math.min(...slots.middle), "V47: middle actions must split their region evenly").toBeLessThanOrEqual(1);
 });
 
-test("keeps mobile controls uniform and confirmation actions tappable", async ({ page }) => {
+test("keeps mobile controls uniform and hold actions tappable", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   const allInCallState = {
     ...tableState,
@@ -573,29 +581,13 @@ test("keeps mobile controls uniform and confirmation actions tappable", async ({
   expect(actionLayout.every((button) => button.inside && button.fits && button.lineCount < 2), `V46: mobile action labels must fit ${JSON.stringify(actionLayout)}`).toBe(true);
   expect(actionLayout.every((button) => button.tapHeight >= 40), "mobile actions must retain a sane tap height").toBe(true);
 
-  await page.getByRole("button", { name: "Call $12" }).click();
-  const confirmButtons = page.locator("#confirm-call-all-in-action footer button");
-  await expect(confirmButtons).toHaveCount(2);
-  const confirmLayout = await confirmButtons.evaluateAll((buttons) => buttons.map((button) => {
-    const buttonBox = button.getBoundingClientRect();
-    const footerBox = button.parentElement.getBoundingClientRect();
-    return {
-      height: buttonBox.height,
-      fontSize: Number.parseFloat(getComputedStyle(button).fontSize),
-      top: buttonBox.top,
-      bottom: buttonBox.bottom,
-      insideFooter: buttonBox.left >= footerBox.left - 1 && buttonBox.right <= footerBox.right + 1,
-      insideViewport: buttonBox.left >= 0 && buttonBox.right <= innerWidth && buttonBox.top >= 0 && buttonBox.bottom <= innerHeight,
-      fits: button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight,
-    };
-  }));
-  expect(new Set(confirmLayout.map((button) => Math.round(button.height))).size, "confirmation actions must share one height").toBe(1);
-  expect(confirmLayout.every((button) => button.fontSize >= 11.2), "standard mobile controls must remain readable").toBe(true);
-  expect(confirmLayout[1].top).toBeGreaterThanOrEqual(confirmLayout[0].bottom - 1);
-  expect(confirmLayout.every((button) => button.height >= 40 && button.insideFooter && button.insideViewport && button.fits), `V46: confirmation actions must fit at 360px ${JSON.stringify(confirmLayout)}`).toBe(true);
+  await expect(page.locator(".actions button")).toHaveText(["Fold", "All In"]);
+  const allIn = page.getByRole("button", { name: "Hold All In for 2 seconds" });
+  await expect(allIn).toHaveClass(/hold-action/);
+  await expect(allIn).toHaveAttribute("title", "Hold for 2 seconds");
 });
 
-test("confirms a call that spends the rest of your stack", async ({ page }) => {
+test("holds an all-in call in the pinned all-in slot", async ({ page }) => {
   const allInCallState = {
     ...tableState,
     seats: tableState.seats.map((seat) => (seat.index === tableState.viewer_seat ? { ...seat, stack: 1_200 } : seat)),
@@ -617,15 +609,35 @@ test("confirms a call that spends the rest of your stack", async ({ page }) => {
   await page.evaluate(() => localStorage.setItem("table-confirm-all-in", "on"));
   await mountTable(page, allInCallState);
 
-  await page.getByRole("button", { name: "Call $12" }).click();
-  const confirm = page.locator("#confirm-call-all-in-action");
-  await expect(confirm).toBeVisible();
-  await expect(confirm).toContainText("This will commit every chip in your stack.");
-  expect(posts, "V34: all-in calls must not post before confirmation").toEqual([]);
-
-  await page.getByRole("button", { name: "Call All In" }).click();
-  await expect(confirm).not.toBeVisible();
+  await expect(page.locator(".actions button")).toHaveText(["Fold", "All In"]);
+  await expect(page.getByRole("button", { name: /Call/ })).toHaveCount(0);
+  const allIn = page.getByRole("button", { name: "Hold All In for 2 seconds" });
+  await allIn.click();
+  await page.waitForTimeout(100);
+  expect(posts, "V34: a tap must not submit an all-in call").toEqual([]);
+  await allIn.dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch", isPrimary: true });
+  await expect(allIn).toHaveClass(/holding/);
+  await page.waitForTimeout(2_100);
   await expect.poll(() => posts).toEqual([{ kind: "call" }]);
+});
+
+test("holds a protected fold for two seconds", async ({ page }) => {
+  const posts = [];
+  await page.route("**/tables/mock/action", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/card-test");
+  await page.evaluate(() => localStorage.setItem("table-confirm-fold", "on"));
+  await mountTable(page, tableState);
+
+  const fold = page.getByRole("button", { name: "Hold Fold for 2 seconds" });
+  await fold.click();
+  await page.waitForTimeout(100);
+  expect(posts, "V34: a tap must not submit a protected fold").toEqual([]);
+  await fold.dispatchEvent("pointerdown", { pointerId: 1, pointerType: "touch", isPrimary: true });
+  await page.waitForTimeout(2_100);
+  await expect.poll(() => posts).toEqual([{ kind: "fold" }]);
 });
 
 test("uses the full action bar when only a few actions are available", async ({ page }) => {
@@ -650,13 +662,16 @@ test("uses the full action bar when only a few actions are available", async ({ 
       lastRight: buttons.at(-1).right,
       barLeft: barBox.left,
       barRight: barBox.right,
-      equalWidths: new Set(buttons.map((button) => Math.round(button.width))).size === 1,
+      firstWidth: buttons[0].width,
+      middleWidth: buttons[1].width,
+      lastWidth: buttons.at(-1).width,
     };
   });
   expect(geometry.count).toBe(3);
   expect(geometry.firstLeft, `V44: short action bar should start full-width ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(geometry.barLeft + 1);
   expect(geometry.lastRight, `V44: short action bar should end full-width ${JSON.stringify(geometry)}`).toBeGreaterThanOrEqual(geometry.barRight - 1);
-  expect(geometry.equalWidths, "V44: short action buttons should distribute evenly").toBe(true);
+  expect(Math.abs(geometry.firstWidth - geometry.lastWidth), "V47: Fold and All In should retain equal edge slots").toBeLessThanOrEqual(1);
+  expect(geometry.middleWidth, "V47: a lone middle action should consume the flexible region").toBeGreaterThan(geometry.firstWidth * 4);
 });
 
 test("keeps compact table header rows from overlapping", async ({ page }) => {
@@ -1064,6 +1079,8 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
       decision: document.querySelectorAll(".decision-area").length,
       log: document.querySelectorAll(".game-log").length,
       stage: Math.round(document.querySelector(".table-stage").getBoundingClientRect().height),
+      logHeight: Math.round(document.querySelector(".game-log").getBoundingClientRect().height),
+      controlsTop: Math.round(document.querySelector(".table-controls").getBoundingClientRect().top),
     }));
   };
   await mountTable(page, houseTable);
@@ -1074,10 +1091,12 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   expect(idle.log, "and the log").toBe(1);
   expect(playing.decision).toBe(1);
   expect(playing.log).toBe(1);
-  // Not to the pixel: compact viewports tune controls and card sizes. Nowhere
-  // near the hundred-odd pixels a whole band appearing or vanishing used to move it.
-  const slack = (page.viewportSize()?.width || 0) > 640 ? 20 : 48;
-  expect(Math.abs(playing.stage - idle.stage), "the table keeps its height").toBeLessThan(slack);
+  expect(Math.abs(playing.controlsTop - idle.controlsTop), "controls stay anchored while stage and log exchange spare height").toBeLessThanOrEqual(2);
+  if ((page.viewportSize()?.width || 0) <= 640) {
+    expect(idle.logHeight, "V48: an idle table gives its spare vertical space to the log").toBeGreaterThan(playing.logHeight);
+  } else {
+    expect(Math.abs(playing.stage - idle.stage), "desktop table keeps its fixed stage height").toBeLessThan(20);
+  }
 });
 
 test("offers one state-aware table lifecycle command", async ({ page }) => {
@@ -1325,7 +1344,13 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       const stage = shell.querySelector(".table-stage");
       const stageBox = stage.getBoundingClientRect();
       const viewer = shell.querySelector(".seat.viewer").getBoundingClientRect();
+      const viewerSummary = [...shell.querySelectorAll(".seat.viewer .viewer-summary > :not(.player-tooltip)")]
+        .map((node) => node.getBoundingClientRect());
       const board = [...shell.querySelectorAll(".board .playing-card, .table-metrics")].map((node) => node.getBoundingClientRect());
+      const metrics = shell.querySelector(".table-metrics").getBoundingClientRect();
+      const metricRows = [...shell.querySelectorAll(".table-metrics > span")].map((node) => node.getBoundingClientRect());
+      const sharedCards = shell.querySelector(".table-center > .board").getBoundingClientRect();
+      const controls = shell.querySelector(".table-controls").getBoundingClientRect();
       // Browser-evaluated helpers cannot close over test-scope functions.
       // oxlint-disable-next-line unicorn/consistent-function-scoping
       const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -1334,6 +1359,11 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
         stageScrolls: stage.scrollHeight > stage.clientHeight,
         viewerEscapesStage: viewer.top < stageBox.top - 1 || viewer.bottom > stageBox.bottom + 1,
         viewerOverlapsBoard: board.some((node) => overlaps(viewer, node)),
+        viewerSummaryCenterSpread: Math.max(...viewerSummary.map((node) => node.top + node.height / 2))
+          - Math.min(...viewerSummary.map((node) => node.top + node.height / 2)),
+        metricsStacked: metricRows.length < 2 || metricRows[1].top >= metricRows[0].bottom,
+        metricsLeftOfBoard: metrics.right <= sharedCards.left,
+        controlsBottomGap: document.documentElement.clientHeight - controls.bottom,
         actionButtons,
       };
     });
@@ -1341,6 +1371,10 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
     expect(layout.stageScrolls, `V42: portrait poker must not scroll inside the table stage at ${JSON.stringify(viewport)}`).toBe(false);
     expect(layout.viewerEscapesStage, `V42: portrait viewer seat must stay inside the stage at ${JSON.stringify(viewport)}`).toBe(false);
     expect(layout.viewerOverlapsBoard, `V42: portrait viewer seat must not collide with center cards at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(layout.viewerSummaryCenterSpread, `V48: viewer name, stack, and wager must share one row at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(1);
+    expect(layout.metricsStacked, `V48: pot and current bet must stack at ${JSON.stringify(viewport)}`).toBe(true);
+    expect(layout.metricsLeftOfBoard, `V48: metrics must sit left of shared cards at ${JSON.stringify(viewport)}`).toBe(true);
+    expect(layout.controlsBottomGap, `V48: table controls must sit at viewport bottom at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(16);
     expect(new Set(layout.actionButtons.map((button) => button.height)).size, "V42: portrait action buttons must share one height").toBe(1);
     expect(new Set(layout.actionButtons.map((button) => button.fontSize)).size, "V42: portrait action buttons must share one font size").toBe(1);
     expect(

@@ -21,6 +21,9 @@ test("blackjack notices a same-page re-up", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: "Deal $10" })).toBeVisible();
   await expect(page.locator("#bank-balance")).toHaveText("$1,000");
+  await expect(page.locator(".bank-widget")).not.toHaveAttribute("open", "");
+  await expect(page.locator("#bank-panel .re-up-button")).toHaveCount(1);
+  await expect(page.locator("#bank-panel")).toBeHidden();
 });
 
 test("coin menu repays a loan", async ({ page }) => {

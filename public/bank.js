@@ -19,6 +19,54 @@ function netChangeInLastHour(entries) {
 
 if (balance && widget && panel) {
   const summary = widget.querySelector("summary");
+  const heading = document.createElement("strong");
+  const loanBadge = document.createElement("span");
+  loanBadge.className = "loan-badge";
+  const debt = document.createElement("span");
+  debt.className = "loan-summary";
+  const reUp = document.createElement("button");
+  reUp.type = "button";
+  reUp.className = "bank-action re-up-button";
+  reUp.textContent = "Re-up $1,000";
+  const repay = document.createElement("button");
+  repay.type = "button";
+  repay.className = "bank-action repay-button";
+  const playerLink = document.createElement("a");
+  playerLink.className = "player-page-link";
+  playerLink.href = "/player";
+  playerLink.textContent = "Player page";
+  const entries = document.createElement("div");
+  entries.className = "bank-entries";
+  panel.replaceChildren(heading, loanBadge, debt, reUp, repay, playerLink, entries);
+  let currentAccount = null;
+
+  const bankMutation = async (endpoint, button) => {
+    button.disabled = true;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!response.ok) {
+      button.disabled = false;
+      return;
+    }
+    widget.open = false;
+    announceBank(await response.json());
+  };
+  reUp.addEventListener("click", (event) => {
+    event.stopPropagation();
+    bankMutation("/api/bank", reUp).catch(() => {
+      reUp.disabled = currentAccount?.can_re_up !== true;
+    });
+  });
+  repay.addEventListener("click", (event) => {
+    event.stopPropagation();
+    bankMutation("/api/bank/repay", repay).catch(() => {
+      repay.disabled = (currentAccount?.balance ?? 0) < (currentAccount?.next_repayment_amount ?? Infinity);
+    });
+  });
+
   document.addEventListener("click", (event) => {
     if (widget.open && !widget.contains(event.target)) widget.open = false;
   });
@@ -29,6 +77,7 @@ if (balance && widget && panel) {
     }
   });
   const showBank = (account) => {
+    currentAccount = account;
     balance.textContent = money(account.balance);
     const recentNet = netChangeInLastHour(account.entries || []);
     delta.textContent = recentNet ? ` (${recentNet >= 0 ? "+" : ""}${money(recentNet)})` : "";
@@ -36,70 +85,23 @@ if (balance && widget && panel) {
     for (const button of document.querySelectorAll(".re-up-form button")) {
       button.disabled = !canReUp;
     }
-    panel.replaceChildren();
-    const heading = document.createElement("strong");
     heading.textContent = `Balance ${money(account.balance)}`;
-    panel.append(heading);
-    const loanBadge = document.createElement("span");
-    loanBadge.className = "loan-badge";
     loanBadge.textContent = `Loans ${account.loan_count ?? 0}`;
-    panel.append(loanBadge);
-    const debt = document.createElement("span");
-    debt.className = "loan-summary";
     debt.textContent = `Debt ${money(account.loan_debt ?? 0)} · Net ${money(account.net_balance ?? account.balance)}`;
-    panel.append(debt);
-    const reUp = document.createElement("button");
-    reUp.type = "button";
-    reUp.className = "re-up-button";
-    reUp.textContent = "Re-up $1,000";
     reUp.disabled = !canReUp;
-    reUp.addEventListener("click", (event) => {
-      event.stopPropagation();
-      reUp.disabled = true;
-      fetch("/api/bank", {
-        method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
-        body: "{}",
-      })
-        .then((response) => (response.ok ? response.json() : Promise.reject(response)))
-        .then((updated) => announceBank(updated))
-        .catch(() => {
-          reUp.disabled = !canReUp;
-        });
-    });
-    panel.append(reUp);
     const nextRepayment = account.next_repayment_amount;
     if (nextRepayment != null) {
-      const repay = document.createElement("button");
-      repay.type = "button";
-      repay.className = "re-up-button repay-button";
       repay.textContent = `Pay back ${money(nextRepayment)}`;
       repay.disabled = account.balance < nextRepayment;
-      repay.addEventListener("click", (event) => {
-        event.stopPropagation();
-        repay.disabled = true;
-        fetch("/api/bank/repay", {
-          method: "POST",
-          headers: { Accept: "application/json", "Content-Type": "application/json" },
-          body: "{}",
-        })
-          .then((response) => (response.ok ? response.json() : Promise.reject(response)))
-          .then((updated) => announceBank(updated))
-          .catch(() => {
-            repay.disabled = account.balance < nextRepayment;
-          });
-      });
-      panel.append(repay);
+      repay.hidden = false;
+    } else {
+      repay.hidden = true;
     }
-    const playerLink = document.createElement("a");
-    playerLink.className = "player-page-link";
-    playerLink.href = "/player";
-    playerLink.textContent = "Player page";
-    panel.append(playerLink);
+    entries.replaceChildren();
     for (const entry of account.entries.slice(-5).toReversed()) {
       const line = document.createElement("div");
       line.textContent = `${entry.delta >= 0 ? "+" : ""}${money(entry.delta)} ${entry.memo}`;
-      panel.append(line);
+      entries.append(line);
     }
   };
   window.addEventListener("bank:updated", (event) => {

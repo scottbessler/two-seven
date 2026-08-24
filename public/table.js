@@ -1,4 +1,4 @@
-import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
+import { html, render, useEffect, useRef, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings, useCardSettings } from "/public/card-settings.js";
 import { refreshBank, responseError, wholeDollarMoney as money } from "/public/shared.js";
@@ -64,17 +64,19 @@ function Seat({ seat, player, events, current, button, viewer, viewerCards, show
     : beforeAwards;
   const winner = settled && awarded > 0;
   const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner", champion && "champion"].filter(Boolean).join(" ");
+  const playerInfo = html`<span class="player-info" tabindex="0">
+    <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
+    <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
+  </span>`;
+  const stackLabel = html`<span class="seat-stack">${money(stack)}</span>`;
+  const wager = html`<span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in ? "" : "no-wager"}`}>${player?.all_in ? "ALL IN" : money(player?.street_contribution || 0)}</span>`;
   return html`<article class=${classes}>
     <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
-    <span class="player-info" tabindex="0">
-      <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
-      <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
-    </span>
-    <span class="seat-stack">${money(stack)}</span>
+    ${viewer ? html`<span class="viewer-summary">${playerInfo}${stackLabel}${wager}</span>` : html`${playerInfo}${stackLabel}`}
     ${player?.folded && !viewer
       ? html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`
       : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
-    <span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in ? "" : "no-wager"}`}>${player?.all_in ? "ALL IN" : money(player?.street_contribution || 0)}</span>
+    ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
   </article>`;
 }
@@ -103,21 +105,46 @@ function wagerOptions(hand) {
   return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
 }
 
-function ConfirmableAction({ id, label, className, enabled, title, message, confirmLabel, submit }) {
-  if (!enabled) return html`<button class=${className} onClick=${submit}>${label}</button>`;
-  return html`<span class="action-confirm">
-    <button class=${className} type="button" commandfor=${id} command="show-modal">${label}</button>
-    <dialog id=${id} class="confirm-dialog">
-      <form method="dialog">
-        <header><h2>${title}</h2></header>
-        <p>${message}</p>
-        <footer>
-          <button type="submit" value="cancel">Cancel</button>
-          <button class=${className} type="button" commandfor=${id} command="close" onClick=${submit}>${confirmLabel}</button>
-        </footer>
-      </form>
-    </dialog>
-  </span>`;
+function HoldAction({ label, className, hold, submit, ariaLabel }) {
+  const timer = useRef(null);
+  const [holding, setHolding] = useState(false);
+  const cancel = () => {
+    if (timer.current != null) clearTimeout(timer.current);
+    timer.current = null;
+    setHolding(false);
+  };
+  useEffect(() => () => {
+    if (timer.current != null) clearTimeout(timer.current);
+  }, []);
+  const start = (event) => {
+    if (!hold || timer.current != null) return;
+    if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+    event.preventDefault();
+    setHolding(true);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setHolding(false);
+      submit();
+    }, 2_000);
+  };
+  const stop = (event) => {
+    if (event.type === "keyup" && !["Enter", " "].includes(event.key)) return;
+    if (hold) cancel();
+  };
+  return html`<button
+    class=${`${className} ${hold ? "hold-action" : ""} ${holding ? "holding" : ""}`}
+    type="button"
+    aria-label=${hold ? `Hold ${ariaLabel || label} for 2 seconds` : ariaLabel}
+    title=${hold ? "Hold for 2 seconds" : undefined}
+    onClick=${hold ? (event) => event.preventDefault() : submit}
+    onPointerDown=${start}
+    onPointerUp=${stop}
+    onPointerLeave=${stop}
+    onPointerCancel=${stop}
+    onKeyDown=${start}
+    onKeyUp=${stop}
+    onBlur=${cancel}
+  ><span>${label}</span></button>`;
 }
 
 function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
@@ -130,16 +157,19 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const wagerKind = actions.has("Bet") ? "bet" : "raise";
   const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   const actor = seats.find((seat) => seat.index === hand.legal_actions.seat);
-  const callIsAllIn = (hand.legal_actions.to_call || 0) >= (actor?.stack || Infinity);
-  const wagers = wagerOptions(hand);
-  const actionCount = Number(actions.has("Fold")) + Number(actions.has("Check")) + Number(actions.has("Call")) + wagers.length + Number(actions.has("AllIn"));
-  return html`<div class="actions" aria-label="Actions" style=${`--action-count:${Math.max(1, actionCount)}`}>
-    ${actions.has("Fold") && html`<${ConfirmableAction} id="confirm-fold-action" label="Fold" className="danger" enabled=${settings.confirmFold} title="Fold this hand?" message="Your cards will be mucked and you cannot win this pot." confirmLabel="Fold" submit=${() => submit("fold")} />`}
-    ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}>Check</button>`}
-    ${actions.has("Call") && html`<${ConfirmableAction} id="confirm-call-all-in-action" label=${`Call ${money(hand.legal_actions.to_call)}`} className="primary-action" enabled=${settings.confirmAllIn && callIsAllIn} title="Call all in?" message="This will commit every chip in your stack." confirmLabel="Call All In" submit=${() => submit("call")} />`}
-    ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button class="wager-action" title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}>${wagerLabel} ${money(option.total)}</button>`)}
-    ${actions.has("AllIn") && html`<${ConfirmableAction} id="confirm-all-in-action" label="All In" className="wager-action all-in-action" enabled=${settings.confirmAllIn} title="Go all in?" message="This will commit every chip in your stack." confirmLabel="All In" submit=${() => submit("all_in")} />`}
-    ${!hand.legal_actions.wager && hand.legal_actions.wagers_capped && html`<span class="capped-note">Betting capped · call or fold</span>`}
+  const callIsAllIn = Boolean(actor && actions.has("Call") && (hand.legal_actions.to_call || 0) >= actor.stack);
+  const wagers = wagerOptions(hand).filter((option) => !actor || option.amount < actor.stack);
+  const middleCount = Number(actions.has("Check")) + Number(actions.has("Call") && !callIsAllIn) + wagers.length;
+  const showAllIn = actions.has("AllIn") || callIsAllIn;
+  return html`<div class="actions" aria-label="Actions">
+    <span class="action-edge action-edge-left">${actions.has("Fold") && html`<${HoldAction} label="Fold" className="danger fold-action" hold=${settings.confirmFold} submit=${() => submit("fold")} />`}</span>
+    <span class="action-middle" style=${`--middle-action-count:${Math.max(1, middleCount)}`}>
+      ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}><span>Check</span></button>`}
+      ${actions.has("Call") && !callIsAllIn && html`<button class="primary-action" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`}
+      ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button class="wager-action" aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span>${money(option.total)}</span></button>`)}
+      ${!hand.legal_actions.wager && hand.legal_actions.wagers_capped && html`<span class="capped-note">Betting capped · call or fold</span>`}
+    </span>
+    <span class="action-edge action-edge-right">${showAllIn && html`<${HoldAction} label="All In" className="wager-action all-in-action" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} />`}</span>
   </div>`;
 }
 
