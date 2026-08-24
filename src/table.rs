@@ -563,6 +563,16 @@ pub fn result_pause_seconds(summary: Option<&HandSummary>) -> i64 {
 }
 
 impl Table {
+    pub fn human_seat(&self, user: Uuid) -> Option<usize> {
+        self.seats.iter().position(
+            |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+        )
+    }
+
+    pub fn tournament_seat_is_eliminated(&self, seat: usize) -> bool {
+        matches!(&self.mode, TableMode::Tournament(state) if self.seats.get(seat).is_some_and(|value| value.stack <= 0) || state.finish_order.contains(&seat))
+    }
+
     pub fn new(
         name: String,
         stakes: Stakes,
@@ -605,16 +615,8 @@ impl Table {
     /// their occupant for payout attribution, but return to the table as
     /// spectators.
     pub fn viewer_seat(&self, user: Uuid) -> Option<usize> {
-        self.seats.iter().enumerate().find_map(|(index, seat)| {
-            matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
-                .then_some(index)
-                .filter(|index| match &self.mode {
-                    TableMode::Tournament(state) => {
-                        self.seats[*index].stack > 0 && !state.finish_order.contains(index)
-                    }
-                    TableMode::Cash { .. } => true,
-                })
-        })
+        self.human_seat(user)
+            .filter(|seat| !self.tournament_seat_is_eliminated(*seat))
     }
 
     /// Whether this table is playing for nobody. A person who has been busted

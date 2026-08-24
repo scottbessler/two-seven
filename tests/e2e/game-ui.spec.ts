@@ -114,6 +114,8 @@ const tournamentCompleteRailState = {
 };
 
 async function mountTable(page, state) {
+  await page.unroute("**/tables/mock/state");
+  await page.unroute("**/tables/mock/events");
   await page.route("**/tables/mock/state", (route) => route.fulfill({ json: state }));
   await page.route("**/tables/mock/events", (route) =>
     route.fulfill({
@@ -640,6 +642,47 @@ test("holds a protected fold for one second", async ({ page }) => {
   await expect.poll(() => posts).toEqual([{ kind: "fold" }]);
 });
 
+test("anchors narrow metrics and keeps the result action bar steady", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/card-test");
+  await page.evaluate(() => localStorage.setItem("table-confirm-fold", "on"));
+  await mountTable(page, tableState);
+  const live = await page.locator(".table-shell").evaluate((shell) => {
+    const stageNode = shell.querySelector(".table-stage");
+    const stage = stageNode.getBoundingClientRect();
+    const metrics = shell.querySelector(".table-metrics").getBoundingClientRect();
+    const fold = shell.querySelector(".fold-action");
+    return { stageLeft: stage.left, metricsLeft: metrics.left, userSelect: getComputedStyle(fold).userSelect };
+  });
+  expect(live.metricsLeft, "V53: narrow metrics must anchor at the table left edge").toBeLessThanOrEqual(live.stageLeft + 1);
+  expect(live.userSelect, "V53: protected hold controls must suppress native text selection").toBe("none");
+
+  const pendingResult = {
+    ...foldResultState,
+    last_hand: {
+      ...foldResultState.last_hand,
+      awards: [],
+      results: [],
+    },
+  };
+  await mountTable(page, pendingResult);
+  const pendingGeometry = await page.locator(".table-shell").evaluate((shell) => {
+    const decision = shell.querySelector(".decision-area").getBoundingClientRect();
+    const stageNode = shell.querySelector(".table-stage");
+    const stage = stageNode.getBoundingClientRect();
+    return { decisionTop: decision.top, stageHeight: stage.height };
+  });
+
+  await mountTable(page, foldResultState);
+  const resultGeometry = await page.locator(".table-shell").evaluate((shell) => {
+    const decision = shell.querySelector(".decision-area").getBoundingClientRect();
+    const stageNode = shell.querySelector(".table-stage");
+    const stage = stageNode.getBoundingClientRect();
+    return { decisionTop: decision.top, stageHeight: stage.height };
+  });
+  expect(Math.abs(resultGeometry.decisionTop - pendingGeometry.decisionTop), `V53: result state must not move mobile action bar ${JSON.stringify({ pendingGeometry, resultGeometry })}`).toBeLessThanOrEqual(1);
+});
+
 test("uses the full action bar when only a few actions are available", async ({ page }) => {
   const shortActionState = {
     ...tableState,
@@ -1032,6 +1075,8 @@ test("makes leaving a tournament a deliberate forfeit", async ({ page }) => {
   const eliminated = {
     ...tournament,
     hand: null,
+    viewer_seat: null,
+    viewer_eliminated: true,
     tournament: { ...tournament.tournament, finish_order: [tableState.viewer_seat] },
     seats: tournament.seats.map((seat) => {
       if (seat.index !== tableState.viewer_seat) return seat;

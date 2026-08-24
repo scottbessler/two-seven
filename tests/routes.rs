@@ -915,6 +915,7 @@ async fn a_human_may_take_a_house_players_seat() {
     let state: serde_json::Value =
         serde_json::from_slice(&to_bytes(state.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(state["viewer_seat"], serde_json::Value::Null);
+    assert_eq!(state["viewer_eliminated"], false);
     assert_eq!(state["bank_balance"], 100_000);
     assert_eq!(state["buy_in"], 20_000);
 

@@ -138,6 +138,9 @@ function HoldAction({ label, className, hold, submit, ariaLabel }) {
     aria-label=${hold ? `Hold ${ariaLabel || label} for ${holdSeconds} second` : ariaLabel}
     title=${hold ? `Hold for ${holdSeconds} second` : undefined}
     onClick=${hold ? (event) => event.preventDefault() : submit}
+    onContextMenu=${(event) => event.preventDefault()}
+    onSelectStart=${(event) => event.preventDefault()}
+    onDragStart=${(event) => event.preventDefault()}
     onPointerDown=${start}
     onPointerUp=${stop}
     onPointerLeave=${stop}
@@ -359,9 +362,7 @@ function TableCommands({ state, openSeats, refresh }) {
   const viewer = state.viewer_seat == null
     ? null
     : state.seats.find((seat) => seat.index === state.viewer_seat);
-  const eliminatedFromTournament = Boolean(
-    state.tournament && viewer && state.tournament.finish_order?.includes(viewer.index),
-  );
+  const eliminatedFromTournament = Boolean(state.tournament && state.viewer_eliminated);
   const leave = {
     label: "Leave",
     endpoint: `/tables/${tableId}/leave`,
@@ -370,7 +371,7 @@ function TableCommands({ state, openSeats, refresh }) {
   const commands = [];
   if (state.viewer_leaving) {
     commands.push({ label: "Leaving...", disabled: true });
-  } else if (viewer) {
+  } else if (viewer || state.viewer_eliminated) {
     if (!state.tournament && viewer.stack <= 0 && !state.hand) {
       commands.push({ label: `Re-Buy In ${money(state.buy_in)}`, endpoint: `/tables/${tableId}/rebuy`, disabled: !canAffordCashSeat });
     }
@@ -455,10 +456,10 @@ function TableApp() {
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
       <div class="felt">
         <div class="table-center">
-          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span>${hand && html`<span><small>Current bet</small><b>${money(hand.last_bet)}</b></span>`}</div>`}
+          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span><span class=${hand ? "" : "metric-placeholder"}><small>Current bet</small><b>${hand ? money(hand.last_bet) : "\u00A0"}</b></span></div>`}
           ${showdown && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} leaders=${runout.leaders} winners=${settled ? [...new Set((showdown.awards || []).filter((award) => award.amount > 0).map((award) => award.seat))] : []} />`}
           <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
-          ${showdown && html`<p class="showdown-result">${result}</p>`}
+          ${(hand || showdown) && html`<p class="showdown-result">${showdown ? result : ""}</p>`}
         </div>
       </div>
       ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}

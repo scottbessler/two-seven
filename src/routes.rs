@@ -644,7 +644,7 @@ pub async fn table_page(
         .ok_or_else(|| AppError::not_found("table not found"))?;
     let bank_balance = Some(balance_of(&s, user).await);
     let table = table.lock().await;
-    let viewer = table.viewer_seat(user);
+    let viewer = table.human_seat(user);
     let banks = seat_banks(&s, &table).await;
     let names = seat_names(&s, &table).await;
     Ok(Html(render::table_page(&table_view_with_banks(
@@ -865,7 +865,7 @@ pub async fn table_state(
         None => None,
     };
     let table = table.lock().await;
-    let viewer = user.and_then(|uid| table.viewer_seat(uid));
+    let viewer = user.and_then(|uid| table.human_seat(uid));
     let banks = seat_banks(&s, &table).await;
     let names = seat_names(&s, &table).await;
     Ok(Json(table_view_with_banks(
@@ -893,7 +893,7 @@ pub async fn table_events(
     };
     let snapshot = {
         let table = table.lock().await;
-        let viewer = user.and_then(|uid| table.viewer_seat(uid));
+        let viewer = user.and_then(|uid| table.human_seat(uid));
         let banks = seat_banks(&s, &table).await;
         let names = seat_names(&s, &table).await;
         serde_json::to_string(&table_view_with_banks(
@@ -927,7 +927,7 @@ pub async fn table_events(
                                 None => None,
                             };
                             let table = table.lock().await;
-                            let viewer = user.and_then(|uid| table.viewer_seat(uid));
+                            let viewer = user.and_then(|uid| table.human_seat(uid));
                             let banks = seat_banks(&state, &table).await;
                             let names = seat_names(&state, &table).await;
                             let data = serde_json::to_string(&table_view_with_banks(

@@ -421,6 +421,9 @@ Mark each milestone done here as it lands.
   remain on one aligned row.
 - **V52** Eliminated tournament seats remain for payout attribution but render
   as spectators after reload: lobby active-seat state + table viewer state ⊥.
+- **V53** Narrow poker metrics anchor left. Result-state action bar keeps its
+  vertical position; protected controls suppress native selection. Bot raises
+  ≤3 per betting street.
 
 ## §T Build tasks
 
@@ -463,6 +466,7 @@ T29|x|stabilize coin-menu controls across bank updates|V31,V49
 T30|x|remove duplicated iPhone safe-area padding|V48,V50
 T31|x|remove no-limit wager cap + compact protected actions|V34,V51
 T32|x|separate eliminated tournament payout seat from active viewer|V52
+T33|x|stabilize narrow poker state + bot re-raise policy|V53
 
 ## §B Bug log
 
@@ -597,3 +601,4 @@ B4|2026-08-23|mobile stage absorbed spare height while fixed viewer row clipped 
 B5|2026-08-23|mobile action kept bottom safe inset + page repeated inset below footer|V50
 B6|2026-08-23|fixed-limit four-wager cap leaked into no-limit + cap note changed action geometry|V51
 B7|2026-08-24|eliminated tournament occupant restored as active viewer after deploy|V52
+B8|2026-08-24|mobile result reflow moved action bar; bots could min-raise loop|V53

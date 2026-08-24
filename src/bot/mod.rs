@@ -7,6 +7,8 @@ use crate::{
 };
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 
+const MAX_BOT_STREET_RAISES: usize = 3;
+
 impl BotKind {
     pub fn act(self, view: &HandView, legal: &LegalActions, seed: u64) -> Action {
         let action = match self {
@@ -15,7 +17,28 @@ impl BotKind {
             Self::Grinder => grinder(view, legal),
             Self::Shark => shark_with(&SharkParams::DEFAULT, view, legal, seed),
         };
-        avoid_free_fold(action, legal)
+        avoid_excessive_raise(avoid_free_fold(action, legal), view, legal)
+    }
+}
+
+fn avoid_excessive_raise(action: Action, view: &HandView, legal: &LegalActions) -> Action {
+    let street = match view.board.len() {
+        0 => crate::holdem::Street::Preflop,
+        3 => crate::holdem::Street::Flop,
+        4 => crate::holdem::Street::Turn,
+        _ => crate::holdem::Street::River,
+    };
+    let raises = view
+        .events
+        .iter()
+        .filter(|event| {
+            event.street == street && matches!(event.kind, crate::holdem::HandEventKind::Raise)
+        })
+        .count();
+    if raises >= MAX_BOT_STREET_RAISES && matches!(action, Action::Raise { .. }) {
+        first_calling(legal)
+    } else {
+        action
     }
 }
 
@@ -133,7 +156,7 @@ mod tests {
     use super::*;
     use crate::{
         cards::Card,
-        holdem::{Hand, WagerBounds},
+        holdem::{Hand, HandEvent, WagerBounds},
         table::Stakes,
         view::{HandPlayerView, HandView, hand_view},
     };
@@ -170,6 +193,42 @@ mod tests {
                         )
                     });
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn bots_stop_reraising_after_three_street_raises() {
+        let hand = Hand::new(
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            &[100, 100, 100],
+            0,
+            7,
+        );
+        let legal = hand.legal_actions().unwrap();
+        let mut view = hand_view(&hand, Some(legal.seat));
+        view.events
+            .extend((0..MAX_BOT_STREET_RAISES).map(|_| HandEvent {
+                street: crate::holdem::Street::Preflop,
+                seat: Some(1),
+                kind: crate::holdem::HandEventKind::Raise,
+                amount: 4,
+            }));
+
+        for kind in [
+            BotKind::Fish,
+            BotKind::Rock,
+            BotKind::Grinder,
+            BotKind::Shark,
+        ] {
+            for seed in 0..64 {
+                assert!(
+                    !matches!(kind.act(&view, &legal, seed), Action::Raise { .. }),
+                    "{kind:?} must stop re-raising after {MAX_BOT_STREET_RAISES} raises"
+                );
             }
         }
     }

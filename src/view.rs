@@ -59,6 +59,7 @@ pub struct TableView {
     pub seats: Vec<SeatView>,
     pub button: usize,
     pub viewer_seat: Option<usize>,
+    pub viewer_eliminated: bool,
     pub viewer_leaving: bool,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
@@ -221,6 +222,8 @@ pub fn table_view_with_banks(
     banks: &std::collections::HashMap<usize, Account>,
     names: &std::collections::HashMap<usize, String>,
 ) -> TableView {
+    let viewer_eliminated = viewer.is_some_and(|seat| table.tournament_seat_is_eliminated(seat));
+    let viewer = viewer.filter(|_| !viewer_eliminated);
     let tournament_result_visible = !terminal_tournament_result_pending(table);
     TableView {
         id: table.id,
@@ -236,6 +239,7 @@ pub fn table_view_with_banks(
             .collect(),
         button: table.button,
         viewer_seat: viewer,
+        viewer_eliminated,
         viewer_leaving: viewer
             .and_then(|index| table.seats.get(index))
             .is_some_and(|seat| seat.pending_departure),
