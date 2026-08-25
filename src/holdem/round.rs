@@ -471,16 +471,26 @@ mod tests {
             hand.apply_action(Action::Call).unwrap();
         }
         hand.apply_action(Action::AllIn).unwrap();
-        assert_eq!(hand.current_player, Some(0), "the big stack still owes a decision");
+        assert_eq!(
+            hand.current_player,
+            Some(0),
+            "the big stack still owes a decision"
+        );
 
         let legal = hand.legal_actions().unwrap();
-        assert!(legal.to_call < 100, "the shove is smaller than the caller's stack");
+        assert!(
+            legal.to_call < 100,
+            "the shove is smaller than the caller's stack"
+        );
         assert_eq!(
             legal.actions,
             vec![Action::Fold, Action::Call],
             "a shove with nobody left to act closes the betting: {legal:?}"
         );
-        assert!(legal.wager.is_none(), "no wager bounds when raising is closed: {legal:?}");
+        assert!(
+            legal.wager.is_none(),
+            "no wager bounds when raising is closed: {legal:?}"
+        );
     }
 
     #[test]
