@@ -211,6 +211,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .seat.viewer .seat-outcome-badges{position:absolute;right:.25rem;bottom:-.75rem;grid-row:auto;justify-content:flex-end}
   .seat span{font-size:.6875rem}
   .seat .player-info{max-width:100%;justify-self:center}
+  .table-stage .seats .seat .player-info>i{display:none}
   .table-stage .seats .seat:has(.seat-corner-badges i) .player-info{max-width:calc(100% - 2.9rem)}
   .table-stage .seats .seat.viewer:has(.seat-corner-badges i) .player-info{max-width:calc(100% - 2.2rem);justify-self:start}
   .player-info>strong{max-width:100%}

@@ -850,6 +850,12 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
   const inspectRail = async (state, expectOutcome = false) => {
     await mountTable(page, state);
     await expect(page.locator(".other-seats .seat").first()).toBeVisible();
+    const shortName = page.locator(".other-seats .player-info > strong").filter({ hasText: /^Sam$/ });
+    await expect(shortName).toHaveCount(1);
+    expect(
+      await shortName.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      "compact portrait opponent names must not truncate",
+    ).toBe(true);
     const geometry = await page.locator(".table-stage").evaluate((stage) => {
       const stageBox = stage.getBoundingClientRect();
       // Browser-evaluated helpers cannot close over test-scope functions.
