@@ -35,10 +35,7 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hid
 .blackjack-quiz button.selected{border-color:var(--accent);background:var(--gold);color:var(--ink-on-gold)}
 .blackjack-quiz strong{color:var(--accent)}
 @media(max-width:640px){
-  .blackjack-table{--bj-card-budget:calc(24.5rem + 1rem + var(--safe-bottom));--bj-card-h:min(calc(10.4rem * var(--card-size-scale,1)),calc((100vw - 3rem)/3 * 1.39),max(5rem,calc((var(--usable-h) - var(--bj-card-budget))/2)));--bj-card-w:calc(var(--bj-card-h) * .72)}
-  .blackjack-table:has(.blackjack-trainer-log,.blackjack-analysis,.blackjack-quiz){--bj-card-budget:calc(37rem + 1rem + var(--safe-bottom))}
   .blackjack-actions>button{font-size:.72rem}
-  .blackjack-table .playing-card{--card-w:var(--bj-card-w);--card-h:var(--bj-card-h);--corner-gap:.2rem}
 }
 @media(max-height:520px){
   .blackjack-shell>#blackjack-app{overflow:hidden}
