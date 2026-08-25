@@ -1,0 +1,12 @@
+*{box-sizing:border-box}
+html{background:var(--felt)}
+body{margin:0;background:radial-gradient(circle at top,var(--felt-gradient),var(--felt));color:var(--ink);font:16px system-ui,sans-serif;min-height:100dvh}
+.page{max-width:1100px;margin:0 auto;padding:1rem}
+.site-header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
+.brand{font-weight:800;color:var(--accent);text-decoration:none;font-size:1.35rem}
+.bank-widget{position:relative;display:block;border:0;background:none;color:var(--muted);padding:0}
+.bank-widget summary{display:flex;align-items:center;gap:.25rem;padding:.4rem;list-style:none;cursor:pointer}
+.bank-widget summary::-webkit-details-marker{display:none}
+.bank-panel{position:absolute;right:0;top:2.2rem;z-index:8;display:none;min-width:15rem;padding:.8rem;border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--felt-800);color:var(--ink);font-size:.8rem;line-height:1.5;text-align:left;box-shadow:0 8px 25px var(--shadow-53)}
+.bank-panel strong,.loan-badge,.loan-summary{display:block}.loan-badge{width:max-content;margin:.35rem 0;padding:.1rem .45rem;border:1px solid var(--danger);border-radius:var(--radius-chip);background:var(--surface-danger);color:var(--danger-ink);font-weight:800}.loan-summary{margin:.2rem 0 .35rem;font-variant-numeric:tabular-nums}.bank-action{width:100%;margin:.25rem 0 .45rem}.bank-action:disabled{opacity:.55;cursor:not-allowed}.player-page-link{display:block;margin:.15rem 0 .45rem;color:var(--accent);font-weight:800}
+.bank-widget[open] .bank-panel{display:block}

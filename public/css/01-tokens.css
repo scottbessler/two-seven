@@ -1,0 +1,29 @@
+/* Design-system tokens. */
+@property --safe-bottom{syntax:"<length>";inherits:true;initial-value:0px}
+:root{
+  color-scheme:dark;
+  --felt-900:#0b1c18;--felt-800:#10241f;--felt-700:#152f28;--felt-600:#123d34;--felt-500:#1c624d;
+  --line-1:#24463c;--line-2:#527d6c;--line-3:#6caa91;
+  --ink:#f4efe4;--ink-muted:#a9c2b7;--ink-faint:#527d6c;
+  --gold:#d9ad55;--gold-hi:#f1d56e;--mint:#7fd4a8;--danger:#b75b57;--danger-ink:#ffb7ae;
+  --card-stock:#faf9f2;--card-red:#d5291f;--card-black:#20231f;--card-blue:#124f8c;
+  --control-h:44px;--control-h-primary:52px;--control-h-compact:40px;
+  --space-2:2px;--space-4:4px;--space-6:6px;--space-8:8px;--space-12:12px;--space-16:16px;--space-20:20px;--space-28:28px;--space-44:44px;
+  --radius-card:4px;--radius-control:12px;--radius-surface:16px;--radius-chip:999px;--card-aspect:1.39;
+  --text-display:28px;--text-title:20px;--text-action:17px;--text-body:15px;--text-small:13px;--text-label:11px;
+  --weight-display:800;--weight-title:800;--weight-action:800;--weight-body:700;--weight-small:600;--weight-label:800;
+  --safe-top:env(safe-area-inset-top,0px);--safe-right:env(safe-area-inset-right,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px);--usable-h:calc(100dvh - var(--safe-top) - var(--safe-bottom));
+  --felt:var(--felt-600);--felt-light:var(--felt-500);--card:#183029;--card-ink:#111;--muted:var(--ink-muted);--accent:var(--gold);
+  --felt-gradient:#1d5948;--felt-card:#183029;--surface-deep:#0d1f1b;--surface-dark:#091713;--surface-raised:#17362e;--surface-back:#193f35;--surface-wager:#172b25;--surface-blitz:#15382f;--surface-danger:#351b1b;--surface-gold:#2a2514;--surface-champion:#1b3d32;--surface-champion-gold:#423618;--surface-complete:#3d3216;--surface-house:#245a49;--surface-backdrop:#06100d;
+  --line-legacy:#346252;
+  --card-empty:#17362e;--card-empty-border:#31594c;--card-back-border:#55776b;--card-back-deep:#102820;--card-back-line:#6f8f83;--card-back-a:#214b40;--card-back-b:#183a31;
+  --ink-on-gold:#1a160d;--ink-on-mint:#0d2419;--ink-on-difficulty:#332715;--card-border:#d8d5cc;--card-shadow:#000;--white:#fff;--error:#ff9f9f;--wager-ink:#f4d98b;
+  --radius-zero:0;--radius-small:6px;--radius-seat:7px;--radius-large-card:14px;--radius-pill-legacy:99px;
+  --shadow-40:color-mix(in srgb,var(--card-shadow) 40%,transparent);--shadow-47:color-mix(in srgb,var(--card-shadow) 46.667%,transparent);--shadow-53:color-mix(in srgb,var(--card-shadow) 53.333%,transparent);--shadow-67:color-mix(in srgb,var(--card-shadow) 66.667%,transparent);--shadow-73:color-mix(in srgb,var(--card-shadow) 73.333%,transparent);--shadow-80:color-mix(in srgb,var(--card-shadow) 80%,transparent);
+  --surface-deep-40:color-mix(in srgb,var(--surface-deep) 40%,transparent);--surface-deep-44:color-mix(in srgb,var(--surface-deep) 43.75%,transparent);--surface-deep-60:color-mix(in srgb,var(--surface-deep) 60%,transparent);--surface-deep-80:color-mix(in srgb,var(--surface-deep) 80%,transparent);--surface-deep-91:color-mix(in srgb,var(--surface-deep) 90.196%,transparent);--surface-deep-95:color-mix(in srgb,var(--surface-deep) 94.902%,transparent);
+  --mint-13:color-mix(in srgb,var(--mint) 13.333%,transparent);--mint-44:color-mix(in srgb,var(--mint) 43.75%,transparent);--gold-25:color-mix(in srgb,var(--gold) 25.098%,transparent);--gold-44:color-mix(in srgb,var(--gold) 43.75%,transparent);--gold-hi-14:color-mix(in srgb,var(--gold-hi) 14.118%,transparent);--gold-hi-15:color-mix(in srgb,var(--gold-hi) 15.686%,transparent);--gold-hi-19:color-mix(in srgb,var(--gold-hi) 18.824%,transparent);--gold-hi-27:color-mix(in srgb,var(--gold-hi) 27.059%,transparent);--gold-hi-50:color-mix(in srgb,var(--gold-hi) 50.196%,transparent);--gold-hi-60:color-mix(in srgb,var(--gold-hi) 60%,transparent);--white-20:color-mix(in srgb,var(--white) 20%,transparent);
+  --surface-backdrop-80:color-mix(in srgb,var(--surface-backdrop) 80%,transparent);
+}
+@media(orientation:portrait){html.standalone-pwa{--safe-bottom:max(env(safe-area-inset-bottom,0px),34px)}}
+@media(orientation:landscape){html.standalone-pwa{--safe-bottom:max(env(safe-area-inset-bottom,0px),21px)}}
+@media (max-height:520px) and (orientation:landscape){:root{--usable-h:calc(100dvh - var(--safe-top) - var(--safe-bottom))}}

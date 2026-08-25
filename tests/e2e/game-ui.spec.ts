@@ -850,6 +850,12 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
   const inspectRail = async (state, expectOutcome = false) => {
     await mountTable(page, state);
     await expect(page.locator(".other-seats .seat").first()).toBeVisible();
+    const shortName = page.locator(".other-seats .player-info > strong").filter({ hasText: /^Sam$/ });
+    await expect(shortName).toHaveCount(1);
+    expect(
+      await shortName.evaluate((node) => node.scrollWidth <= node.clientWidth),
+      "compact portrait opponent names must not truncate",
+    ).toBe(true);
     const geometry = await page.locator(".table-stage").evaluate((stage) => {
       const stageBox = stage.getBoundingClientRect();
       // Browser-evaluated helpers cannot close over test-scope functions.
@@ -1225,6 +1231,54 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   }
 });
 
+test("keeps the desktop table shell dense", async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 832 }, { width: 1680, height: 1050 }]) {
+    /* oxlint-disable no-await-in-loop */
+    await page.setViewportSize(viewport);
+    await mountTable(page, tableState);
+    const geometry = await page.locator(".table-shell").evaluate((shell) => {
+      const viewer = shell.querySelector(".seat.viewer").getBoundingClientRect();
+      const decision = shell.querySelector(".decision-area").getBoundingClientRect();
+      const buttons = [...shell.querySelectorAll(".actions button")].map((button) => button.getBoundingClientRect());
+      return {
+        viewerDecisionGap: decision.top - viewer.bottom,
+        actionBandExcess: decision.height - Math.max(...buttons.map((button) => button.height)),
+      };
+    });
+    expect(geometry.viewerDecisionGap, `desktop viewer seat must stay near the decision area at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBeLessThan(viewport.height * 0.1);
+    expect(geometry.actionBandExcess, `desktop action band must hug its controls at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(24);
+    const seatGeometry = await page.locator(".table-stage").evaluate((stage) => {
+      return [...stage.querySelectorAll(".seat")].every((seat) => {
+        const seatBox = seat.getBoundingClientRect();
+        const stack = seat.querySelector(".seat-stack")?.getBoundingClientRect();
+        return [...seat.querySelectorAll(".playing-card")].every((card) => {
+          const cardBox = card.getBoundingClientRect();
+          return cardBox.top >= seatBox.top && cardBox.bottom <= seatBox.bottom
+            && cardBox.left >= seatBox.left && cardBox.right <= seatBox.right
+            && (!stack || !(cardBox.left < stack.right && cardBox.right > stack.left && cardBox.top < stack.bottom && cardBox.bottom > stack.top));
+        });
+      });
+    });
+    expect(seatGeometry, `desktop seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
+    const commandControls = await page.locator(".table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button)").evaluateAll((controls) =>
+      controls.map((control) => ({ fontSize: getComputedStyle(control).fontSize, height: control.getBoundingClientRect().height })),
+    );
+    expect(new Set(commandControls.map((control) => control.fontSize)).size, `desktop table command fonts must match at ${JSON.stringify(viewport)}`).toBe(1);
+    expect(new Set(commandControls.map((control) => control.height)).size, `desktop table command heights must match at ${JSON.stringify(viewport)}`).toBe(1);
+    await mountTable(page, showdownState);
+    await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
+    const showdownGeometry = await page.locator(".table-shell").evaluate((shell) => {
+      const board = shell.querySelector(".table-center > .board").getBoundingClientRect();
+      const rail = shell.querySelector(".game-log").getBoundingClientRect();
+      const result = shell.querySelector(".showdown-result");
+      return { boardRight: board.right, railLeft: rail.left, resultClipped: result.scrollWidth > result.clientWidth };
+    });
+    expect(showdownGeometry.boardRight, `desktop showdown board must clear the game log rail at ${JSON.stringify(viewport)} ${JSON.stringify(showdownGeometry)}`).toBeLessThanOrEqual(showdownGeometry.railLeft);
+    expect(showdownGeometry.resultClipped, `desktop showdown result must remain readable at ${JSON.stringify(viewport)} ${JSON.stringify(showdownGeometry)}`).toBe(false);
+    /* oxlint-enable no-await-in-loop */
+  }
+});
+
 test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
@@ -1570,6 +1624,39 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       layout.actionButtons.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight),
       "V42: portrait action labels must fit their buttons",
     ).toBe(true);
+    const seatGeometry = await page.locator(".table-stage").evaluate((stage) => {
+      return [...stage.querySelectorAll(".seat")].every((seat) => {
+        const seatBox = seat.getBoundingClientRect();
+        const stack = seat.querySelector(".seat-stack")?.getBoundingClientRect();
+        return [...seat.querySelectorAll(".playing-card")].every((card) => {
+          const cardBox = card.getBoundingClientRect();
+          return cardBox.top >= seatBox.top && cardBox.bottom <= seatBox.bottom
+            && cardBox.left >= seatBox.left && cardBox.right <= seatBox.right
+            && (!stack || !(cardBox.left < stack.right && cardBox.right > stack.left && cardBox.top < stack.bottom && cardBox.bottom > stack.top));
+        });
+      });
+    });
+    expect(seatGeometry, `V42: portrait seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
+    const commandControls = await page.locator(".table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button)").evaluateAll((controls) =>
+      controls.map((control) => ({ fontSize: getComputedStyle(control).fontSize, height: control.getBoundingClientRect().height })),
+    );
+    expect(new Set(commandControls.map((control) => control.fontSize)).size, `V42: portrait table command fonts must match at ${JSON.stringify(viewport)}`).toBe(1);
+    expect(new Set(commandControls.map((control) => control.height)).size, `V42: portrait table command heights must match at ${JSON.stringify(viewport)}`).toBe(1);
+    await mountTable(page, showdownState);
+    const showdownLayout = await page.locator(".table-stage").evaluate((stage) => {
+      const board = stage.querySelector(".table-center > .board").getBoundingClientRect();
+      const rail = stage.querySelector(".table-center > .table-rail").getBoundingClientRect();
+      const result = stage.querySelector(".showdown-result");
+      return {
+        boardRight: board.right,
+        railLeft: rail.left,
+        resultClipped: result.scrollWidth > result.clientWidth,
+        resultText: result.textContent,
+      };
+    });
+    expect(showdownLayout.boardRight, `V42: five-card showdown board must clear the result rail at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(showdownLayout.railLeft);
+    expect(showdownLayout.resultClipped, `V42: five-card showdown result must not clip at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(showdownLayout.resultText, `V42: five-card showdown result must remain rendered at ${JSON.stringify(viewport)}`).toContain("Mina wins $400");
     /* oxlint-enable no-await-in-loop */
   }
   await page.evaluate(() => localStorage.removeItem("table-card-size-percent"));

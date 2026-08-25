@@ -1,0 +1,51 @@
+.blackjack-shell{display:flex;flex-direction:column;flex:1 1 auto;height:100%;min-height:0;overflow:hidden}
+html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hidden}
+.page:has(.blackjack-shell){display:flex;flex-direction:column;gap:.6rem;height:100dvh;overflow:hidden;padding-bottom:calc(1rem + var(--safe-bottom))}
+.page:has(.blackjack-shell) .site-header{flex:0 0 auto}
+.blackjack-shell>#blackjack-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+.blackjack-table{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto auto auto;gap:.75rem;flex:1 1 auto;min-height:0;overflow:hidden}
+.blackjack-status-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
+.blackjack-status-row span{display:grid;place-items:center;min-height:3rem;padding:.45rem;border:1px solid var(--line-2);border-radius:var(--radius-small);background:var(--felt-800);color:var(--muted);font-size:.76rem;text-align:center}
+.blackjack-status-row b{color:var(--accent);font-size:1.05rem}
+.blackjack-shoe{display:grid;gap:.3rem;min-width:0}
+.blackjack-shoe-bar{position:relative;height:.75rem;overflow:hidden;border:1px solid var(--line-2);border-radius:var(--radius-chip);background:var(--felt-800)}
+.blackjack-shoe-dealt{display:block;height:100%;background:var(--line-2)}
+.blackjack-shoe-marker{position:absolute;top:-.15rem;width:2px;height:1.05rem;background:var(--accent);box-shadow:0 0 0 1px var(--ink-on-gold)}
+.blackjack-shoe-text,.blackjack-fresh-shuffle{margin:0;color:var(--muted);font-size:.72rem;text-align:center}
+.blackjack-fresh-shuffle{color:var(--accent);font-weight:700}
+.blackjack-play-area{container-type:size;display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,24rem));grid-template-rows:repeat(2,minmax(0,1fr));justify-content:center;align-items:stretch;gap:.75rem;min-height:0;overflow:hidden}
+.blackjack-play-area .blackjack-hand:first-child{grid-column:1/-1}
+.blackjack-play-area .blackjack-hand:nth-child(2):last-child{grid-column:1/-1}
+.blackjack-actions{display:grid;grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.5rem}
+.blackjack-actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
+.blackjack-actions .deal-action{background:var(--accent);color:var(--ink-on-gold)}
+.deal-broke{display:grid;place-items:center;min-height:2.9rem;padding:.8rem;color:var(--muted)}
+.blackjack-hand{container-type:size;display:grid;grid-template-rows:auto minmax(0,1fr);align-content:stretch;gap:.4rem;min-width:0;min-height:0;text-align:center}
+.blackjack-hand h2{margin:.2rem 0;font-size:1rem}
+.blackjack-hand .board{container-type:normal;align-items:flex-end;width:100%;height:auto;min-height:0}
+.blackjack-hand .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),29cqw,78cqh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
+.blackjack-trainer-count{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}
+.blackjack-trainer-count span{display:grid;place-items:center;min-height:2.4rem;padding:.25rem;border:1px solid var(--line-2);border-radius:var(--radius-small);background:var(--felt-800);color:var(--muted);text-align:center}
+.blackjack-trainer-count b{color:var(--accent)}
+.blackjack-trainer-log{display:grid;gap:.15rem;max-height:7rem;margin:0;padding:.45rem .7rem;overflow:auto;border:1px solid var(--line-legacy);border-radius:var(--radius-small);background:var(--surface-deep);color:var(--muted);font-size:.75rem}
+.blackjack-analysis,.blackjack-quiz{display:grid;gap:.35rem;margin:0;padding:.55rem .65rem;border:1px solid var(--gold);border-radius:var(--radius-small);background:var(--surface-gold);color:var(--ink)}
+.blackjack-analysis p,.blackjack-quiz p{margin:0}
+.blackjack-quiz div{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.35rem}
+.blackjack-quiz button{min-width:0;border-color:var(--line-2);background:var(--felt-800);color:var(--ink)}
+.blackjack-quiz button.selected{border-color:var(--accent);background:var(--gold);color:var(--ink-on-gold)}
+.blackjack-quiz strong{color:var(--accent)}
+@media(max-width:640px){
+  .blackjack-actions>button{min-height:var(--control-h);padding:.35rem 0;font-size:.72rem;line-height:1.1}
+}
+@media(max-width:380px){
+  .blackjack-actions>button{font-size:.7rem;letter-spacing:-.04em}
+}
+@media(max-height:520px) and (orientation:landscape){
+  .blackjack-shell>#blackjack-app{overflow:hidden}
+  .blackjack-table{gap:.2rem;overflow:hidden}
+  .blackjack-play-area{grid-template-columns:repeat(3,minmax(0,1fr));gap:.25rem;overflow:hidden}
+  .blackjack-status-row,.blackjack-shoe,.blackjack-table>.blitz-feedback,.blackjack-table>.blackjack-actions,.blackjack-trainer-count,.blackjack-trainer-log,.blackjack-analysis,.blackjack-quiz{grid-column:1/-1}
+  .blackjack-hand h2{margin:.1rem 0;font-size:.8rem}
+  .blackjack-actions{grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.25rem}
+  .blackjack-actions>button{min-height:var(--control-h-compact);font-size:var(--text-small)}
+}

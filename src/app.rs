@@ -286,7 +286,13 @@ fn asset_version() -> String {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for f in [
-        "public/app.css",
+        "public/css/01-tokens.css",
+        "public/css/02-base.css",
+        "public/css/03-controls.css",
+        "public/css/04-cards.css",
+        "public/css/05-table.css",
+        "public/css/06-blackjack.css",
+        "public/css/07-pages.css",
         "public/auth.js",
         "public/bank.js",
         "public/blackjack.js",

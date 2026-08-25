@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "description": "Frontend lint and e2e tooling for two-seven",
-  "scripts": { "lint": "oxlint --deny-warnings", "lint:fix": "oxlint --fix", "test:e2e": "playwright test" },
+  "scripts": { "lint": "oxlint --deny-warnings", "lint:fix": "oxlint --fix", "test:e2e": "playwright test", "test:e2e:docker": "scripts/e2e-docker.sh" },
   "devDependencies": { "@playwright/test": "1.54.1", "oxlint": "^1.71.0" }
 }

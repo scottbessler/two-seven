@@ -246,7 +246,7 @@ src/
   render.rs                      # SSR
   routes.rs                      # handlers
   view.rs                        # redacted view projections
-public/                          # app.css, table.js island, auth.js, vendor/
+public/                          # table.js island, auth.js, vendor/
 tests/                           # eval, holdem, bank, bot, routes, dockerfile
 ```
 

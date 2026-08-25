@@ -24,7 +24,7 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
 | Rust tests | `cargo test --locked` |
 | Rust lint | `cargo fmt --check && cargo clippy --locked --all-targets --all-features` |
 | JS lint | `bun run lint` (`bun run lint:fix` to autofix) |
-| e2e | `bun run test:e2e` (starts its own server on :18080) |
+| e2e | `bun run test:e2e` (fast local loop; skips image comparison) |
 | Run server | `cargo run` (:8080), or `./dev.sh` to restart on file change |
 | Everything CI runs | `mise run check` |
 
@@ -35,8 +35,14 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
 - Passkeys can't be driven headlessly. `PASSKEY_DISABLED=1` is set by `dev.sh`
   and by the Playwright web server; use it for any local run you need to sign
   into.
-- e2e snapshots live beside their specs in `tests/e2e/*-snapshots/`. The
+- e2e snapshots live beside their specs in `tests/e2e/*-snapshots/`. Baselines
+  are rendered in the pinned Playwright container and are platform-independent;
+  regenerate them with `bun run test:e2e:docker -- --update-snapshots`. The
   `chromium-mobile` project emulates an iPhone 15/16 Pro, safe-area insets
-  included — don't relax the geometry to make a snapshot pass.
+  included — don't relax the geometry or image tolerance to make a snapshot
+  pass. `bun run test:e2e` remains the fast local loop and skips image
+  comparison.
+- `scripts/e2e-docker.sh` builds and runs the server on the host; only the
+  browser and Playwright tests run inside the container.
 - `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
   invariants against a `DATA_PATH` tree.
