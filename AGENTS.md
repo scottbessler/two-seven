@@ -1,0 +1,42 @@
+# Working in this repo
+
+Rust (axum) backend in `src/`, vanilla-JS PWA frontend in `public/`, Playwright
+e2e in `tests/e2e/`. `SPEC.md` is the source of truth for game rules;
+`STATECHART.md` describes the table state machine.
+
+## Setup
+
+```sh
+./scripts/setup.sh
+```
+
+Idempotent: enables the repo git hooks, installs JS deps, resolves a Chromium
+for Playwright, and warms the Rust build. `SKIP_BUILD=1` skips the slow build,
+`SKIP_BROWSERS=1` skips browser setup. Claude Code web sessions run this
+automatically via `.claude/hooks/session-start.sh`.
+
+Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
+
+## Commands
+
+| Task | Command |
+| --- | --- |
+| Rust tests | `cargo test --locked` |
+| Rust lint | `cargo fmt --check && cargo clippy --locked --all-targets --all-features` |
+| JS lint | `bun run lint` (`bun run lint:fix` to autofix) |
+| e2e | `bun run test:e2e` (starts its own server on :18080) |
+| Run server | `cargo run` (:8080), or `./dev.sh` to restart on file change |
+| Everything CI runs | `mise run check` |
+
+## Notes
+
+- `warnings = "deny"` and `clippy::all = "deny"` are set in `Cargo.toml`; a
+  warning fails the build, so fix rather than `#[allow]`.
+- Passkeys can't be driven headlessly. `PASSKEY_DISABLED=1` is set by `dev.sh`
+  and by the Playwright web server; use it for any local run you need to sign
+  into.
+- e2e snapshots live beside their specs in `tests/e2e/*-snapshots/`. The
+  `chromium-mobile` project emulates an iPhone 15/16 Pro, safe-area insets
+  included — don't relax the geometry to make a snapshot pass.
+- `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
+  invariants against a `DATA_PATH` tree.

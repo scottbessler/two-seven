@@ -7,8 +7,8 @@ alias = "i"
 run = "bun install"
 
 [tasks.setup]
-description = "Install deps and enable the repo git hooks"
-run = ["bun install", "git config core.hooksPath .githooks"]
+description = "Prepare a dev environment: git hooks, JS deps, browsers, Rust build"
+run = "./scripts/setup.sh"
 
 [tasks."lint:rust"]
 description = "Rust format check + clippy"
