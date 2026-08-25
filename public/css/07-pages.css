@@ -16,7 +16,7 @@
 .leaderboard-table .rank{color:var(--muted);font-variant-numeric:tabular-nums}
 .leaderboard-table .money{font-variant-numeric:tabular-nums;font-weight:800}
 .leaderboard-table .blitz-empty{color:var(--line-2)}
-.house-tag{padding:.05rem .3rem;border:1px solid var(--line-2);border-radius:var(--radius-card);color:var(--muted);font-size:.65rem;font-style:normal}
+.house-tag{padding:.05rem .3rem;border:1px solid var(--line-2);border-radius:var(--radius-card);color:var(--muted);font-size:.6875rem;font-style:normal}
 @media(max-width:640px){.leaderboard-table{font-size:.72rem}.leaderboard-table th,.leaderboard-table td{padding:.3rem .35rem}}
 /* Player page: compact account history with a ledger-derived chart. */
 .player-page{display:grid;gap:.9rem;padding-bottom:2rem}
