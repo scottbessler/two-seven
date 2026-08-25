@@ -1,4 +1,5 @@
 /* Design-system tokens. */
+@property --safe-bottom{syntax:"<length>";inherits:true;initial-value:0px}
 :root{
   color-scheme:dark;
   --felt-900:#0b1c18;--felt-800:#10241f;--felt-700:#152f28;--felt-600:#123d34;--felt-500:#1c624d;
@@ -29,5 +30,7 @@
 @media(max-width:760px){:root{--control-height:2.7rem;--control-font-size:.72rem;--control-padding-block:.4rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.7rem;--dense-control-font-size:.72rem;--dense-control-padding-block:.4rem;--dense-control-padding-inline:.25rem}}
 @media(max-width:640px){:root{--control-height:2.7rem;--control-font-size:.78rem;--control-padding-block:.35rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.7rem;--dense-control-font-size:.78rem;--dense-control-padding-block:.35rem;--dense-control-padding-inline:.1rem;--blackjack-control-height:2.7rem;--blackjack-control-font-size:.78rem;--blackjack-control-letter-spacing:normal;--blackjack-control-padding-block:.35rem;--blackjack-control-padding-inline:0}}
 @media(max-width:640px) and (max-height:760px) and (orientation:portrait){:root{--control-height:2.5rem;--control-font-size:.72rem;--control-padding-block:.3rem;--control-padding-inline:.2rem;--dense-control-height:2.5rem;--dense-control-padding-inline:0;--blackjack-control-height:2.5rem;--blackjack-control-font-size:.75rem;--blackjack-control-letter-spacing:-.06em;--blackjack-control-padding-block:.3rem;--blackjack-control-padding-inline:0}}
+@media(orientation:portrait){html.standalone-pwa{--safe-bottom:max(env(safe-area-inset-bottom,0px),34px)}}
+@media(orientation:landscape){html.standalone-pwa{--safe-bottom:max(env(safe-area-inset-bottom,0px),21px)}}
 @media (max-height:520px) and (orientation:landscape){:root{--usable-h:calc(100dvh - var(--safe-top) - var(--safe-bottom))}}
 @media(max-height:520px) and (orientation:landscape){:root{--control-height:2.25rem;--control-font-size:.72rem;--control-padding-block:.3rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.25rem;--dense-control-font-size:.58rem;--dense-control-padding-block:.3rem;--dense-control-padding-inline:.15rem;--blackjack-control-height:2.25rem;--blackjack-control-font-size:.78rem;--blackjack-control-padding-block:.3rem;--blackjack-control-padding-inline:.15rem}}
