@@ -253,6 +253,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats .seat{flex:1 1 4.6rem}
   .table-stage .seats .seat.viewer{flex:2 1 9.5rem;padding:.28rem .3rem}
   .table-stage .board{min-height:2.7rem}
+  .table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),24cqw,7cqh);--card-h:calc(var(--card-w) * 1.379);--corner-gap:calc(var(--card-w) * .04)}
   .table-metrics{gap:.25rem}
   .table-metrics span{min-width:4.4rem;padding:.05rem .25rem;line-height:1}
   .table-metrics small{font-size:.5rem;line-height:1}
