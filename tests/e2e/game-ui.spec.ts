@@ -1260,6 +1260,11 @@ test("keeps the desktop table shell dense", async ({ page }) => {
       });
     });
     expect(seatGeometry, `desktop seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
+    const commandControls = await page.locator(".table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button)").evaluateAll((controls) =>
+      controls.map((control) => ({ fontSize: getComputedStyle(control).fontSize, height: control.getBoundingClientRect().height })),
+    );
+    expect(new Set(commandControls.map((control) => control.fontSize)).size, `desktop table command fonts must match at ${JSON.stringify(viewport)}`).toBe(1);
+    expect(new Set(commandControls.map((control) => control.height)).size, `desktop table command heights must match at ${JSON.stringify(viewport)}`).toBe(1);
     await mountTable(page, showdownState);
     await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
     const showdownGeometry = await page.locator(".table-shell").evaluate((shell) => {
@@ -1632,6 +1637,11 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       });
     });
     expect(seatGeometry, `V42: portrait seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
+    const commandControls = await page.locator(".table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button)").evaluateAll((controls) =>
+      controls.map((control) => ({ fontSize: getComputedStyle(control).fontSize, height: control.getBoundingClientRect().height })),
+    );
+    expect(new Set(commandControls.map((control) => control.fontSize)).size, `V42: portrait table command fonts must match at ${JSON.stringify(viewport)}`).toBe(1);
+    expect(new Set(commandControls.map((control) => control.height)).size, `V42: portrait table command heights must match at ${JSON.stringify(viewport)}`).toBe(1);
     await mountTable(page, showdownState);
     const showdownLayout = await page.locator(".table-stage").evaluate((stage) => {
       const board = stage.querySelector(".table-center > .board").getBoundingClientRect();

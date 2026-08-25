@@ -133,6 +133,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-controls .seat-bot{display:contents}
 .table-history-link{display:grid;place-items:center;padding:.45rem .65rem;min-height:var(--control-h);border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-decoration:none;line-height:1.1;font-size:var(--text-action);white-space:nowrap}
 .table-command-link{display:grid;place-items:center;min-height:var(--control-h);padding:.45rem .65rem;border:1px solid var(--line-2);border-radius:var(--radius-control);text-decoration:none;font-size:var(--text-action);line-height:1.1;font-weight:700;white-space:nowrap}
+.table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){box-sizing:border-box;height:var(--control-h);min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .table-controls button{white-space:nowrap}
 .table-controls .table-command-confirm{display:contents}
 .site-header{padding-top:var(--safe-top)}
@@ -146,7 +147,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .page:has(.table-shell) .table-config-button{grid-column:3;grid-row:1/3;align-self:center;justify-self:end}
   .page:has(.table-shell) .header-context{grid-column:1;grid-row:2;align-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .table-shell .actions button{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
-  .showdown-advance button,.showdown-advance.spectator,.table-history-link,.table-command-link{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .showdown-advance button,.showdown-advance.spectator{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){height:var(--control-h);min-height:var(--control-h);padding:.45rem .25rem;font-size:var(--text-action)}
   .page:has(.table-shell) .brand,.page:has(.table-shell) .header-context{line-height:1}
   .header-context .header-info{display:none}
 }
@@ -174,7 +176,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-side-rail .table-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-row:2;width:100%;min-width:0;margin-top:.75rem;box-sizing:border-box;gap:.35rem}
   .table-side-rail .table-controls #table-error:empty{display:none}
   .table-side-rail .table-controls > :is(.table-history-link,.table-command,.table-command-link){min-width:0;flex:0 0 auto}
-  .table-side-rail .table-controls .seat-bot button{min-width:0;padding-inline:.25rem;font-size:var(--text-small)}
+  .table-side-rail .table-controls .seat-bot button{min-width:0}
   .table-stage{container-type:size;height:auto;flex:1 1 auto;grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:stretch}
   .table-stage:has(.showdown-result,.showdown-advance){height:auto}
   .table-shell>.decision-area{height:4.25rem;min-height:4.25rem;box-sizing:border-box}
@@ -263,7 +265,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-shell .actions .action-prefix{display:none}
   .table-shell .actions .capped-call{grid-auto-flow:column;grid-auto-columns:max-content;justify-content:center;gap:.3em}
   .table-shell .actions .capped-call .action-prefix{display:inline}
-  .showdown-advance button,.showdown-advance.spectator,.table-history-link,.table-command-link{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .showdown-advance button,.showdown-advance.spectator{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){height:var(--control-h);min-height:var(--control-h);padding:.45rem .25rem;font-size:var(--text-action)}
   .game-log{flex:1 1 5rem;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.6875rem}
   .table-controls{flex-wrap:wrap;margin-top:auto;padding-bottom:0}
@@ -295,8 +298,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats .seat{flex:1 1 4.6rem}
   .table-stage .seats .seat.viewer{flex:2 1 9.5rem;padding:.28rem .3rem}
   .table-stage .board{min-height:2.7rem}
-  .table-shell .actions button,.showdown-advance button,.showdown-advance.spectator,.table-history-link,.table-command-link{min-height:var(--control-h-compact);padding:.3rem .25rem;font-size:var(--text-small);line-height:1.1}
-  .table-controls .seat-bot button{min-height:var(--control-h-compact)}
+  .table-shell .actions button,.showdown-advance button,.showdown-advance.spectator{min-height:var(--control-h-compact);padding:.3rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){height:var(--control-h-compact);min-height:var(--control-h-compact);padding:.3rem .25rem;font-size:var(--text-small)}
   /* Inline-size containers have no query block size; keep this height guard viewport-based. */
   .table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100cqw - 3 * var(--table-board-gap))/4),7svh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5),7svh)}
