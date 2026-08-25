@@ -1231,6 +1231,36 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   }
 });
 
+test("keeps the desktop table shell dense", async ({ page }) => {
+  for (const viewport of [{ width: 1280, height: 832 }, { width: 1680, height: 1050 }]) {
+    /* oxlint-disable no-await-in-loop */
+    await page.setViewportSize(viewport);
+    await mountTable(page, tableState);
+    const geometry = await page.locator(".table-shell").evaluate((shell) => {
+      const viewer = shell.querySelector(".seat.viewer").getBoundingClientRect();
+      const decision = shell.querySelector(".decision-area").getBoundingClientRect();
+      const buttons = [...shell.querySelectorAll(".actions button")].map((button) => button.getBoundingClientRect());
+      return {
+        viewerDecisionGap: decision.top - viewer.bottom,
+        actionBandExcess: decision.height - Math.max(...buttons.map((button) => button.height)),
+      };
+    });
+    expect(geometry.viewerDecisionGap, `desktop viewer seat must stay near the decision area at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBeLessThan(viewport.height * 0.1);
+    expect(geometry.actionBandExcess, `desktop action band must hug its controls at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(24);
+    await mountTable(page, showdownState);
+    await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
+    const showdownGeometry = await page.locator(".table-shell").evaluate((shell) => {
+      const board = shell.querySelector(".table-center > .board").getBoundingClientRect();
+      const rail = shell.querySelector(".game-log").getBoundingClientRect();
+      const result = shell.querySelector(".showdown-result");
+      return { boardRight: board.right, railLeft: rail.left, resultClipped: result.scrollWidth > result.clientWidth };
+    });
+    expect(showdownGeometry.boardRight, `desktop showdown board must clear the game log rail at ${JSON.stringify(viewport)} ${JSON.stringify(showdownGeometry)}`).toBeLessThanOrEqual(showdownGeometry.railLeft);
+    expect(showdownGeometry.resultClipped, `desktop showdown result must remain readable at ${JSON.stringify(viewport)} ${JSON.stringify(showdownGeometry)}`).toBe(false);
+    /* oxlint-enable no-await-in-loop */
+  }
+});
+
 test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
