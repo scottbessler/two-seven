@@ -1570,6 +1570,21 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       layout.actionButtons.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight),
       "V42: portrait action labels must fit their buttons",
     ).toBe(true);
+    await mountTable(page, showdownState);
+    const showdownLayout = await page.locator(".table-stage").evaluate((stage) => {
+      const board = stage.querySelector(".table-center > .board").getBoundingClientRect();
+      const rail = stage.querySelector(".table-center > .table-rail").getBoundingClientRect();
+      const result = stage.querySelector(".showdown-result");
+      return {
+        boardRight: board.right,
+        railLeft: rail.left,
+        resultClipped: result.scrollWidth > result.clientWidth,
+        resultText: result.textContent,
+      };
+    });
+    expect(showdownLayout.boardRight, `V42: five-card showdown board must clear the result rail at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(showdownLayout.railLeft);
+    expect(showdownLayout.resultClipped, `V42: five-card showdown result must not clip at ${JSON.stringify(viewport)}`).toBe(false);
+    expect(showdownLayout.resultText, `V42: five-card showdown result must remain rendered at ${JSON.stringify(viewport)}`).toContain("Mina wins $400");
     /* oxlint-enable no-await-in-loop */
   }
   await page.evaluate(() => localStorage.removeItem("table-card-size-percent"));
