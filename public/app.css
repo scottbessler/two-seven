@@ -366,7 +366,7 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 @media (max-width:640px),(max-height:520px){
   html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
-  .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 41.75rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);display:flex;flex-direction:column;gap:.25rem;height:100vh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) calc(.45rem + var(--safe-right)) .25rem calc(.45rem + var(--safe-left))}
+  .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 41.75rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);display:flex;flex-direction:column;gap:.25rem;height:100vh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) calc(.45rem + var(--safe-right)) calc(.25rem + var(--safe-bottom)) calc(.45rem + var(--safe-left))}
   .page:has(.table-shell) .site-header{flex:0 0 auto;height:2.55rem;margin-bottom:0;padding-top:0}
   .page:has(.table-shell) .brand{font-size:.9rem}
   .header-context{font-size:.72rem}
@@ -452,6 +452,7 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
   .game-log{flex:1 1 3rem;min-height:2.6rem}
 }
 @media (max-height:520px) and (orientation:landscape){
+  :root{--usable-h:calc(100vh - var(--safe-top) - var(--safe-bottom))}
   .table-shell{gap:.2rem}
   .page:has(.table-shell){gap:.15rem}
   .table-stage .seats{display:flex;flex-wrap:wrap;align-content:flex-end;justify-content:center;gap:.25rem}

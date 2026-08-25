@@ -1246,6 +1246,12 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, unseated);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
   await expect(page.locator(".table-controls .table-command")).toBeEnabled();
+  const buyInBounds = await page.locator(".table-controls .table-command").evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const safeBottom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom"));
+    return { bottom: rect.bottom, safeBottom, viewportHeight: window.innerHeight };
+  });
+  expect(buyInBounds.bottom, `V54: the lifecycle command must clear the PWA home indicator ${JSON.stringify(buyInBounds)}`).toBeLessThanOrEqual(buyInBounds.viewportHeight - buyInBounds.safeBottom + 1);
   // Seating a bot is one click: pick the type and the server fills the next seat.
   let botBody;
   await page.route("**/tables/mock/bot", async (route) => {
@@ -1510,6 +1516,7 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
         metricsStacked: metricRows.length < 2 || metricRows[1].top >= metricRows[0].bottom,
         metricsLeftOfBoard: metrics.right <= sharedCards.left,
         controlsBottomGap: document.documentElement.clientHeight - controls.bottom,
+        safeBottom: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom")),
         actionBandExcess: decision.height - Math.max(...actionButtons.map((button) => button.height)),
         pageBottomPadding: Number.parseFloat(getComputedStyle(pageNode).paddingBottom),
         actionButtons,
@@ -1522,9 +1529,9 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
     expect(layout.viewerSummaryCenterSpread, `V48: viewer name, stack, and wager must share one row at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(1);
     expect(layout.metricsStacked, `V48: pot and current bet must stack at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.metricsLeftOfBoard, `V48: metrics must sit left of shared cards at ${JSON.stringify(viewport)}`).toBe(true);
-    expect(layout.controlsBottomGap, `V48: table controls must sit at viewport bottom at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(16);
+    expect(layout.controlsBottomGap - layout.safeBottom, `V54: table controls must clear the home indicator at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(4);
     expect(layout.actionBandExcess, `V50: action background must hug controls at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(16);
-    expect(layout.pageBottomPadding, `V50: footer must use only compact edge padding at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(4);
+    expect(layout.pageBottomPadding - layout.safeBottom, `V54: footer may reserve only the compact edge beyond the home indicator at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(4);
     expect(new Set(layout.actionButtons.map((button) => button.height)).size, "V42: portrait action buttons must share one height").toBe(1);
     expect(new Set(layout.actionButtons.map((button) => button.fontSize)).size, "V42: portrait action buttons must share one font size").toBe(1);
     expect(
@@ -1660,4 +1667,3 @@ test("uses the short acknowledgement window for a fold result", async ({ page })
   await mountTable(page, foldResultState);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });
-
