@@ -5,6 +5,28 @@ document.documentElement.classList.toggle(
   window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
 );
 
+// iOS reports env(safe-area-inset-bottom) as 0 for a beat after a standalone
+// PWA cold-launches, so the action bar's bottom padding briefly collapses to
+// nothing. Re-measure the real inset with a probe element and republish it as
+// --safe-bottom once WebKit settles, instead of trusting env() at first paint.
+function syncSafeAreaInsetBottom() {
+  const probe = document.createElement("div");
+  probe.style.cssText =
+    "position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none";
+  document.body.appendChild(probe);
+  const measured = probe.getBoundingClientRect().height;
+  probe.remove();
+  if (measured > 0) document.documentElement.style.setProperty("--safe-bottom", `${measured}px`);
+}
+
+if (document.documentElement.classList.contains("standalone-pwa")) {
+  syncSafeAreaInsetBottom();
+  for (const delay of [50, 300, 1000]) setTimeout(syncSafeAreaInsetBottom, delay);
+  window.visualViewport?.addEventListener("resize", syncSafeAreaInsetBottom);
+  window.addEventListener("orientationchange", () => setTimeout(syncSafeAreaInsetBottom, 80));
+  window.addEventListener("pageshow", syncSafeAreaInsetBottom);
+}
+
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
 const balance = document.getElementById("bank-balance");
