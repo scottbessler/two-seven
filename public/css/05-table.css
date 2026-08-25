@@ -183,7 +183,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   /* The reserved rail is fixed, so the shared cards answer to what is left of
      the row rather than to a constant that only fits four of them. */
   .table-stage .table-center>.board{container-type:inline-size}
-  .table-stage .board .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),28cqw);--card-h:calc(var(--card-w) * 1.379);--corner-gap:calc(var(--card-w) * .04);border-radius:var(--radius-card)}
+  .table-stage .table-center>.board .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),28cqw);--card-h:calc(var(--card-w) * 1.379);--corner-gap:calc(var(--card-w) * .04);border-radius:var(--radius-card)}
   .table-stage .board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),22cqw)}
   .table-stage .seat-cards.revealed .playing-card{--card-w:min(calc(2.45rem * var(--card-size-scale,1)),50cqw);--card-h:calc(var(--card-w) * 1.39)}
   .table-center>.table-rail{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:.12rem;grid-column:3;grid-row:1;min-width:0;overflow:hidden}
