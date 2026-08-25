@@ -121,7 +121,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:600}
 .game-log .status-log b{color:var(--accent)}
 .game-log .result-log b{color:var(--gold-hi)}
-.table-controls{justify-content:flex-end;padding-bottom:var(--safe-bottom)}
+.table-controls{justify-content:flex-end;padding-bottom:0}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .table-controls button,.table-controls .table-command-link{background:var(--felt-800);color:var(--muted)}
 .table-config-button{display:grid;place-items:center;flex:0 0 auto;width:2rem;height:2rem;min-height:0;padding:0;border-color:var(--line-2);background:var(--felt-800);color:var(--muted);font-size:1rem}
@@ -135,9 +135,10 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-shell .actions{padding-bottom:calc(.65rem + var(--safe-bottom))}
 @media(max-width:760px){
   .page:has(.table-shell) .site-header{display:grid;grid-template-columns:minmax(0,1fr) 125px minmax(0,1fr);grid-template-rows:max(44px,var(--safe-top));align-items:center;gap:0;height:max(44px,var(--safe-top));margin-bottom:.15rem;padding-top:0;white-space:nowrap}
-  .page:has(.table-shell) .brand{grid-column:1;grid-row:1;align-self:start}
-  .page:has(.table-shell) .bank-widget{grid-column:3;grid-row:1;align-self:center;justify-self:start;margin-left:0}
-  .page:has(.table-shell) .bank-widget summary{padding-block:.15rem}
+  .page:has(.table-shell) .brand{grid-column:1;grid-row:1;align-self:center}
+  .page:has(.table-shell) .bank-widget{grid-column:3;grid-row:1;align-self:center;justify-self:start;min-width:0;max-width:100%;margin-left:0}
+  .page:has(.table-shell) .bank-widget summary{min-width:0;max-width:100%;padding-block:.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .page:has(.table-shell) .bank-widget #bank-balance{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .page:has(.table-shell) .table-config-button{grid-column:3;grid-row:1;align-self:center;justify-self:end}
   .page:has(.table-shell) .header-context{grid-column:1;grid-row:1;align-self:end;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .page:has(.table-shell) .brand,.page:has(.table-shell) .header-context{line-height:1}
@@ -148,7 +149,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
   .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.65rem + var(--viewer-stage-extra,0rem))}
   .decision-area{min-height:3.4rem;padding:.45rem;border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
-  .table-shell .actions{gap:.4rem;width:100%;padding-bottom:var(--safe-bottom)}
+  .table-shell .actions{gap:.4rem;width:100%}
   .table-shell .actions button{min-width:0}
   .game-log{align-self:stretch;height:100%;min-height:0;overflow:auto}
   .game-log ol{grid-template-columns:1fr;align-content:start}
@@ -219,7 +220,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-shell .card-config-preview .playing-card{--card-w:var(--viewer-card-w-fit-mobile);--card-h:var(--viewer-card-h-fit-mobile);--corner-gap:.1rem;margin-left:-.2rem}
 
   .decision-area{min-height:3.2rem;padding:.35rem .15rem}
-  .table-shell .actions{padding-bottom:var(--safe-bottom)}
+  .table-shell .actions{padding-bottom:0}
   .table-shell .actions,.table-shell .actions .action-middle,.table-shell .actions .action-edge{gap:.2rem}
   .table-shell .actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
   .table-shell .actions .action-prefix{display:none}
@@ -227,7 +228,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-shell .actions .capped-call .action-prefix{display:inline}
   .game-log{flex:1 1 auto;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.66rem}
-  .table-controls{flex-wrap:wrap;margin-top:auto;padding-bottom:var(--safe-bottom)}
+  .table-controls{flex-wrap:wrap;margin-top:auto;padding-bottom:0}
   .table-controls .seat-bot{display:flex;order:-1;flex:1 0 100%;gap:.2rem}
   .table-controls .seat-bot button{flex:1;min-width:0;padding-inline:.2rem;font-size:.68rem}
   .confirm-dialog footer{display:grid;grid-template-columns:1fr;justify-content:stretch}

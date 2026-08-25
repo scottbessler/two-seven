@@ -73,6 +73,8 @@
   .blitz-hands button{min-height:5.1rem;padding:.3rem}
 }
 @media(max-width:640px){
+  body{padding-bottom:5.5rem}
+  body:has(.blackjack-shell){padding-bottom:0}
   body:has(.blitz-shell){padding-bottom:0}
   body:has(.blitz-shell) .page{height:100vh;overflow:hidden;padding-bottom:0}
   .blitz-shell{min-height:0;overflow:hidden}

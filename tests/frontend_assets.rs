@@ -1,6 +1,6 @@
 const TABLE_JS: &str = include_str!("../public/table.js");
 const APP_RS: &str = include_str!("../src/app.rs");
-const APP_CSS: &str = concat!(
+const ACTIVE_CSS: &str = concat!(
     include_str!("../public/css/01-tokens.css"),
     include_str!("../public/css/02-base.css"),
     include_str!("../public/css/03-controls.css"),
@@ -215,8 +215,8 @@ fn table_css_is_mobile_poker_layout() {
         "label[hidden]{display:none}",
     ] {
         assert!(
-            APP_CSS.contains(literal),
-            "missing app.css contract: {literal}"
+            ACTIVE_CSS.contains(literal),
+            "missing active CSS contract: {literal}"
         );
     }
 }
@@ -269,8 +269,8 @@ fn hand_blitz_island_has_mode_contracts() {
         ".blitz-hands",
     ] {
         assert!(
-            APP_CSS.contains(literal),
-            "missing app.css blitz contract: {literal}"
+            ACTIVE_CSS.contains(literal),
+            "missing active CSS blitz contract: {literal}"
         );
     }
 }
@@ -388,7 +388,7 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-shoe-text",
     ] {
         assert!(
-            APP_CSS.contains(literal),
+            ACTIVE_CSS.contains(literal),
             "missing blackjack trainer CSS contract: {literal}"
         );
     }

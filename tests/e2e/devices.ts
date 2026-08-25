@@ -48,7 +48,7 @@ export const IPHONE_SE_PORTRAIT: EmulatedDevice = {
 
 /**
  * Chromium reports every `env(safe-area-inset-*)` as 0, so the notch and home
- * indicator are invisible to a headless run. `app.css` funnels every inset
+ * indicator are invisible to a headless run. The split stylesheets funnel every inset
  * through `--safe-*` custom properties precisely so a test can pin them here.
  *
  * The same injection paints the device's own chrome — status bar, Dynamic
