@@ -68,7 +68,8 @@
   .difficulty-grid,.blitz-hands{gap:.35rem}
   .difficulty-grid button{min-height:3rem;padding:.3rem}
   .blitz-table>.board{min-height:2rem}
-  .blitz-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),24cqw,7cqh);--card-h:calc(var(--card-w) * 1.39);--corner-gap:calc(var(--card-w) * .04)}
+  /* Inline-size containers have no query block size; keep this height guard viewport-based. */
+  .blitz-table .playing-card{--card-w:min(calc(3.1rem * var(--card-size-scale,1)),24cqw,7svh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .blitz-hands .board{min-height:4.3rem}
   .blitz-hands button{min-height:5.1rem;padding:.3rem}
 }
@@ -81,5 +82,5 @@
   .blitz-shell{min-height:0;overflow:hidden}
   /* Two hands stack in portrait, so the cards answer to the height budget as
      well as the width one; without the height term a 793pt iPhone overlaps them. */
-  .blitz-table .playing-card{--card-w:min(calc(3.6rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5));--card-h:min(calc(5rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5 * 1.39))}
+  .blitz-table .playing-card{--card-w:min(calc(3.6rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5));--card-h:min(calc(5rem * var(--card-size-scale,1)),calc((100vw - 4.25rem)/5 * var(--card-aspect)))}
 }

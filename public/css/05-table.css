@@ -21,7 +21,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-center{display:grid;justify-items:center;gap:.4rem;text-align:center}
 .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
 .table-stage .table-center>.board{container-type:inline-size;justify-self:stretch}
-.table-stage .table-center>.board .playing-card{--card-w:min(calc(3.65rem * var(--card-size-scale,1)),32cqw);--card-h:calc(var(--card-w) * 1.39);--corner-gap:calc(var(--card-w) * .05)}
+.table-stage .table-center>.board .playing-card{--card-w:min(calc(3.65rem * var(--card-size-scale,1)),32cqw);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .05)}
 .card-test-grid .playing-card{--card-w:5.2rem;--card-h:7.25rem;--corner-gap:.28rem}
 .card-back i{width:62%;height:72%;border:1px solid var(--card-back-line);background:repeating-linear-gradient(45deg,var(--card-back-a) 0 5px,var(--card-back-b) 5px 10px)}
 .table-stage .seats{display:grid;gap:.4rem;pointer-events:auto}
@@ -51,8 +51,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat .seat-wager.no-wager{visibility:hidden}
 .seat .seat-wager.checked-wager{border-color:var(--line-2);background:transparent;color:var(--muted);box-shadow:none}
 .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;left:auto;display:flex;justify-content:center;align-self:center;max-width:100%;margin:0 auto;z-index:4;transform:none;transition:transform .2s cubic-bezier(.2,.8,.2,1.25);transform-origin:center top}
-.seat-cards .playing-card{--card-w:min(calc(2rem * var(--card-size-scale,1)),20cqw);--card-h:calc(var(--card-w) * 1.4);--corner-gap:calc(var(--card-w) * .04);margin-left:-.15rem;border-radius:var(--radius-card-legacy)}
-.seat-cards.revealed .playing-card{--card-w:min(calc(2.45rem * var(--card-size-scale,1)),50cqw);--card-h:calc(var(--card-w) * 1.39);--corner-gap:calc(var(--card-w) * .04)}
+.seat-cards .playing-card{--seat-card-cap:2rem;--seat-card-share:37cqw;--card-w:min(calc(var(--seat-card-cap) * var(--card-size-scale,1)),var(--seat-card-share));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04);margin-left:-.15rem;border-radius:var(--radius-card-legacy)}
+.seat-cards.revealed .playing-card{--seat-card-cap:2.45rem;--seat-card-share:60cqw;--card-w:min(calc(var(--seat-card-cap) * var(--card-size-scale,1)),var(--seat-card-share));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
 .seat-cards .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .seat-cards .playing-card:last-child{transform:rotate(3deg)}
 .seat.viewer .seat-cards{grid-column:1;grid-row:4;align-self:start}
@@ -183,9 +183,10 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   /* The reserved rail is fixed, so the shared cards answer to what is left of
      the row rather than to a constant that only fits four of them. */
   .table-stage .table-center>.board{container-type:inline-size}
-  .table-stage .table-center>.board .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),28cqw);--card-h:calc(var(--card-w) * 1.379);--corner-gap:calc(var(--card-w) * .04);border-radius:var(--radius-card)}
+  .table-stage .table-center>.board .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),28cqw);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04);border-radius:var(--radius-card)}
   .table-stage .board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),22cqw)}
-  .table-stage .seat-cards.revealed .playing-card{--card-w:min(calc(2.45rem * var(--card-size-scale,1)),50cqw);--card-h:calc(var(--card-w) * 1.39)}
+  .table-stage .seat-cards .playing-card{--seat-card-cap:1.9rem;--seat-card-share:37cqw}
+  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:2.55rem;--seat-card-share:60cqw}
   .table-center>.table-rail{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:.12rem;grid-column:3;grid-row:1;min-width:0;overflow:hidden}
   .table-stage .board{gap:.25rem;min-height:4rem}
   .table-center:has(.showdown-odds){gap:.18rem}
@@ -259,7 +260,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats .seat{flex:1 1 4.6rem}
   .table-stage .seats .seat.viewer{flex:2 1 9.5rem;padding:.28rem .3rem}
   .table-stage .board{min-height:2.7rem}
-  .table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),24cqw,7cqh);--card-h:calc(var(--card-w) * 1.379);--corner-gap:calc(var(--card-w) * .04)}
+  /* Inline-size containers have no query block size; keep this height guard viewport-based. */
+  .table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),24cqw,7svh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-metrics{gap:.25rem}
   .table-metrics span{min-width:4.4rem;padding:.05rem .25rem;line-height:1}
   .table-metrics small{font-size:.5rem;line-height:1}
@@ -267,6 +269,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .felt{margin-block:auto}
   .table-stage .seats{margin-top:auto}
   .showdown-result:empty{display:none}
+  .table-stage .seat-cards .playing-card{--seat-card-cap:1.5rem;--seat-card-share:18.15cqw}
+  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:1.9rem;--seat-card-share:23cqw}
   .seat.viewer .seat-cards .playing-card{--card-w:calc(var(--viewer-card-w-mobile)*.78);--card-h:calc(var(--viewer-card-h-mobile)*.78)}
   .game-log{display:none}
   .table-shell .actions{gap:.2rem}
