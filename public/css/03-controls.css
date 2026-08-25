@@ -9,8 +9,8 @@ form{display:grid;gap:.65rem;margin-top:1.5rem}
 label{display:grid;gap:.3rem;color:var(--muted)}label[hidden]{display:none}
 fieldset{border:1px solid var(--line-legacy);border-radius:var(--radius-panel-legacy);padding:.8rem}
 fieldset>div{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
-input,button,select{font:inherit;padding:.7rem;border-radius:var(--radius-control-legacy);border:1px solid var(--line-2);background:var(--felt-800);color:var(--ink)}
-button{background:var(--accent);color:var(--ink-on-gold);font-weight:700;cursor:pointer;min-height:var(--control-height);padding:var(--control-padding-block) var(--control-padding-inline);font-size:var(--control-font-size);line-height:var(--control-line-height);white-space:nowrap}
+input,button,select{font:inherit;padding:.7rem;border-radius:var(--radius-control);border:1px solid var(--line-2);background:var(--felt-800);color:var(--ink)}
+button{background:var(--accent);color:var(--ink-on-gold);font-weight:700;cursor:pointer;min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 button.danger{background:var(--danger);color:white}
 .error{color:var(--error)}
 #table-error:empty{display:none}

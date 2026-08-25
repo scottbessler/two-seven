@@ -91,7 +91,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat.champion{border-color:var(--gold-hi);background:linear-gradient(135deg,var(--surface-champion) 0%,var(--felt-800) 58%,var(--surface-champion-gold) 100%);box-shadow:0 0 0 2px var(--gold-hi),0 0 30px 8px var(--gold-hi-60),inset 0 0 24px var(--gold-hi-19)}
 .seat.folded{opacity:.58;filter:saturate(.35)}
 .showdown-advance{display:flex;justify-content:center;margin:0}
-.showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-height);padding:var(--control-padding-block) var(--control-padding-inline);overflow:hidden;border-radius:var(--radius-small);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--control-emphasis-font-size);line-height:var(--control-line-height);white-space:nowrap}
+.showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-small);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid var(--gold);border-radius:var(--radius-small)}
 .showdown-progress{position:absolute;left:0;top:0;bottom:0;background:var(--gold-25);transition:width .1s linear}
 .house-deal button{background:var(--surface-house);border-color:var(--line-3);color:var(--ink)}
@@ -104,13 +104,13 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .action-edge,.action-middle{display:grid;min-width:0;gap:.4rem}
 .action-edge{grid-template-columns:minmax(0,1fr)}
 .action-middle{grid-template-columns:repeat(var(--middle-action-count,1),minmax(0,1fr))}
-.table-shell .actions button{min-width:0;min-height:var(--dense-control-height);padding:var(--dense-control-padding-block) var(--dense-control-padding-inline);font-size:var(--dense-control-font-size);line-height:var(--control-line-height);overflow:hidden;white-space:nowrap;border-radius:var(--radius-small)}
+.table-shell .actions button{min-width:0;min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;overflow:hidden;white-space:nowrap;border-radius:var(--radius-small)}
 .table-shell .actions button>span{position:relative;z-index:1}
 .hold-action{position:relative;isolation:isolate;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:manipulation}
 .hold-action::after{content:"";position:absolute;inset:0;z-index:0;background:var(--white-20);transform:scaleX(0);transform-origin:left}
 .hold-action.holding::after{animation:hold-action-progress 1s linear forwards}
 @keyframes hold-action-progress{to{transform:scaleX(1)}}
-.blackjack-actions>button{min-width:0;min-height:var(--blackjack-control-height);padding:var(--blackjack-control-padding-block) var(--blackjack-control-padding-inline);font-size:var(--blackjack-control-font-size);line-height:var(--control-line-height);letter-spacing:var(--blackjack-control-letter-spacing);overflow:hidden;white-space:nowrap;border-radius:var(--radius-small)}
+.blackjack-actions>button{min-width:0;min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;overflow:hidden;white-space:nowrap;border-radius:var(--radius-small)}
 .table-shell .actions .primary-action{background:var(--gold);color:var(--ink-on-gold)}
 .table-shell .actions .wager-action{background:var(--surface-house);color:var(--ink)}
 .table-shell .actions .all-in-action{border-color:var(--gold)}
@@ -130,8 +130,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-config-button{display:grid;place-items:center;flex:0 0 auto;width:2rem;height:2rem;min-height:0;padding:0;border-color:var(--line-2);background:var(--felt-800);color:var(--muted);font-size:1rem}
 /* The bot control rides alongside the buy-in/leave command as a dialog. */
 .table-controls .seat-bot{display:contents}
-.table-history-link{display:grid;place-items:center;padding:var(--control-padding-block) var(--control-padding-inline);min-height:var(--control-height);border:1px solid var(--line-2);border-radius:var(--radius-control-legacy);background:var(--felt-800);color:var(--muted);text-decoration:none;line-height:var(--control-line-height);font-size:var(--control-font-size);white-space:nowrap}
-.table-command-link{display:grid;place-items:center;min-height:var(--control-height);padding:var(--control-padding-block) var(--control-padding-inline);border:1px solid var(--line-2);border-radius:var(--radius-control-legacy);text-decoration:none;font-size:var(--control-font-size);line-height:var(--control-line-height);font-weight:700;white-space:nowrap}
+.table-history-link{display:grid;place-items:center;padding:.45rem .65rem;min-height:var(--control-h);border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-decoration:none;line-height:1.1;font-size:var(--text-action);white-space:nowrap}
+.table-command-link{display:grid;place-items:center;min-height:var(--control-h);padding:.45rem .65rem;border:1px solid var(--line-2);border-radius:var(--radius-control);text-decoration:none;font-size:var(--text-action);line-height:1.1;font-weight:700;white-space:nowrap}
 .table-controls button{white-space:nowrap}
 .table-controls .table-command-confirm{display:contents}
 .site-header{padding-top:var(--safe-top)}
@@ -144,6 +144,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .page:has(.table-shell) .bank-widget #bank-balance{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .page:has(.table-shell) .table-config-button{grid-column:3;grid-row:1/3;align-self:center;justify-self:end}
   .page:has(.table-shell) .header-context{grid-column:1;grid-row:2;align-self:start;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .table-shell .actions button{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .showdown-advance button,.showdown-advance.spectator,.table-history-link,.table-command-link{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
   .page:has(.table-shell) .brand,.page:has(.table-shell) .header-context{line-height:1}
   .header-context .header-info{display:none}
 }
@@ -227,15 +229,16 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .decision-area{min-height:3.2rem;padding:.35rem .15rem}
   .table-shell .actions{padding-bottom:0}
   .table-shell .actions,.table-shell .actions .action-middle,.table-shell .actions .action-edge{gap:.2rem}
-  .table-shell .actions button{display:grid;place-items:center;min-width:0;overflow:hidden;text-align:center}
+  .table-shell .actions button{display:grid;place-items:center;min-width:0;min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1;overflow:hidden;text-align:center}
   .table-shell .actions .action-prefix{display:none}
   .table-shell .actions .capped-call{grid-auto-flow:column;grid-auto-columns:max-content;justify-content:center;gap:.3em}
   .table-shell .actions .capped-call .action-prefix{display:inline}
+  .showdown-advance button,.showdown-advance.spectator,.table-history-link,.table-command-link{min-height:var(--control-h);padding:.35rem .25rem;font-size:var(--text-small);line-height:1.1}
   .game-log{flex:1 1 5rem;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.66rem}
   .table-controls{flex-wrap:wrap;margin-top:auto;padding-bottom:0}
   .table-controls .seat-bot{display:flex;order:-1;flex:1 0 100%;gap:.2rem}
-  .table-controls .seat-bot button{flex:1;min-width:0;padding-inline:.2rem;font-size:.68rem}
+  .table-controls .seat-bot button{flex:1;min-width:0;padding-inline:.2rem;font-size:var(--text-small)}
   .confirm-dialog footer{display:grid;grid-template-columns:1fr;justify-content:stretch}
   .confirm-dialog footer button{width:100%}
   .card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-gap:.16rem}
@@ -253,15 +256,17 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 @media (max-height:520px) and (orientation:landscape){
   .table-shell{gap:.2rem}
   .page:has(.table-shell){gap:.15rem}
-  .table-stage{gap:0}
+  .table-stage{flex:0 0 auto;gap:0}
   .table-stage .seats.viewer-seats{margin-top:0}
   .table-stage .seats .seat{height:auto;grid-template-rows:auto auto minmax(2.65rem,auto) auto auto;min-height:4.55rem;gap:0;padding:.1rem .2rem;overflow:visible}
-  .table-stage .seats .seat.viewer{height:auto;min-height:calc(min(3.2rem,(var(--usable-h) - 16.5rem)/3) + 3.45rem)}
+  .table-stage .seats .seat.viewer{height:auto;min-height:calc(min(3.2rem,(var(--usable-h) - 16.5rem)/3) + 3.2rem)}
   .decision-area{min-height:2.35rem;padding:.2rem .15rem}
   .table-stage .seats{display:flex;flex-wrap:wrap;align-content:flex-end;justify-content:center;gap:.25rem}
   .table-stage .seats .seat{flex:1 1 4.6rem}
   .table-stage .seats .seat.viewer{flex:2 1 9.5rem;padding:.28rem .3rem}
   .table-stage .board{min-height:2.7rem}
+  .table-shell .actions button,.showdown-advance button,.showdown-advance.spectator,.table-history-link,.table-command-link{min-height:var(--control-h-compact);padding:.3rem .25rem;font-size:var(--text-small);line-height:1.1}
+  .table-controls .seat-bot button{min-height:var(--control-h-compact)}
   /* Inline-size containers have no query block size; keep this height guard viewport-based. */
   .table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100cqw - 3 * var(--table-board-gap))/4),7svh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5),7svh)}

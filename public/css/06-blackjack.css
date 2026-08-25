@@ -35,7 +35,10 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hid
 .blackjack-quiz button.selected{border-color:var(--accent);background:var(--gold);color:var(--ink-on-gold)}
 .blackjack-quiz strong{color:var(--accent)}
 @media(max-width:640px){
-  .blackjack-actions>button{font-size:.72rem}
+  .blackjack-actions>button{min-height:var(--control-h);padding:.35rem 0;font-size:.72rem;line-height:1.1}
+}
+@media(max-width:380px){
+  .blackjack-actions>button{font-size:.7rem;letter-spacing:-.04em}
 }
 @media(max-height:520px) and (orientation:landscape){
   .blackjack-shell>#blackjack-app{overflow:hidden}
@@ -44,4 +47,5 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hid
   .blackjack-status-row,.blackjack-shoe,.blackjack-table>.blitz-feedback,.blackjack-table>.blackjack-actions,.blackjack-trainer-count,.blackjack-trainer-log,.blackjack-analysis,.blackjack-quiz{grid-column:1/-1}
   .blackjack-hand h2{margin:.1rem 0;font-size:.8rem}
   .blackjack-actions{grid-template-columns:repeat(var(--action-count,4),minmax(0,1fr));gap:.25rem}
+  .blackjack-actions>button{min-height:var(--control-h-compact);font-size:var(--text-small)}
 }
