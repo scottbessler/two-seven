@@ -1229,6 +1229,34 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, tableState);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
   await expect(page.getByRole("button", { name: "Sit out" })).toHaveCount(0);
+  const expectControlsTappable = async () => {
+    const controlBounds = await page.locator(".table-controls :is(.table-history-link,.table-command)").evaluateAll((controls) => {
+      const safeBottom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom"));
+      return controls.map((control) => {
+        const rect = control.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return {
+          label: control.textContent?.trim(),
+          left: rect.left,
+          right: rect.right,
+          bottom: rect.bottom,
+          height: rect.height,
+          safeBottom,
+          tappable: hit === control || control.contains(hit),
+          viewportHeight: window.innerHeight,
+          viewportWidth: window.innerWidth,
+        };
+      });
+    });
+    for (const bounds of controlBounds) {
+      expect(bounds.left, `V54: ${bounds.label} must remain inside the left edge ${JSON.stringify(bounds)}`).toBeGreaterThanOrEqual(0);
+      expect(bounds.right, `V54: ${bounds.label} must remain inside the right edge ${JSON.stringify(bounds)}`).toBeLessThanOrEqual(bounds.viewportWidth);
+      expect(bounds.bottom, `V54: ${bounds.label} must clear the PWA home indicator ${JSON.stringify(bounds)}`).toBeLessThanOrEqual(bounds.viewportHeight - bounds.safeBottom + 1);
+      expect(bounds.height, `V54: ${bounds.label} retains a usable mobile tap target`).toBeGreaterThanOrEqual(40);
+      expect(bounds.tappable, `V54: ${bounds.label} must be the topmost target at its center ${JSON.stringify(bounds)}`).toBe(true);
+    }
+  };
+  await expectControlsTappable();
 
   let joinBody;
   await page.route("**/tables/mock/join", async (route) => {
@@ -1246,12 +1274,7 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, unseated);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
   await expect(page.locator(".table-controls .table-command")).toBeEnabled();
-  const buyInBounds = await page.locator(".table-controls .table-command").evaluate((button) => {
-    const rect = button.getBoundingClientRect();
-    const safeBottom = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom"));
-    return { bottom: rect.bottom, safeBottom, viewportHeight: window.innerHeight };
-  });
-  expect(buyInBounds.bottom, `V54: the lifecycle command must clear the PWA home indicator ${JSON.stringify(buyInBounds)}`).toBeLessThanOrEqual(buyInBounds.viewportHeight - buyInBounds.safeBottom + 1);
+  await expectControlsTappable();
   // Seating a bot is one click: pick the type and the server fills the next seat.
   let botBody;
   await page.route("**/tables/mock/bot", async (route) => {
@@ -1422,16 +1445,25 @@ test("emulates the target phone's safe-area insets", async ({ page }) => {
   // return mobile snapshots to a notchless phone that nobody owns.
   test.skip((page.viewportSize()?.width || 0) > 640, "V54: only the phone project pins insets");
   await page.goto("/card-test");
-  const insets = await page.evaluate(() => {
+  const pwaSurface = await page.evaluate(() => {
     const styles = getComputedStyle(document.documentElement);
-    return ["top", "right", "bottom", "left"].map((side) => styles.getPropertyValue(`--safe-${side}`).trim());
+    return {
+      background: styles.backgroundColor,
+      insets: ["top", "right", "bottom", "left"].map((side) => styles.getPropertyValue(`--safe-${side}`).trim()),
+    };
   });
-  expect(insets, "V54: the full-bleed PWA takes the notch on top and the home indicator below").toEqual([
+  expect(pwaSurface.insets, "V54: the full-bleed PWA takes the notch on top and the home indicator below").toEqual([
     "59px",
     "0px",
     "34px",
     "0px",
   ]);
+  expect(pwaSurface.background, "V54: the status-bar canvas must carry the felt instead of defaulting to black").not.toBe("rgba(0, 0, 0, 0)");
+
+  await page.locator("style[data-device]").evaluate((style) => {
+    style.textContent = ":root{--safe-top:0px;--safe-right:0px;--safe-bottom:0px;--safe-left:0px}";
+  });
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom").trim()), "V54: standalone iPhones must retain home-indicator clearance when WebKit reports a zero inset").toBe("34px");
 });
 
 test("packs the table into a landscape phone without scrolling", async ({ page }) => {

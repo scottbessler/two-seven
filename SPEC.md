@@ -443,7 +443,9 @@ Mark each milestone done here as it lands.
   properties, and game shells size with `100vh` (never `100dvh` or `100%`).
   Height budgets subtract the insets through `--usable-h`. Snapshots paint the
   device's own chrome — status bar, Dynamic Island, home indicator — so they can
-  be read against a real screenshot.
+  be read against a real screenshot. The root canvas paints felt behind the
+  translucent status bar; standalone target iPhones retain home-indicator
+  clearance when WebKit reports a zero bottom inset.
 - **V55** Portrait poker centre = pot/current-bet left, shared cards centred in
   what is left, and a reserved right rail. The rail carries the showdown result
   right-aligned and, until the result is final, one equity/outs box per live
@@ -633,3 +635,4 @@ B8|2026-08-24|mobile result reflow moved action bar; bots could min-raise loop|V
 B9|2026-08-24|mobile snapshots emulated a Pixel 7 with zero insets, hiding stage overflow on iPhone PWA heights 761-843 and blackjack hand overlap|V42,V54
 B10|2026-08-24|12ce6a8 put compact dealer/blind badges back in flow, spending a row per seat, and the empty showdown result reserved a full-width band above the viewer seat|V45,V55
 B11|2026-08-24|a full-raise shove left must_call clear, so a caller facing an all-in shorter stack was still offered Raise and All In with nobody able to answer|V47,V51
+B12|2026-08-25|standalone iOS exposed transparent root canvas + zero bottom inset, blackening status area and clipping lifecycle controls|V54

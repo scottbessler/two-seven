@@ -77,6 +77,7 @@ function deviceScript(device: EmulatedDevice): string {
   return `(() => {
     const apply = () => {
       for (const stale of document.querySelectorAll("style[data-device], .e2e-device-chrome")) stale.remove();
+      document.documentElement.classList.add("standalone-pwa");
       const style = document.createElement("style");
       style.dataset.device = "";
       style.textContent = ${JSON.stringify(css)};

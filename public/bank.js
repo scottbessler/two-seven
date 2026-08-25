@@ -1,5 +1,10 @@
 import { announceBank, refreshBank, wholeDollarMoney as money } from "/public/shared.js";
 
+document.documentElement.classList.toggle(
+  "standalone-pwa",
+  window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true,
+);
+
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
 const balance = document.getElementById("bank-balance");

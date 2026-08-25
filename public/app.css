@@ -8,6 +8,7 @@
 /* Shared card-face geometry scales with both card dimensions. */
 :root{color-scheme:dark;--safe-top:env(safe-area-inset-top,0px);--safe-right:env(safe-area-inset-right,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px);--usable-h:calc(100vh - var(--safe-top));--felt:#123d34;--felt-light:#1c624d;--card:#183029;--ink:#f4efe4;--muted:#a9c2b7;--accent:#d9ad55;--danger:#b75b57;--control-height:2.7rem;--control-font-size:1rem;--control-padding-block:.45rem;--control-padding-inline:.65rem;--control-line-height:1.1;--control-emphasis-font-size:1rem;--dense-control-height:2.7rem;--dense-control-font-size:1rem;--dense-control-padding-block:.45rem;--dense-control-padding-inline:.65rem;--blackjack-control-height:2.7rem;--blackjack-control-font-size:1rem;--blackjack-control-letter-spacing:normal;--blackjack-control-padding-block:.45rem;--blackjack-control-padding-inline:.65rem}
 *{box-sizing:border-box}
+html{background:var(--felt)}
 body{margin:0;background:radial-gradient(circle at top,#1d5948,var(--felt));color:var(--ink);font:16px system-ui,sans-serif;min-height:100vh}
 .page{max-width:1100px;margin:0 auto;padding:1rem}
 .site-header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
@@ -342,6 +343,12 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 @media(max-width:640px){
   :root{--control-height:2.7rem;--control-font-size:.78rem;--control-padding-block:.35rem;--control-padding-inline:.25rem;--control-emphasis-font-size:.85rem;--dense-control-height:2.7rem;--dense-control-font-size:.78rem;--dense-control-padding-block:.35rem;--dense-control-padding-inline:.1rem;--blackjack-control-height:2.7rem;--blackjack-control-font-size:.78rem;--blackjack-control-letter-spacing:normal;--blackjack-control-padding-block:.35rem;--blackjack-control-padding-inline:0}
 }
+@media(min-width:390px) and (max-width:430px) and (min-height:790px){
+  html.standalone-pwa{--safe-bottom:34px}
+}
+@media(min-width:800px) and (max-height:430px) and (orientation:landscape){
+  html.standalone-pwa{--safe-bottom:21px}
+}
 @media(max-height:500px) and (orientation:landscape){
   .blitz-shell{gap:.25rem}
   .blitz-top h1{font-size:1.35rem}
@@ -432,7 +439,9 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
   .table-shell .actions .capped-call .action-prefix{display:inline}
   .game-log{flex:1 1 5rem;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:.66rem}
-  .table-controls{margin-top:auto;padding-bottom:0}
+  .table-controls{flex-wrap:wrap;margin-top:auto;padding-bottom:0}
+  .table-controls .seat-bot{display:flex;order:-1;flex:1 0 100%;gap:.2rem}
+  .table-controls .seat-bot button{flex:1;min-width:0;padding-inline:.2rem;font-size:.68rem}
   .confirm-dialog footer{display:grid;grid-template-columns:1fr;justify-content:stretch}
   .confirm-dialog footer button{width:100%}
   .card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-gap:.16rem}
