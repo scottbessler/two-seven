@@ -46,7 +46,7 @@ function blindRole(events, seat) {
   return null;
 }
 
-function Seat({ seat, player, events, current, button, viewer, viewerCards, showdown, leading, settled, champion }) {
+function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, leading, settled, champion }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
@@ -69,7 +69,8 @@ function Seat({ seat, player, events, current, button, viewer, viewerCards, show
     <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
   </span>`;
   const stackLabel = html`<span class="seat-stack">${money(stack)}</span>`;
-  const wager = html`<span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in ? "" : "no-wager"}`}>${player?.all_in ? "ALL IN" : money(player?.street_contribution || 0)}</span>`;
+  const checked = Boolean(player && street && events.some((event) => event.seat === seat.index && event.street === street && event.kind === "Check"));
+  const wager = html`<span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in || checked ? "" : "no-wager"} ${checked ? "checked-wager" : ""}`}>${player?.all_in ? "ALL IN" : checked ? "CHECKED" : money(player?.street_contribution || 0)}</span>`;
   return html`<article class=${classes}>
     <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
     ${viewer ? html`<span class="viewer-summary">${playerInfo}${stackLabel}${wager}</span>` : html`${playerInfo}${stackLabel}`}
@@ -457,7 +458,7 @@ function TableApp() {
     : hand
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} />`;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} trigger=${false} />
     <section class="table-stage" aria-label="Poker table">

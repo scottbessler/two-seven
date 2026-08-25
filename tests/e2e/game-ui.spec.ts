@@ -380,6 +380,18 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".seat-wager")).toHaveCount(6);
   await expect(page.locator(".seat-wager:not(.no-wager)")).toHaveCount(3);
   await expect(page.locator(".seat.viewer .seat-wager")).toHaveText("$12");
+  const checked = {
+    ...tableState,
+    hand: {
+      ...tableState.hand,
+      players: tableState.hand.players.map((player) => (player.seat === 1 ? { ...player, street_contribution: 0 } : player)),
+      events: [...tableState.hand.events, { street: "Flop", seat: 1, kind: "Check", amount: 0 }],
+    },
+  };
+  await mountTable(page, checked);
+  await expect(page.locator(".seat").filter({ hasText: "Mina" }).locator(".seat-wager")).toHaveText("CHECKED");
+  await expect(page.locator(".seat").filter({ hasText: "Mina" }).locator(".seat-wager")).not.toHaveClass(/no-wager/);
+  await mountTable(page, tableState);
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
   const viewerName = await page.locator(".seat.viewer .player-info").boundingBox();
@@ -1648,5 +1660,4 @@ test("uses the short acknowledgement window for a fold result", async ({ page })
   await mountTable(page, foldResultState);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });
-
 
