@@ -21,7 +21,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-center{display:grid;justify-items:center;gap:.4rem;text-align:center}
 .table-stage .board{align-items:center;gap:.38rem;min-height:5.2rem}
 .table-stage .table-center>.board{container-type:inline-size}
-.table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),32cqw);--card-h:calc(var(--card-w) * 1.39);--corner-gap:calc(var(--card-w) * .05)}
+.table-stage .table-center>.board .playing-card{--card-w:min(calc(3.65rem * var(--card-size-scale,1)),32cqw);--card-h:calc(var(--card-w) * 1.39);--corner-gap:calc(var(--card-w) * .05)}
 .card-test-grid .playing-card{--card-w:5.2rem;--card-h:7.25rem;--corner-gap:.28rem}
 .card-back i{width:62%;height:72%;border:1px solid var(--card-back-line);background:repeating-linear-gradient(45deg,var(--card-back-a) 0 5px,var(--card-back-b) 5px 10px)}
 .table-stage .seats{display:grid;gap:.4rem;pointer-events:auto}
