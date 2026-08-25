@@ -4,7 +4,7 @@ import type { DeviceOptions } from "./tests/e2e/fixtures";
 
 export default defineConfig<DeviceOptions>({
   testDir: "./tests/e2e",
-  snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{arg}{ext}",
+  snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
   expect: {
     toHaveScreenshot: {
       animations: "disabled",
@@ -31,11 +31,6 @@ export default defineConfig<DeviceOptions>({
   projects: [
     {
       name: "chromium-desktop",
-      expect: {
-        toHaveScreenshot: {
-          pathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
-        },
-      },
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1400 } },
     },
     {
@@ -43,11 +38,6 @@ export default defineConfig<DeviceOptions>({
       // installed PWA. Chromium still renders it, but the geometry — viewport and
       // safe-area insets both — is the iPhone's, so snapshots match the device.
       name: "chromium-mobile",
-      expect: {
-        toHaveScreenshot: {
-          pathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
-        },
-      },
       use: {
         browserName: "chromium",
         viewport: IPHONE_PORTRAIT.viewport,

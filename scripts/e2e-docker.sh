@@ -42,8 +42,10 @@ if ! curl --fail --silent --show-error http://127.0.0.1:18080/healthcheck >/dev/
 fi
 
 docker run --rm --ipc=host \
+  --init \
   --user "$(id -u):$(id -g)" \
   --add-host=host.docker.internal:host-gateway \
+  --env HOME=/tmp/playwright-home \
   --env TEST_BASE_URL=http://host.docker.internal:18080 \
   --volume "$repo_root:/work" \
   --workdir /work \

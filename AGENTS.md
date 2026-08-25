@@ -42,5 +42,7 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   included — don't relax the geometry or image tolerance to make a snapshot
   pass. `bun run test:e2e` remains the fast local loop and skips image
   comparison.
+- `scripts/e2e-docker.sh` builds and runs the server on the host; only the
+  browser and Playwright tests run inside the container.
 - `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
   invariants against a `DATA_PATH` tree.
