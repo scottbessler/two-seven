@@ -51,7 +51,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat .seat-wager.no-wager{visibility:hidden}
 .seat .seat-wager.checked-wager{border-color:var(--line-2);background:transparent;color:var(--muted);box-shadow:none}
 .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;left:auto;display:flex;justify-content:center;align-self:center;max-width:100%;margin:0 auto;z-index:4;transform:none;transition:transform .2s cubic-bezier(.2,.8,.2,1.25);transform-origin:center top}
-.seat-cards .playing-card{--card-w:min(calc(2rem * var(--card-size-scale,1)),22cqw);--card-h:calc(var(--card-w) * 1.4);--corner-gap:calc(var(--card-w) * .04);margin-left:-.15rem;border-radius:var(--radius-card-legacy)}
+.seat-cards .playing-card{--card-w:min(calc(2rem * var(--card-size-scale,1)),20cqw);--card-h:calc(var(--card-w) * 1.4);--corner-gap:calc(var(--card-w) * .04);margin-left:-.15rem;border-radius:var(--radius-card-legacy)}
 .seat-cards.revealed .playing-card{--card-w:min(calc(2.45rem * var(--card-size-scale,1)),50cqw);--card-h:calc(var(--card-w) * 1.39);--corner-gap:calc(var(--card-w) * .04)}
 .seat-cards .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .seat-cards .playing-card:last-child{transform:rotate(3deg)}
@@ -270,6 +270,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 }
 @media(max-height:520px) and (orientation:landscape){
   .table-stage{gap:0}
+  .table-stage .seats.viewer-seats{margin-top:0}
   .table-stage .seats .seat{height:auto;grid-template-rows:auto auto minmax(2.65rem,auto) auto auto;min-height:4.55rem;gap:0;padding:.1rem .2rem;overflow:visible}
   .table-stage .seats .seat.viewer{height:auto;min-height:calc(min(3.2rem,(var(--usable-h) - 16.5rem)/3) + 3.45rem)}
   .decision-area{min-height:2.35rem;padding:.2rem .15rem}
