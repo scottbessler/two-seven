@@ -1,5 +1,29 @@
 const TABLE_JS: &str = include_str!("../public/table.js");
-const APP_CSS: &str = include_str!("../public/app.css");
+const APP_RS: &str = include_str!("../src/app.rs");
+const APP_CSS: &str = concat!(
+    include_str!("../public/css/01-tokens.css"),
+    include_str!("../public/css/02-base.css"),
+    include_str!("../public/css/03-controls.css"),
+    include_str!("../public/css/04-cards.css"),
+    include_str!("../public/css/05-table.css"),
+    include_str!("../public/css/06-blackjack.css"),
+    include_str!("../public/css/07-pages.css"),
+);
+const CSS_SOURCES: [(&str, &str); 7] = [
+    ("01-tokens.css", include_str!("../public/css/01-tokens.css")),
+    ("02-base.css", include_str!("../public/css/02-base.css")),
+    (
+        "03-controls.css",
+        include_str!("../public/css/03-controls.css"),
+    ),
+    ("04-cards.css", include_str!("../public/css/04-cards.css")),
+    ("05-table.css", include_str!("../public/css/05-table.css")),
+    (
+        "06-blackjack.css",
+        include_str!("../public/css/06-blackjack.css"),
+    ),
+    ("07-pages.css", include_str!("../public/css/07-pages.css")),
+];
 const BANK_JS: &str = include_str!("../public/bank.js");
 const BLACKJACK_JS: &str = include_str!("../public/blackjack.js");
 const BLITZ_JS: &str = include_str!("../public/blitz.js");
@@ -26,6 +50,63 @@ fn imported_islands_are_emitted_as_module_scripts() {
 fn rendered_public_assets_are_versioned() {
     assert!(!RENDER_RS.contains(r#"src="/public/"#));
     assert!(!RENDER_RS.contains(r#"href="/public/"#));
+}
+
+fn contains_raw_color_literal(css: &str) -> bool {
+    css.match_indices('#').any(|(index, _)| {
+        let value = &css[index + 1..];
+        let digits = value.chars().take_while(char::is_ascii_hexdigit).count();
+        (3..=8).contains(&digits)
+            && value[digits..]
+                .chars()
+                .next()
+                .is_none_or(|character| !character.is_ascii_hexdigit())
+    })
+}
+
+#[test]
+fn split_css_assets_are_rendered_and_versioned() {
+    for path in [
+        "/public/css/01-tokens.css",
+        "/public/css/02-base.css",
+        "/public/css/03-controls.css",
+        "/public/css/04-cards.css",
+        "/public/css/05-table.css",
+        "/public/css/06-blackjack.css",
+        "/public/css/07-pages.css",
+    ] {
+        let filesystem_path = path.trim_start_matches('/');
+        assert!(
+            RENDER_RS.contains(&format!("asset(\"{path}\")")),
+            "render.rs should version {path}"
+        );
+        assert!(
+            APP_RS.contains(&format!("\"{filesystem_path}\"")),
+            "app.rs should hash {path}"
+        );
+    }
+}
+
+#[test]
+fn css_tokens_are_structurally_isolated() {
+    let root_files: Vec<_> = CSS_SOURCES
+        .iter()
+        .filter(|(_, css)| css.contains(":root"))
+        .map(|(name, _)| *name)
+        .collect();
+    assert_eq!(root_files, vec!["01-tokens.css"]);
+
+    for name in ["05-table.css", "06-blackjack.css", "07-pages.css"] {
+        let css = CSS_SOURCES
+            .iter()
+            .find(|(file_name, _)| *file_name == name)
+            .map(|(_, css)| *css)
+            .expect("screen stylesheet should be listed");
+        assert!(
+            !contains_raw_color_literal(css),
+            "{name} should not contain raw color literals"
+        );
+    }
 }
 
 #[test]
