@@ -1247,6 +1247,19 @@ test("keeps the desktop table shell dense", async ({ page }) => {
     });
     expect(geometry.viewerDecisionGap, `desktop viewer seat must stay near the decision area at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBeLessThan(viewport.height * 0.1);
     expect(geometry.actionBandExcess, `desktop action band must hug its controls at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBeLessThanOrEqual(24);
+    const seatGeometry = await page.locator(".table-stage").evaluate((stage) => {
+      return [...stage.querySelectorAll(".seat")].every((seat) => {
+        const seatBox = seat.getBoundingClientRect();
+        const stack = seat.querySelector(".seat-stack")?.getBoundingClientRect();
+        return [...seat.querySelectorAll(".playing-card")].every((card) => {
+          const cardBox = card.getBoundingClientRect();
+          return cardBox.top >= seatBox.top && cardBox.bottom <= seatBox.bottom
+            && cardBox.left >= seatBox.left && cardBox.right <= seatBox.right
+            && (!stack || !(cardBox.left < stack.right && cardBox.right > stack.left && cardBox.top < stack.bottom && cardBox.bottom > stack.top));
+        });
+      });
+    });
+    expect(seatGeometry, `desktop seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
     await mountTable(page, showdownState);
     await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
     const showdownGeometry = await page.locator(".table-shell").evaluate((shell) => {
@@ -1606,6 +1619,19 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       layout.actionButtons.every((button) => button.scrollWidth <= button.clientWidth && button.scrollHeight <= button.clientHeight),
       "V42: portrait action labels must fit their buttons",
     ).toBe(true);
+    const seatGeometry = await page.locator(".table-stage").evaluate((stage) => {
+      return [...stage.querySelectorAll(".seat")].every((seat) => {
+        const seatBox = seat.getBoundingClientRect();
+        const stack = seat.querySelector(".seat-stack")?.getBoundingClientRect();
+        return [...seat.querySelectorAll(".playing-card")].every((card) => {
+          const cardBox = card.getBoundingClientRect();
+          return cardBox.top >= seatBox.top && cardBox.bottom <= seatBox.bottom
+            && cardBox.left >= seatBox.left && cardBox.right <= seatBox.right
+            && (!stack || !(cardBox.left < stack.right && cardBox.right > stack.left && cardBox.top < stack.bottom && cardBox.bottom > stack.top));
+        });
+      });
+    });
+    expect(seatGeometry, `V42: portrait seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
     await mountTable(page, showdownState);
     const showdownLayout = await page.locator(".table-stage").evaluate((stage) => {
       const board = stage.querySelector(".table-center > .board").getBoundingClientRect();

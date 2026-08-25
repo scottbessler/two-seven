@@ -182,12 +182,14 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .other-seats{align-self:start}
   .table-stage .felt{width:min(100%,78rem);align-self:center}
   .table-stage .viewer-seats{align-self:end}
+  .table-stage .seat{container-type:size}
+  .table-stage .other-seats .seat-cards{align-self:start}
   .table-stage .table-center>.board .playing-card{--card-w:min(calc(12cqh / var(--card-aspect) * var(--card-size-scale,1)),calc((100cqw - 3 * var(--table-board-gap))/4),calc(6rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .05)}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(12cqh / var(--card-aspect) * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5),calc(6rem * var(--card-size-scale,1)))}
-  .table-stage .seat-cards .playing-card{--seat-card-cap:3.25rem;--seat-card-share:45cqw;--card-w:min(calc(8cqh * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
-  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:4rem;--seat-card-share:62cqw;--card-w:min(calc(10cqh * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
+  .table-stage .seat-cards .playing-card{--seat-card-cap:3.25rem;--seat-card-share:45cqw;--card-w:min(calc(48cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
+  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:4rem;--seat-card-share:62cqw;--card-w:min(calc(54cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-stage .viewer-seats .seat{height:min(calc(18cqh * var(--card-size-scale,1) + 3rem),22rem)}
-  .table-stage .seat.viewer .seat-cards .playing-card{--card-w:min(calc(16cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
+  .table-stage .seat.viewer .seat-cards .playing-card{--card-w:min(calc(62cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
   .table-stage .card-config-preview .playing-card{--card-w:min(calc(16cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
 }
 @media (max-width:640px),(max-height:520px){
@@ -247,7 +249,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .seat.viewer .viewer-summary .player-info,.seat.viewer .viewer-summary .seat-stack,.seat.viewer .viewer-summary .seat-wager{margin:0;white-space:nowrap}
   .seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;margin:0 auto;padding:.1rem .3rem;font-size:.6875rem;transform:none}
   .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;justify-content:center;transform:none}
-  .seat.viewer .seat-cards{grid-column:1;grid-row:2}
+  .seat.viewer .seat-cards{grid-column:1;grid-row:2;margin-top:.1rem}
   .seat.viewer .seat-cards:hover,.seat.viewer .seat-cards:focus-within{transform:scale(1.3)}
 
   .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit-mobile);--card-h:var(--viewer-card-h-fit-mobile);--corner-gap:.1rem}
