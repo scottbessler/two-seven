@@ -4,27 +4,38 @@ import type { DeviceOptions } from "./tests/e2e/fixtures";
 
 export default defineConfig<DeviceOptions>({
   testDir: "./tests/e2e",
+  snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{arg}{ext}",
   expect: {
     toHaveScreenshot: {
       animations: "disabled",
       maxDiffPixelRatio: 0.01,
     },
   },
+  reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: process.env.TEST_BASE_URL || "http://127.0.0.1:18080",
     trace: "on-first-retry",
     emulatedDevice: null,
   },
-  webServer: {
-    // The dialog needs a signed-in balance, and passkeys cannot be driven here.
-    command: "PASSKEY_DISABLED=1 PORT=18080 cargo run",
-    url: "http://127.0.0.1:18080/healthcheck",
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  ...(process.env.TEST_BASE_URL
+    ? {}
+    : {
+        webServer: {
+          // The dialog needs a signed-in balance, and passkeys cannot be driven here.
+          command: "PASSKEY_DISABLED=1 PORT=18080 cargo run",
+          url: "http://127.0.0.1:18080/healthcheck",
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+      }),
   projects: [
     {
       name: "chromium-desktop",
+      expect: {
+        toHaveScreenshot: {
+          pathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
+        },
+      },
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1400 } },
     },
     {
@@ -32,6 +43,11 @@ export default defineConfig<DeviceOptions>({
       // installed PWA. Chromium still renders it, but the geometry — viewport and
       // safe-area insets both — is the iPhone's, so snapshots match the device.
       name: "chromium-mobile",
+      expect: {
+        toHaveScreenshot: {
+          pathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
+        },
+      },
       use: {
         browserName: "chromium",
         viewport: IPHONE_PORTRAIT.viewport,

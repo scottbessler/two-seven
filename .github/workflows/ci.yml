@@ -22,3 +22,19 @@ jobs:
         with: { bun-version: 1.3.13 }
       - run: bun install --frozen-lockfile
       - run: bun run lint
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.90.0
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: 1.3.13 }
+      - run: bun install --frozen-lockfile
+      - run: bun run test:e2e:docker
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
