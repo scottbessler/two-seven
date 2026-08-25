@@ -11,6 +11,13 @@ if [[ "$expected_version" != "1.54.1" ]]; then
   exit 1
 fi
 
+if ! docker run --rm --volume "$repo_root:/work" --workdir /work "$image" \
+  test -x node_modules/.bin/playwright; then
+  printf '%s is not visible inside the container.\n' "$repo_root" >&2
+  printf 'Add it under Docker Desktop > Settings > Resources > File sharing, or run bun install.\n' >&2
+  exit 1
+fi
+
 cargo build --locked
 
 server_log="${TMPDIR:-/tmp}/two-seven-e2e-server.$$"
