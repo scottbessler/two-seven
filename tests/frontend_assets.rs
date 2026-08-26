@@ -96,15 +96,18 @@ fn css_tokens_are_structurally_isolated() {
         .collect();
     assert_eq!(root_files, vec!["01-tokens.css"]);
 
-    for name in ["05-table.css", "06-blackjack.css", "07-pages.css"] {
-        let css = CSS_SOURCES
-            .iter()
-            .find(|(file_name, _)| *file_name == name)
-            .map(|(_, css)| *css)
-            .expect("screen stylesheet should be listed");
+    for (name, css) in CSS_SOURCES.iter().skip(1) {
         assert!(
             !contains_raw_color_literal(css),
             "{name} should not contain raw color literals"
+        );
+    }
+
+    // Suit colors are scoped through `--suit-ink`, so nothing needs `!important`.
+    for (name, css) in CSS_SOURCES {
+        assert!(
+            !css.contains("!important"),
+            "{name} should not need !important"
         );
     }
 }
