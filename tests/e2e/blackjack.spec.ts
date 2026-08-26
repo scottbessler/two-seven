@@ -277,7 +277,10 @@ test("blackjack mobile uses the available card and action space", async ({ page 
     }
     expect(new Set(layout.buttons.map((button) => button.height)).size, "V42: blackjack action buttons must share one height").toBe(1);
     expect(new Set(layout.buttons.map((button) => button.fontSize)).size, "V42: blackjack action buttons must share one font size").toBe(1);
-    expect(layout.buttons.every((button) => Number.parseFloat(button.fontSize) >= 11.2), `V46: blackjack action labels must remain readable at ${JSON.stringify(viewport)} ${JSON.stringify(layout.buttons)}`).toBe(true);
+    // 11px is the design system's type floor (--text-label); the old 11.2 was
+    // the ad-hoc .7rem this row used before the scale existed. "Insurance" needs
+    // 68px at the next step up and the button is 64px, so 11 is the real limit.
+    expect(layout.buttons.every((button) => Number.parseFloat(button.fontSize) >= 11), `V46: blackjack action labels must remain readable at ${JSON.stringify(viewport)} ${JSON.stringify(layout.buttons)}`).toBe(true);
     expect(layout.buttons[0].left, "V44: blackjack actions must start at the bar edge").toBeLessThanOrEqual(layout.buttons[0].barLeft + 1);
     expect(layout.buttons.at(-1).right, "V44: blackjack actions must reach the bar edge").toBeGreaterThanOrEqual(layout.buttons.at(-1).barRight - 1);
     expect(layout.buttons.every((button) => button.insideTable), "V42: blackjack action buttons must stay in table bounds").toBe(true);
