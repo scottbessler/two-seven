@@ -73,7 +73,8 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   The version lives in the filename because the `@font-face` src sits in static
   CSS that `asset()` never rewrites — to update the face, drop in new files
   under a new version and change `01-tokens.css`, `src/app.rs::asset_version`,
-  and the preload in `src/render.rs` together. Card faces keep their own
-  condensed stack (`--font-card`).
+  and the preload in `src/render.rs` together. Card faces share `--font-ui`;
+  only their glyph size is derived from the card's own width, which is why
+  `04-cards.css` is the one file exempt from the type scale.
 - `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
   invariants against a `DATA_PATH` tree.
