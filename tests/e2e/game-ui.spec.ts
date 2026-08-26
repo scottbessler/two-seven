@@ -383,7 +383,7 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".board .empty-card")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
   // Wager buttons name the street total they raise to, so they never read the same as the call.
-  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In"]);
+  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In", "Raise…"]);
   await page.locator(".seat.viewer .player-info").hover();
   await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
   const topSeatIndex = await page.locator(".seat").evaluateAll((seats) => seats
@@ -543,7 +543,7 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   await mountTable(page, tableState);
 
   const buttons = page.locator(".actions button");
-  await expect(buttons).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In"]);
+  await expect(buttons).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "All In", "Raise…"]);
   const layout = await buttons.evaluateAll((nodes) => {
     const area = nodes[0].closest(".decision-area")?.getBoundingClientRect();
     const bar = nodes[0].closest(".actions")?.getBoundingClientRect();
@@ -574,7 +574,9 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   expect(layout.at(-1).right, "V44: last action should reach the action bar edge").toBeGreaterThanOrEqual(Math.floor(layout.at(-1).barRight - 1));
   const slots = await page.locator(".actions").evaluate((bar) => {
     const barBox = bar.getBoundingClientRect();
-    const edges = [...bar.querySelectorAll(".action-edge")].map((slot) => slot.getBoundingClientRect().width);
+    // The right edge can carry a second action (the custom raise), so the
+    // invariant is per action, not per slot.
+    const edges = [...bar.querySelectorAll(".action-edge button")].map((button) => button.getBoundingClientRect().width);
     const middle = [...bar.querySelectorAll(".action-middle button")].map((button) => button.getBoundingClientRect().width);
     return { barWidth: barBox.width, edges, middle };
   });
@@ -1864,3 +1866,34 @@ test("uses the short acknowledgement window for a fold result", async ({ page })
   await mountTable(page, foldResultState);
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 3s");
 });
+
+test("picks any legal raise from the custom wager slider", async ({ page }) => {
+  const posts = [];
+  await page.route("**/tables/mock/action", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true } });
+  });
+  await mountTable(page, tableState);
+
+  // The custom raise sits to the right of All In and opens on the minimum.
+  const edge = page.locator(".action-edge-right button");
+  await expect(edge).toHaveText(["All In", "Raise\u2026"]);
+  await page.getByRole("button", { name: "Raise a custom amount" }).click();
+
+  const slider = page.getByRole("slider", { name: "Raise amount" });
+  const confirm = page.locator(".wager-confirm");
+  await expect(page.locator(".wager-dialog output")).toHaveText("$36");
+  await expect(confirm).toHaveText("$36");
+  // Both ends of the legal range are reachable: the top rung is the shove.
+  await expect(page.locator(".wager-range span")).toHaveText(["$36", "$166"]);
+
+  await slider.fill("30");
+  await expect(confirm).toHaveText("$66");
+  await slider.fill("130");
+  await expect(confirm).toHaveText("$166");
+
+  await confirm.click();
+  await expect(page.locator(".wager-dialog")).toHaveCount(0);
+  expect(posts, "the slider submits the chips the raise adds, not the street total").toEqual([{ kind: "raise", amount: 15_400 }]);
+});
+
