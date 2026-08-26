@@ -148,6 +148,26 @@ fn css_tokens_are_structurally_isolated() {
     }
 }
 
+/// The e2e harness renders production's own Bitter and only supplies fallbacks
+/// for the glyphs it lacks (tests/e2e/rendering.ts), so a change to this token
+/// desynchronises the two. Pin it here; the harness names Bitter directly.
+#[test]
+fn production_font_stacks_are_deliberate() {
+    let tokens = CSS_SOURCES[0].1;
+    let base = CSS_SOURCES[1].1;
+    let cards = CSS_SOURCES[3].1;
+    assert!(
+        tokens.contains(r#"--font-ui:"Bitter",ui-serif,Georgia,"Times New Roman",serif"#),
+        "UI text is self-hosted Bitter, so an installed PWA keeps its type offline"
+    );
+    assert!(
+        !tokens.contains("--font-card"),
+        "labels and card faces share one family; a second token invites them to drift"
+    );
+    assert!(base.contains("font:16px var(--font-ui)"));
+    assert!(cards.contains("font-family:var(--font-ui)"));
+}
+
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
     for literal in [

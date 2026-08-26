@@ -2,6 +2,12 @@ import { defineConfig, devices } from "@playwright/test";
 import { IPHONE_PORTRAIT } from "./tests/e2e/devices";
 import type { DeviceOptions } from "./tests/e2e/fixtures";
 
+/**
+/** In CI the server is built by its own job; locally cargo still builds it. */
+const serverCommand = process.env.E2E_SERVER_BIN
+  ? `PASSKEY_DISABLED=1 PORT=18080 ${process.env.E2E_SERVER_BIN}`
+  : "PASSKEY_DISABLED=1 PORT=18080 cargo run";
+
 export default defineConfig<DeviceOptions>({
   testDir: "./tests/e2e",
   snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
@@ -16,13 +22,28 @@ export default defineConfig<DeviceOptions>({
     baseURL: process.env.TEST_BASE_URL || "http://127.0.0.1:18080",
     trace: "on-first-retry",
     emulatedDevice: null,
+    launchOptions: {
+      // GitHub's job containers give /dev/shm the default 64MB; a full-page
+      // screenshot of the table outgrows it and Chromium dies. Not a rendering
+      // flag — it only moves the backing store to /tmp.
+      args: [
+        "--disable-dev-shm-usage",
+        // Rasterise text the same way on every host: no hinting, no subpixel
+        // positioning, no LCD filter, one colour profile. With the pinned fonts
+        // in rendering.ts this is what makes a local Linux run match CI.
+        "--font-render-hinting=none",
+        "--disable-font-subpixel-positioning",
+        "--disable-lcd-text",
+        "--force-color-profile=srgb",
+      ],
+    },
   },
   ...(process.env.TEST_BASE_URL
     ? {}
     : {
         webServer: {
           // The dialog needs a signed-in balance, and passkeys cannot be driven here.
-          command: "PASSKEY_DISABLED=1 PORT=18080 cargo run",
+          command: serverCommand,
           url: "http://127.0.0.1:18080/healthcheck",
           reuseExistingServer: true,
           timeout: 120_000,

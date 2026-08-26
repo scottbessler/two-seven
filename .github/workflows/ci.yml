@@ -2,6 +2,10 @@ name: CI
 on:
   push:
   pull_request:
+  # The Update snapshots workflow commits with GITHUB_TOKEN, and GitHub does not
+  # start workflows for those pushes, so a regenerated baseline needs CI kicked
+  # by hand.
+  workflow_dispatch:
 jobs:
   rust:
     runs-on: ubuntu-latest
@@ -22,17 +26,44 @@ jobs:
         with: { bun-version: 1.3.13 }
       - run: bun install --frozen-lockfile
       - run: bun run lint
-  e2e:
-    runs-on: ubuntu-latest
+  # The e2e server is built here rather than in the e2e job so that job can run
+  # *inside* the pinned Playwright image without needing a Rust toolchain there.
+  # Pinned to 24.04 to match the image's glibc — the binary is run, not rebuilt.
+  server:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.90.0
+      - run: cargo build --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-server
+          path: target/debug/two-seven
+          retention-days: 1
+  e2e:
+    needs: server
+    runs-on: ubuntu-24.04
+    # Running the job in the image gives the same pinned fonts and rasterizer the
+    # baselines were rendered with, without a Docker daemon in the loop.
+    container: mcr.microsoft.com/playwright:v1.54.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      # The Playwright image ships no unzip, which setup-bun needs to unpack
+      # the release it downloads.
+      - run: apt-get update && apt-get install -y --no-install-recommends unzip
       - uses: oven-sh/setup-bun@v2
         with: { bun-version: 1.3.13 }
       - run: bun install --frozen-lockfile
-      - run: bun run test:e2e:docker
+      - uses: actions/download-artifact@v4
+        with:
+          name: e2e-server
+          path: target/debug
+      - run: chmod +x target/debug/two-seven
+      - run: bun run test:e2e
+        env:
+          E2E_SERVER_BIN: target/debug/two-seven
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
