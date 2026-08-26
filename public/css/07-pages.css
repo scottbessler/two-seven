@@ -73,10 +73,13 @@
 }
 .blitz-table>.board{container-type:inline-size}
 @media(min-width:1024px){
-  .page:has(.blitz-shell),.page:has(.leaderboard){width:100%;max-width:none}
-  .blitz-shell,.leaderboard{width:min(100%,96rem);margin-inline:auto}
+  .page:has(.blitz-shell){width:100%;max-width:none}
+  .blitz-shell{width:min(100%,80rem);margin-inline:auto}
   .blitz-shell #blitz-app{min-width:0}
   .blitz-shell #blitz-app>.blitz-menu,.blitz-shell #blitz-app>.blitz-table{width:100%;min-width:0;box-sizing:border-box}
+  .blitz-table>.board .playing-card{--card-w:min(calc(8.5rem * var(--card-size-scale,1)),calc((100cqw - 2.2rem) / 5));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
+  .blitz-hands .board{container-type:inline-size}
+  .blitz-hands .board .playing-card{--card-w:min(calc(8.5rem * var(--card-size-scale,1)),calc((100cqw - .55rem) / 2));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
 }
 @media(max-width:640px){
   .leaderboard-table{font-size:.72rem}
