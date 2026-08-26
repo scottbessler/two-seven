@@ -123,6 +123,23 @@ fn split_css_assets_are_rendered_and_versioned() {
     }
 }
 
+/// Type sizes come from the six-step scale in `01-tokens.css`. Card faces are
+/// the documented exception: their glyphs are derived from the card's own
+/// width, not from the scale.
+fn raw_font_size_literals(css: &str) -> Vec<&str> {
+    css.match_indices("font-size:")
+        .map(|(index, _)| {
+            let value = &css[index + "font-size:".len()..];
+            let end = value
+                .find([';', '}'])
+                .expect("declaration should be terminated");
+            value[..end].trim()
+        })
+        .filter(|value| !value.starts_with("var(--text-") && *value != "inherit")
+        .filter(|value| !value.starts_with("min(calc(var(--card-w)"))
+        .collect()
+}
+
 #[test]
 fn css_tokens_are_structurally_isolated() {
     let root_files: Vec<_> = CSS_SOURCES
@@ -136,6 +153,14 @@ fn css_tokens_are_structurally_isolated() {
         assert!(
             !contains_raw_color_literal(css),
             "{name} should not contain raw color literals"
+        );
+    }
+
+    for (name, css) in CSS_SOURCES {
+        let literals = raw_font_size_literals(css);
+        assert!(
+            literals.is_empty(),
+            "{name} should size type from the scale, found {literals:?}"
         );
     }
 
