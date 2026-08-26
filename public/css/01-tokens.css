@@ -6,7 +6,7 @@
   --line-1:#24463c;--line-2:#527d6c;--line-3:#6caa91;
   --ink:#f4efe4;--ink-muted:#a9c2b7;--ink-faint:#527d6c;
   --gold:#d9ad55;--gold-hi:#f1d56e;--mint:#7fd4a8;--danger:#b75b57;--danger-ink:#ffb7ae;
-  --card-stock:#faf9f2;--card-red:#d5291f;--card-black:#20231f;--card-blue:#124f8c;
+  --card-stock:#faf9f2;--card-red:#d5291f;--card-black:#20231f;--card-blue:#124f8c;--card-orange:#ff8c00;
   --control-h:44px;--control-h-primary:52px;--control-h-compact:40px;
   --space-2:2px;--space-4:4px;--space-6:6px;--space-8:8px;--space-12:12px;--space-16:16px;--space-20:20px;--space-28:28px;--space-44:44px;
   --radius-card:4px;--radius-control:12px;--radius-surface:16px;--radius-chip:999px;--card-aspect:1.39;
@@ -24,6 +24,7 @@
   --mint-13:color-mix(in srgb,var(--mint) 13.333%,transparent);--mint-44:color-mix(in srgb,var(--mint) 43.75%,transparent);--gold-25:color-mix(in srgb,var(--gold) 25.098%,transparent);--gold-44:color-mix(in srgb,var(--gold) 43.75%,transparent);--gold-hi-14:color-mix(in srgb,var(--gold-hi) 14.118%,transparent);--gold-hi-15:color-mix(in srgb,var(--gold-hi) 15.686%,transparent);--gold-hi-19:color-mix(in srgb,var(--gold-hi) 18.824%,transparent);--gold-hi-27:color-mix(in srgb,var(--gold-hi) 27.059%,transparent);--gold-hi-50:color-mix(in srgb,var(--gold-hi) 50.196%,transparent);--gold-hi-60:color-mix(in srgb,var(--gold-hi) 60%,transparent);--white-20:color-mix(in srgb,var(--white) 20%,transparent);
   --surface-backdrop-80:color-mix(in srgb,var(--surface-backdrop) 80%,transparent);
 }
+/* V54: WebKit reports a zero bottom inset in standalone mode on phones that do
+   have a home indicator, so an installed PWA floors the clearance itself. */
 @media(orientation:portrait){html.standalone-pwa{--safe-bottom:max(env(safe-area-inset-bottom,0px),34px)}}
 @media(orientation:landscape){html.standalone-pwa{--safe-bottom:max(env(safe-area-inset-bottom,0px),21px)}}
-@media (max-height:520px) and (orientation:landscape){:root{--usable-h:calc(100dvh - var(--safe-top) - var(--safe-bottom))}}
