@@ -510,7 +510,7 @@
     {
       "x": 23,
       "y": 1323,
-      "width": 197,
+      "width": 153,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -523,9 +523,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 227,
+      "x": 183,
       "y": 1323,
-      "width": 192,
+      "width": 179,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -538,9 +538,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 425,
+      "x": 368,
       "y": 1323,
-      "width": 192,
+      "width": 179,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -553,9 +553,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 624,
+      "x": 554,
       "y": 1323,
-      "width": 192,
+      "width": 179,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -568,9 +568,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 822,
+      "x": 739,
       "y": 1323,
-      "width": 192,
+      "width": 179,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -583,9 +583,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 1021,
+      "x": 925,
       "y": 1323,
-      "width": 192,
+      "width": 179,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -598,9 +598,24 @@
       "flexDirection": "row"
     },
     {
-      "x": 1220,
+      "x": 1110,
       "y": 1323,
-      "width": 197,
+      "width": 150,
+      "height": 44,
+      "display": "block",
+      "position": "static",
+      "fontSize": "17px",
+      "fontWeight": "700",
+      "color": "rgb(244, 239, 228)",
+      "backgroundColor": "rgb(36, 90, 73)",
+      "borderRadius": "6px",
+      "gridTemplateColumns": "none",
+      "flexDirection": "row"
+    },
+    {
+      "x": 1267,
+      "y": 1323,
+      "width": 150,
       "height": 44,
       "display": "block",
       "position": "static",
