@@ -1,4 +1,4 @@
-.seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid var(--line-3);border-radius:var(--radius-surface);background:var(--surface-deep-95);min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat b{color:var(--accent)}.seat span{color:var(--muted);font-size:.8rem}
+.seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid var(--line-3);border-radius:var(--radius-surface);background:var(--surface-deep-95);min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat :where(b:not(.seat-cards *)){color:var(--accent)}.seat :where(span:not(.seat-cards,.seat-cards *)){color:var(--muted);font-size:.8rem}
 .actions:not(.blackjack-actions){display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions:not(.blackjack-actions) input{max-width:10rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}
 .page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100dvh;overflow:hidden;padding-top:.6rem}
 html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
@@ -40,7 +40,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .player-tooltip span,.player-tooltip small{color:var(--muted)}
 .player-info:hover .player-tooltip,.player-info:focus .player-tooltip,.player-info:focus-within .player-tooltip{display:block}
 .other-seats .player-tooltip{transform:translate(-50%,.35rem)}
-.seat-stack{color:var(--accent);font-size:.8rem;font-weight:800}
+.seat .seat-stack{color:var(--accent);font-size:.8rem;font-weight:800}
 .seat-corner-badges,.seat-outcome-badges,.seat-card-state{display:flex;min-height:.85rem;align-items:center;justify-content:center;gap:.2rem}
 .seat-corner-badges{position:absolute;right:.2rem;top:.2rem;z-index:6;min-height:0;max-width:calc(100% - .4rem);overflow:hidden;justify-content:flex-end}
 .seat-card-state{align-self:center;min-height:0}
@@ -236,7 +236,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .seat-corner-badges{position:absolute;right:.1rem;top:.1rem;z-index:6;width:auto;min-height:0;max-width:calc(100% - .2rem);overflow:hidden;justify-content:flex-end}
   .seat-outcome-badges{position:absolute;right:.2rem;bottom:.2rem;grid-column:auto;grid-row:auto;min-height:0;justify-content:flex-end}
   .seat.viewer .seat-outcome-badges{position:absolute;right:.25rem;bottom:-.75rem;grid-row:auto;justify-content:flex-end}
-  .seat span{font-size:.6875rem}
+  .seat :where(span:not(.seat-cards,.seat-cards *)){font-size:.6875rem}
   .seat .player-info{max-width:100%;justify-self:center}
   .table-stage .seats .seat .player-info>i{display:none}
   .table-stage .seats .seat:has(.seat-corner-badges i) .player-info{max-width:calc(100% - 2.9rem)}
