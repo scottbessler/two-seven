@@ -1289,12 +1289,17 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
       return controls.map((control) => {
         const rect = control.getBoundingClientRect();
         const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        const range = document.createRange();
+        range.selectNodeContents(control);
+        const label = range.getBoundingClientRect();
         return {
           label: control.textContent?.trim(),
           left: rect.left,
           right: rect.right,
           bottom: rect.bottom,
           height: rect.height,
+          labelInside: label.left >= rect.left - 1 && label.right <= rect.right + 1 && label.top >= rect.top - 1 && label.bottom <= rect.bottom + 1,
+          overflow: getComputedStyle(control).overflow,
           safeBottom,
           tappable: hit === control || control.contains(hit),
           viewportHeight: window.innerHeight,
@@ -1308,6 +1313,7 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
       expect(bounds.bottom, `V54: ${bounds.label} must clear the PWA home indicator ${JSON.stringify(bounds)}`).toBeLessThanOrEqual(bounds.viewportHeight - bounds.safeBottom + 1);
       expect(bounds.height, `V54: ${bounds.label} retains a usable mobile tap target`).toBeGreaterThanOrEqual(40);
       expect(bounds.tappable, `V54: ${bounds.label} must be the topmost target at its center ${JSON.stringify(bounds)}`).toBe(true);
+      expect(bounds.labelInside || bounds.overflow === "hidden", `V54: ${bounds.label} label must not paint outside its control ${JSON.stringify(bounds)}`).toBe(true);
     }
   };
   await expectControlsTappable();
@@ -1328,6 +1334,9 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, unseated);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
   await expect(page.locator(".table-controls .table-command")).toBeEnabled();
+  await expectControlsTappable();
+  await mountTable(page, { ...unseated, bank_balance: 2_500_000, buy_in: 2_000_000 });
+  await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $20,000"]);
   await expectControlsTappable();
   // Seating a bot is one click: pick the type and the server fills the next seat.
   let botBody;
