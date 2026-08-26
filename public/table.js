@@ -154,6 +154,54 @@ function HoldAction({ label, class: className, disabled, hold, submit, ariaLabel
   ><span>${label}</span></button>`;
 }
 
+// The preset wagers cover the common lines; this opens the whole legal range
+// for the spots they miss. The slider works in whole dollars, with both ends
+// of the range reachable so a shove-sized raise is always one drag away.
+function CustomWager({ label, wager, contribution, disabled, className, submit }) {
+  const dialog = useRef(null);
+  const dollars = 100;
+  const steps = Math.max(1, Math.ceil((wager.max - wager.min) / dollars));
+  const amountAt = (index) => (index >= steps ? wager.max : Math.min(wager.max, wager.min + index * dollars));
+  const [open, setOpen] = useState(false);
+  const [index, setIndex] = useState(0);
+  // A new decision brings new bounds; the old pick rarely survives them.
+  useEffect(() => setIndex(0), [wager.min, wager.max]);
+  // The picker only exists while it is up, so a closed dialog leaves no stray
+  // buttons behind the action bar.
+  useEffect(() => {
+    if (open && dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, [open]);
+  const amount = amountAt(index);
+  const total = money(contribution + amount);
+  const choose = () => {
+    dialog.current?.close();
+    submit(amount);
+  };
+  return html`<span class="custom-wager">
+    <button class=${className} type="button" disabled=${disabled} aria-label=${`${label} a custom amount`} onClick=${() => { setIndex(0); setOpen(true); }}><span>${label}…</span></button>
+    ${open && html`<dialog class="wager-dialog" ref=${dialog} onClose=${() => setOpen(false)}>
+      <form method="dialog">
+        <header><h2>${label} to</h2><output>${total}</output></header>
+        <input
+          type="range"
+          min="0"
+          max=${steps}
+          step="1"
+          value=${index}
+          aria-label=${`${label} amount`}
+          aria-valuetext=${total}
+          onInput=${(event) => setIndex(Number(event.target.value))}
+        />
+        <p class="wager-range"><span>${money(contribution + wager.min)}</span><span>${money(contribution + wager.max)}</span></p>
+        <footer>
+          <button type="submit" value="cancel">Cancel</button>
+          <button class="wager-confirm" type="button" onClick=${choose}>${total}</button>
+        </footer>
+      </form>
+    </dialog>`}
+  </span>`;
+}
+
 function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const actions = new Set((hand?.legal_actions?.actions || []).map(actionName));
   const [pending, run] = usePending();
@@ -180,6 +228,13 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
     actions.has("Call") && !callIsAllIn && !actions.has("Bet") && !actions.has("Raise") && !actions.has("AllIn"),
   );
   const wagers = wagerOptions(hand).filter((option) => !actor || option.amount < actor.stack);
+  const wagerBounds = hand.legal_actions.wager;
+  // Only worth opening when there is a range to pick from: a fixed limit wager
+  // or a stack with exactly one legal raise left has nothing to slide over.
+  const showCustomWager = Boolean(
+    (actions.has("Bet") || actions.has("Raise")) && wagerBounds && wagerBounds.fixed == null && wagerBounds.max > wagerBounds.min,
+  );
+  const actorContribution = hand.players.find((candidate) => candidate.seat === hand.legal_actions.seat)?.street_contribution || 0;
   const middleCount = Number(actions.has("Check")) + Number(actions.has("Call") && !callIsAllIn && !cappedCall) + wagers.length;
   const showAllIn = actions.has("AllIn") || callIsAllIn;
   return html`<div class="actions" aria-label="Actions">
@@ -191,7 +246,14 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
     </span>
     <span class="action-edge action-edge-right">${cappedCall
       ? html`<button ...${busy("call:", "wager-action all-in-action capped-call")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`
-      : showAllIn && html`<${HoldAction} label="All In" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} ...${busy(callIsAllIn ? "call:" : "all_in:", "wager-action all-in-action")} />`}</span>
+      : showAllIn && html`<${HoldAction} label="All In" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} ...${busy(callIsAllIn ? "call:" : "all_in:", "wager-action all-in-action")} />`}${showCustomWager && html`<${CustomWager}
+      label=${wagerLabel}
+      wager=${wagerBounds}
+      contribution=${actorContribution}
+      disabled=${pending != null}
+      className=${`wager-action custom-wager-action${pending?.startsWith(`${wagerKind}:`) ? " pending" : ""}`}
+      submit=${(amount) => submit(wagerKind, amount)}
+    />`}</span>
   </div>`;
 }
 
