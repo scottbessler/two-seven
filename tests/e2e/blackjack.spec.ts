@@ -57,8 +57,16 @@ test("blackjack bank mutations refresh the header balance", async ({ page }) => 
   await expect(page.locator("#bank-balance")).toHaveText("$1,000");
 
   await page.getByRole("button", { name: "Deal $10" }).click();
+  await expect(page.locator(".blackjack-play-area .playing-card").first()).toBeVisible();
 
-  await expect(page.locator("#bank-balance")).toHaveText("$990");
+  // The $10 leaves the bank on the deal, but roughly one hand in twenty is a
+  // natural: it settles before this assertion can run and pays 3:2 straight
+  // back, so a fixed $990 makes this test deal-dependent. What "refresh the
+  // header balance" means is that the header agrees with the bank itself.
+  // No assertion that the balance left $1,000: a natural against a dealer
+  // natural pushes the bet straight back, and that is not a stale header.
+  const { balance } = await (await page.request.get("/api/bank")).json();
+  await expect(page.locator("#bank-balance")).toHaveText(`$${Math.round(balance / 100).toLocaleString("en-US")}`);
 });
 
 test("bank header delta shows net change in the last hour", async ({ page }) => {
