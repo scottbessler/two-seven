@@ -8,7 +8,7 @@ label{display:grid;gap:.3rem;color:var(--muted)}label[hidden]{display:none}
 fieldset{border:1px solid var(--line-legacy);border-radius:var(--radius-surface);padding:.8rem}
 fieldset>div{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
 input,button,select{font:inherit;padding:.7rem;border-radius:var(--radius-control);border:1px solid var(--line-2);background:var(--felt-800);color:var(--ink)}
-button{background:var(--accent);color:var(--ink-on-gold);font-weight:700;cursor:pointer;min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;white-space:nowrap}
+button{overflow:hidden;text-overflow:ellipsis;background:var(--accent);color:var(--ink-on-gold);font-weight:700;cursor:pointer;min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 button.danger{background:var(--danger);color:white}
 .error{color:var(--error)}
 #table-error:empty{display:none}
