@@ -68,6 +68,8 @@ jobs:
           E2E_SERVER_BIN: target/debug/two-seven
           E2E_IMAGES: "1"
       - name: Commit regenerated baselines
+        # The image's default shell is dash, which has no pipefail.
+        shell: bash
         run: |
           set -Eeuo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
