@@ -3,6 +3,12 @@ name: Update snapshots
 # compares them against, and commits them to the branch. This is the supported
 # way to update baselines: no contributor needs a local Docker daemon, and a
 # baseline can never be produced by a host whose fonts differ from CI's.
+#
+# Two ways in, because `workflow_dispatch` only resolves once the file is on the
+# default branch — which would make this unusable on the very branch that
+# changes rendering, before it merges:
+#   * Actions -> Update snapshots -> Run workflow (pick the branch), or
+#   * push a commit whose message contains [update-snapshots].
 on:
   workflow_dispatch:
     inputs:
@@ -11,23 +17,26 @@ on:
         required: true
         type: string
       grep:
-        description: Optional Playwright --grep filter (default, empty, updates all)
+        description: Optional Playwright --grep filter (empty updates all)
         required: false
         type: string
+  push:
+    branches-ignore: [main]
 jobs:
   server:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[update-snapshots]')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ inputs.branch || github.ref_name }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.90.0
       - run: cargo build --locked
       - uses: actions/upload-artifact@v4
         with:
-          name: e2e-server
+          name: e2e-server-snapshots
           path: target/debug/two-seven
           retention-days: 1
   update:
@@ -39,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ inputs.branch || github.ref_name }}
       # The Playwright image ships no unzip, which setup-bun needs to unpack
       # the release it downloads.
       - run: apt-get update && apt-get install -y --no-install-recommends unzip
@@ -48,7 +57,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
-          name: e2e-server
+          name: e2e-server-snapshots
           path: target/debug
       - run: chmod +x target/debug/two-seven
       # --update-snapshots rewrites the baselines, so a failing comparison is the
@@ -57,16 +66,17 @@ jobs:
         continue-on-error: true
         env:
           E2E_SERVER_BIN: target/debug/two-seven
+          E2E_IMAGES: "1"
       - name: Commit regenerated baselines
         run: |
           set -Eeuo pipefail
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- 'tests/e2e/*-snapshots'; then
+          if git diff --quiet -- tests/e2e; then
             echo "Baselines already match this branch — nothing to commit."
             exit 0
           fi
-          git add 'tests/e2e/*-snapshots'
+          git add tests/e2e
           git commit -m "Regenerate Playwright baselines in the pinned container"
-          git push origin "HEAD:${{ inputs.branch }}"
+          git push origin "HEAD:${{ inputs.branch || github.ref_name }}"
