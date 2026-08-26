@@ -46,10 +46,46 @@ fn imported_islands_are_emitted_as_module_scripts() {
     );
 }
 
+/// Assets normally get their version from `asset()`. A font can't: the
+/// `@font-face` src lives in static CSS that no template touches, so the
+/// version has to be in the filename (`bitter-v42-latin.woff2`) and both
+/// references must be spelled the same way to stay one cached file.
+fn is_filename_versioned(url: &str) -> bool {
+    url.rsplit('/').next().is_some_and(|name| {
+        name.split('-')
+            .any(|part| part.starts_with('v') && part[1..].chars().all(|c| c.is_ascii_digit()))
+    })
+}
+
 #[test]
 fn rendered_public_assets_are_versioned() {
-    assert!(!RENDER_RS.contains(r#"src="/public/"#));
-    assert!(!RENDER_RS.contains(r#"href="/public/"#));
+    for attribute in [r#"src="/public/"#, r#"href="/public/"#] {
+        for (index, _) in RENDER_RS.match_indices(attribute) {
+            let value = &RENDER_RS[index + attribute.len() - "/public/".len()..];
+            let url = &value[..value.find('"').expect("attribute should be closed")];
+            assert!(
+                is_filename_versioned(url),
+                "{url} is rendered unversioned: use asset() or put the version in the filename"
+            );
+        }
+    }
+}
+
+#[test]
+fn preloaded_font_matches_the_font_face_it_preloads() {
+    let start = RENDER_RS
+        .find(r#"<link rel="preload" href=""#)
+        .expect("render.rs should preload the UI font");
+    let url = &RENDER_RS[start + r#"<link rel="preload" href=""#.len()..];
+    let url = &url[..url.find('"').expect("preload href should be closed")];
+    assert!(
+        ACTIVE_CSS.contains(&format!("url({url})")),
+        "preloaded {url} is not the URL any @font-face requests, so the preload is wasted"
+    );
+    assert!(
+        RENDER_RS[start..start + 200].contains("crossorigin"),
+        "font preloads must be CORS-mode to match the font fetch"
+    );
 }
 
 fn contains_raw_color_literal(css: &str) -> bool {
