@@ -201,9 +201,9 @@
   ".seat-stack": [
     {
       "x": 110,
-      "y": 82,
-      "width": 14,
-      "height": 16,
+      "y": 81,
+      "width": 15,
+      "height": 15,
       "display": "block",
       "position": "static",
       "fontSize": "13px",
@@ -215,10 +215,10 @@
       "flexDirection": "row"
     },
     {
-      "x": 313,
-      "y": 82,
-      "width": 28,
-      "height": 16,
+      "x": 311,
+      "y": 81,
+      "width": 30,
+      "height": 15,
       "display": "block",
       "position": "static",
       "fontSize": "13px",
@@ -231,9 +231,9 @@
     },
     {
       "x": 522,
-      "y": 82,
+      "y": 81,
       "width": 28,
-      "height": 16,
+      "height": 15,
       "display": "block",
       "position": "static",
       "fontSize": "13px",
@@ -246,9 +246,9 @@
     },
     {
       "x": 731,
-      "y": 82,
+      "y": 81,
       "width": 28,
-      "height": 16,
+      "height": 15,
       "display": "block",
       "position": "static",
       "fontSize": "13px",
@@ -260,10 +260,10 @@
       "flexDirection": "row"
     },
     {
-      "x": 941,
-      "y": 82,
-      "width": 28,
-      "height": 16,
+      "x": 940,
+      "y": 81,
+      "width": 30,
+      "height": 15,
       "display": "block",
       "position": "static",
       "fontSize": "13px",
@@ -276,9 +276,9 @@
     },
     {
       "x": 522,
-      "y": 1053,
+      "y": 1052,
       "width": 28,
-      "height": 16,
+      "height": 15,
       "display": "block",
       "position": "static",
       "fontSize": "13px",
@@ -294,7 +294,7 @@
     {
       "x": 95,
       "y": 169,
-      "width": 46,
+      "width": 45,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -307,9 +307,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 315,
+      "x": 314,
       "y": 169,
-      "width": 24,
+      "width": 25,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -324,7 +324,7 @@
     {
       "x": 524,
       "y": 169,
-      "width": 24,
+      "width": 25,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -337,9 +337,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 734,
+      "x": 733,
       "y": 169,
-      "width": 24,
+      "width": 25,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -352,9 +352,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 940,
+      "x": 939,
       "y": 169,
-      "width": 29,
+      "width": 31,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -367,8 +367,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 521,
-      "y": 1070,
+      "x": 522,
+      "y": 1068,
       "width": 29,
       "height": 18,
       "display": "block",
@@ -384,9 +384,9 @@
   ],
   ".seat-role": [
     {
-      "x": 305,
-      "y": 127,
-      "width": 44,
+      "x": 306,
+      "y": 126,
+      "width": 42,
       "height": 13,
       "display": "block",
       "position": "static",
@@ -399,7 +399,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 608,
+      "x": 609,
       "y": 62,
       "width": 8,
       "height": 13,
@@ -414,9 +414,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 619,
+      "x": 620,
       "y": 62,
-      "width": 14,
+      "width": 13,
       "height": 13,
       "display": "block",
       "position": "static",
@@ -429,7 +429,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 828,
+      "x": 829,
       "y": 62,
       "width": 14,
       "height": 13,
@@ -462,7 +462,7 @@
   ".seat.viewer .seat-cards .playing-card": [
     {
       "x": 438,
-      "y": 1087,
+      "y": 1085,
       "width": 99,
       "height": 134,
       "display": "grid",
@@ -477,7 +477,7 @@
     },
     {
       "x": 535,
-      "y": 1087,
+      "y": 1085,
       "width": 99,
       "height": 134,
       "display": "grid",

@@ -1,21 +1,21 @@
 # Pinned test fonts
 
 These are **test-harness assets only** — the app never serves them and
-`public/css/` never references them. `tests/e2e/rendering.ts` injects them into
-every page under test so image baselines do not depend on which fonts the host
-happens to have installed.
+`public/css/` never references them.
 
-Production keeps its native stacks on purpose: `system-ui` gives the target
-iPhone its own SF Pro, which is the right typeface for the device.
+The app self-hosts Bitter (`public/vendor/bitter-v42-*.woff2`) and uses it for
+every piece of text, labels and card faces alike, so it is already deterministic
+and the harness renders it rather than substituting anything. These two subsets
+cover only what Bitter does not: `tests/e2e/rendering.ts` appends them as
+fallbacks so those glyphs cannot reach a host font.
 
 | File | Family | Covers | Licence |
 | --- | --- | --- | --- |
-| `roboto.woff2` | Roboto (variable 100–900) | UI and body text | Apache-2.0 |
-| `roboto-condensed.woff2` | Roboto Condensed (variable 100–900) | card ranks | Apache-2.0 |
 | `symbols2.ttf` | Noto Sans Symbols 2 (subset) | `♠ ♥ ♦ ♣ ⚙ ⓘ` | OFL-1.1 |
 | `emoji.ttf` | Noto Emoji (subset, monochrome) | `🪙` | OFL-1.1 |
 
-The two subsets are cut to exactly the code points the app renders, which is why
-they are a few KB each. If a new non-ASCII glyph is added to the UI, extend the
-subset rather than letting it fall back to a system font — `fontsCoverEveryGlyph`
-in `tests/e2e/rendering.ts` fails the suite when a glyph has no pinned coverage.
+Both are cut to exactly the code points the app renders, which is why they are a
+few KB each. If a new non-ASCII glyph is added to the UI, extend `PINNED_GLYPHS`
+and the subset rather than letting it fall back to a system font — the
+`pins every non-ASCII glyph to a vendored font` spec fails when a glyph has no
+coverage.

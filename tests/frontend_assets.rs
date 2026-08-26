@@ -148,9 +148,9 @@ fn css_tokens_are_structurally_isolated() {
     }
 }
 
-/// The e2e harness pins its own fonts (tests/e2e/rendering.ts) so image
-/// baselines do not depend on the host. That means the suite no longer notices
-/// a change to the stacks the app actually ships, so pin them here instead.
+/// The e2e harness renders production's own Bitter and only supplies fallbacks
+/// for the glyphs it lacks (tests/e2e/rendering.ts), so a change to this token
+/// desynchronises the two. Pin it here; the harness names Bitter directly.
 #[test]
 fn production_font_stacks_are_deliberate() {
     let tokens = CSS_SOURCES[0].1;
@@ -161,11 +161,11 @@ fn production_font_stacks_are_deliberate() {
         "UI text is self-hosted Bitter, so an installed PWA keeps its type offline"
     );
     assert!(
-        tokens.contains(r#"--font-card:"Arial Narrow","Roboto Condensed",Arial,sans-serif"#),
-        "card faces keep their own condensed stack"
+        !tokens.contains("--font-card"),
+        "labels and card faces share one family; a second token invites them to drift"
     );
     assert!(base.contains("font:16px var(--font-ui)"));
-    assert!(cards.contains("font-family:var(--font-card)"));
+    assert!(cards.contains("font-family:var(--font-ui)"));
 }
 
 #[test]

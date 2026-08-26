@@ -8,18 +8,18 @@ import { expect, type Locator, type Page } from "@playwright/test";
 declare const __dirname: string;
 
 /**
- * Pins everything about text rendering that the host would otherwise decide.
+ * Pins the glyphs production's own font cannot cover, so image baselines do not
+ * depend on what the host happens to have installed.
  *
- * Image baselines used to be reproducible only inside the Playwright container,
- * because `system-ui` resolves to SF Pro on macOS and to whatever fontconfig
- * picks on Linux, and `"Arial Narrow"` — the first card face in `04-cards.css` —
- * exists on neither CI nor most Linux boxes, so the card ranks were already
- * rendering in an unpredictable fallback. Injecting a vendored font set removes
- * that variable, which is what lets a plain Linux checkout match CI.
+ * The app self-hosts Bitter and uses it for every piece of text — labels and
+ * card faces alike — which is already deterministic, so the harness
+ * deliberately does *not* substitute it: snapshots show the typeface real users
+ * see. What Bitter does not carry is the symbol set (`♠ ♥ ♦ ♣ ⚙ ⓘ`) and the
+ * coin emoji, which would otherwise fall through to a host font. Those are
+ * vendored as subsets and appended as explicit fallbacks.
  *
- * This is deliberately harness-only. Production keeps its native stacks so the
- * iPhone the game is played on still gets SF Pro; `frontend_assets.rs` pins
- * those stacks so a change to them is a deliberate edit rather than a drift.
+ * `production_font_stacks_are_deliberate` pins `--font-ui`, so changing the
+ * app's face fails that test and sends you here to keep the two in step.
  */
 const fontsDir = join(__dirname, "fonts");
 
@@ -36,18 +36,17 @@ function face(family: string, file: string, format: string, weight: string): str
 export const PINNED_GLYPHS = "·—×…♠♥♦♣⚙ⓘ🪙";
 
 const FONT_CSS = [
-  face("E2E Sans", "roboto.woff2", "woff2", "100 900"),
-  face("E2E Condensed", "roboto-condensed.woff2", "woff2", "100 900"),
   face("E2E Symbols", "symbols2.ttf", "truetype", "400"),
   face("E2E Emoji", "emoji.ttf", "truetype", "400"),
 ].join("");
 
 /**
- * Same selectors and specificity the app uses, appended after its stylesheets,
- * so the cascade settles this on source order alone — no `!important` needed.
+ * Production's own primary, then the vendored fallbacks. Same selectors and
+ * specificity the app uses, appended after its stylesheets, so the cascade
+ * settles this on source order alone — no `!important` needed.
  */
-const PIN_CSS = `body,button,input,select,textarea{font-family:"E2E Sans","E2E Symbols","E2E Emoji",sans-serif}
-.playing-card{font-family:"E2E Condensed","E2E Symbols",sans-serif}`;
+const PIN_FAMILIES = `"Bitter","E2E Symbols","E2E Emoji",serif`;
+const PIN_CSS = `body,button,input,select,textarea,.playing-card{font-family:${PIN_FAMILIES}}`;
 
 function pinScript(): string {
   const css = FONT_CSS + PIN_CSS;
@@ -78,12 +77,11 @@ export async function pinRendering(page: Page): Promise<void> {
  * would silently fall through to a host font and desynchronise the baselines.
  */
 export async function uncoveredGlyphs(page: Page): Promise<string[]> {
-  return page.evaluate((glyphs: string) => {
-    const families = ['"E2E Sans", "E2E Symbols", "E2E Emoji"', '"E2E Condensed", "E2E Symbols"'];
-    return [...glyphs].filter((glyph) =>
-      families.every((family) => !document.fonts.check(`16px ${family}`, glyph)),
-    );
-  }, PINNED_GLYPHS);
+  return page.evaluate(
+    ({ glyphs, families }: { glyphs: string; families: string }) =>
+      [...glyphs].filter((glyph) => !document.fonts.check(`16px ${families}`, glyph)),
+    { glyphs: PINNED_GLYPHS, families: PIN_FAMILIES },
+  );
 }
 
 /**
