@@ -1,4 +1,9 @@
 /* Design-system tokens. */
+/* Bitter, self-hosted so an installed PWA keeps its type offline. One variable
+   file per subset covers 400-800; the filename carries the upstream version so
+   swapping the face busts the cache (the CSS version can't reach this URL). */
+@font-face{font-family:"Bitter";font-style:normal;font-weight:100 900;font-display:swap;src:url(/public/vendor/bitter-v42-latin.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Bitter";font-style:normal;font-weight:100 900;font-display:swap;src:url(/public/vendor/bitter-v42-latin-ext.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 @property --safe-bottom{syntax:"<length>";inherits:true;initial-value:0px}
 :root{
   color-scheme:dark;
@@ -10,6 +15,7 @@
   --control-h:44px;--control-h-primary:52px;--control-h-compact:40px;
   --space-2:2px;--space-4:4px;--space-6:6px;--space-8:8px;--space-12:12px;--space-16:16px;--space-20:20px;--space-28:28px;--space-44:44px;
   --radius-card:4px;--radius-control:12px;--radius-surface:16px;--radius-chip:999px;--card-aspect:1.39;
+  --font-ui:"Bitter",ui-serif,Georgia,"Times New Roman",serif;--tracking-ui:-.01em;--font-card:"Arial Narrow","Roboto Condensed",Arial,sans-serif;
   --text-display:28px;--text-title:20px;--text-action:17px;--text-body:15px;--text-small:13px;--text-label:11px;
   --weight-display:800;--weight-title:800;--weight-action:800;--weight-body:700;--weight-small:600;--weight-label:800;
   --safe-top:env(safe-area-inset-top,0px);--safe-right:env(safe-area-inset-right,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px);--usable-h:calc(100dvh - var(--safe-top) - var(--safe-bottom));

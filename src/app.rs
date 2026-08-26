@@ -303,6 +303,8 @@ fn asset_version() -> String {
         "public/table.js",
         "public/card-settings.js",
         "public/vendor/htm-preact.js",
+        "public/vendor/bitter-v42-latin.woff2",
+        "public/vendor/bitter-v42-latin-ext.woff2",
         "public/manifest.webmanifest",
         "public/icon.svg",
         "public/apple-touch-icon.svg",

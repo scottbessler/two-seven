@@ -44,5 +44,12 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   comparison.
 - `scripts/e2e-docker.sh` builds and runs the server on the host; only the
   browser and Playwright tests run inside the container.
+- The UI font is Bitter, vendored as variable woff2 subsets in
+  `public/vendor/bitter-v42-*.woff2` so an installed PWA keeps its type offline.
+  The version lives in the filename because the `@font-face` src sits in static
+  CSS that `asset()` never rewrites — to update the face, drop in new files
+  under a new version and change `01-tokens.css`, `src/app.rs::asset_version`,
+  and the preload in `src/render.rs` together. Card faces keep their own
+  condensed stack (`--font-card`).
 - `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
   invariants against a `DATA_PATH` tree.
