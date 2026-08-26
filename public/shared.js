@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "/public/vendor/htm-preact.js";
+import { useEffect, useRef, useState } from "/public/vendor/htm-preact.js";
 
 export function cents(value) {
   return Math.round(Number(value) * 100);
@@ -57,4 +57,27 @@ export function useOverflowTitle(label) {
     return () => observer.disconnect();
   }, [label]);
   return ref;
+}
+
+// A click over a laggy network looks like nothing happened, so people click
+// again -- and a second bet is not a harmless repeat. One request at a time:
+// the pressed control names itself while it is in flight, and the rest of the
+// group stays inert until the answer lands.
+export function usePending() {
+  const [pending, setPending] = useState(null);
+  const inFlight = useRef(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  const run = async (key, action) => {
+    if (inFlight.current != null) return;
+    inFlight.current = key;
+    setPending(key);
+    try {
+      await action();
+    } finally {
+      inFlight.current = null;
+      if (alive.current) setPending(null);
+    }
+  };
+  return [pending, run];
 }

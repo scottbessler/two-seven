@@ -1,7 +1,7 @@
 import { html, render, useEffect, useRef, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings, useCardSettings } from "/public/card-settings.js";
-import { refreshBank, responseError, useOverflowTitle, wholeDollarMoney as money } from "/public/shared.js";
+import { refreshBank, responseError, useOverflowTitle, usePending, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("table-app");
@@ -106,7 +106,7 @@ function wagerOptions(hand) {
   return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
 }
 
-function HoldAction({ label, className, hold, submit, ariaLabel }) {
+function HoldAction({ label, class: className, disabled, hold, submit, ariaLabel, ...rest }) {
   const holdSeconds = 1;
   const timer = useRef(null);
   const [holding, setHolding] = useState(false);
@@ -119,7 +119,7 @@ function HoldAction({ label, className, hold, submit, ariaLabel }) {
     if (timer.current != null) clearTimeout(timer.current);
   }, []);
   const start = (event) => {
-    if (!hold || timer.current != null) return;
+    if (!hold || disabled || timer.current != null) return;
     if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
     event.preventDefault();
     setHolding(true);
@@ -134,8 +134,10 @@ function HoldAction({ label, className, hold, submit, ariaLabel }) {
     if (hold) cancel();
   };
   return html`<button
+    ...${rest}
     class=${`${className} ${hold ? "hold-action" : ""} ${holding ? "holding" : ""}`}
     type="button"
+    disabled=${disabled}
     aria-label=${hold ? `Hold ${ariaLabel || label} for ${holdSeconds} second` : ariaLabel}
     title=${hold ? `Hold for ${holdSeconds} second` : undefined}
     onClick=${hold ? (event) => event.preventDefault() : submit}
@@ -154,11 +156,19 @@ function HoldAction({ label, className, hold, submit, ariaLabel }) {
 
 function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const actions = new Set((hand?.legal_actions?.actions || []).map(actionName));
-  const submit = async (kind, amount) => {
+  const [pending, run] = usePending();
+  const submit = (kind, amount) => run(`${kind}:${amount ?? ""}`, async () => {
     const response = await fetch(`/tables/${actionTableId}/action`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, amount }) });
-    if (response.ok) refresh();
+    // Hold the button until the table has actually moved on, not merely until
+    // the server said yes.
+    if (response.ok) await refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
-  };
+  });
+  const busy = (key, className) => ({
+    class: `${className}${pending === key ? " pending" : ""}`,
+    disabled: pending != null,
+    "aria-busy": pending === key,
+  });
   const wagerKind = actions.has("Bet") ? "bet" : "raise";
   const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   const actor = seats.find((seat) => seat.index === hand.legal_actions.seat);
@@ -173,25 +183,28 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const middleCount = Number(actions.has("Check")) + Number(actions.has("Call") && !callIsAllIn && !cappedCall) + wagers.length;
   const showAllIn = actions.has("AllIn") || callIsAllIn;
   return html`<div class="actions" aria-label="Actions">
-    <span class="action-edge action-edge-left">${actions.has("Fold") && html`<${HoldAction} label="Fold" className="danger fold-action" hold=${settings.confirmFold} submit=${() => submit("fold")} />`}</span>
+    <span class="action-edge action-edge-left">${actions.has("Fold") && html`<${HoldAction} label="Fold" hold=${settings.confirmFold} submit=${() => submit("fold")} ...${busy("fold:", "danger fold-action")} />`}</span>
     <span class="action-middle" style=${`--middle-action-count:${Math.max(1, middleCount)}`}>
-      ${actions.has("Check") && html`<button class="primary-action" onClick=${() => submit("check")}><span>Check</span></button>`}
-      ${actions.has("Call") && !callIsAllIn && !cappedCall && html`<button class="primary-action" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`}
-      ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button class="wager-action" aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span>${money(option.total)}</span></button>`)}
+      ${actions.has("Check") && html`<button ...${busy("check:", "primary-action")} onClick=${() => submit("check")}><span>Check</span></button>`}
+      ${actions.has("Call") && !callIsAllIn && !cappedCall && html`<button ...${busy("call:", "primary-action")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`}
+      ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button ...${busy(`${wagerKind}:${option.amount}`, "wager-action")} aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span>${money(option.total)}</span></button>`)}
     </span>
     <span class="action-edge action-edge-right">${cappedCall
-      ? html`<button class="wager-action all-in-action capped-call" aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`
-      : showAllIn && html`<${HoldAction} label="All In" className="wager-action all-in-action" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} />`}</span>
+      ? html`<button ...${busy("call:", "wager-action all-in-action capped-call")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span>${money(hand.legal_actions.to_call)}</span></button>`
+      : showAllIn && html`<${HoldAction} label="All In" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} ...${busy(callIsAllIn ? "call:" : "all_in:", "wager-action all-in-action")} />`}</span>
   </div>`;
 }
 
 // With nobody sitting down, the house waits to be asked for a hand.
 function DealHouseHand({ refresh }) {
-  return html`<div class="showdown-advance house-deal"><button type="button" onClick=${async () => {
+  const [pending, run] = usePending();
+  const deal = () => run("deal", async () => {
     const response = await fetch(`/tables/${tableId}/deal`, { method: "POST" });
-    if (response.ok) refresh();
+    if (response.ok) await refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
-  }}><b>Deal a hand</b></button></div>`;
+  });
+  const busy = pending != null;
+  return html`<div class="showdown-advance house-deal"><button class=${busy ? "pending" : ""} type="button" disabled=${busy} aria-busy=${busy} onClick=${deal}><b>Deal a hand</b></button></div>`;
 }
 
 function tournamentInfoText(tournament) {
@@ -295,16 +308,19 @@ function useResultClock(active, deadline, duration) {
 }
 
 function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
+  const [pending, run] = usePending();
   const seconds = Math.ceil(remaining / 1000);
   const width = `${(remaining / duration) * 100}%`;
   const label = `Next hand in ${seconds}s`;
   // A board still running out is not skippable, so offer no button to press.
   if (!canContinue) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}</b></div>`;
-  return html`<div class="showdown-advance"><button type="button" aria-label=${`Continue now. ${label}`} onClick=${async () => {
+  const advance = () => run("continue", async () => {
     const response = await fetch(`/tables/${tableId}/continue`, { method: "POST" });
-    if (response.ok) refresh();
+    if (response.ok) await refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
-  }}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
+  });
+  const busy = pending != null;
+  return html`<div class="showdown-advance"><button class=${busy ? "pending" : ""} type="button" disabled=${busy} aria-busy=${busy} aria-label=${`Continue now. ${label}`} onClick=${advance}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
 }
 
 function tournamentChampion(state) {
@@ -327,22 +343,24 @@ function TournamentComplete({ champion }) {
 
 function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refresh }) {
   const labelRef = useOverflowTitle(label);
-  if (href) return html`<a class="table-command table-command-link" ref=${labelRef} href=${href}>${label}</a>`;
-  const submit = async () => {
+  const [pending, run] = usePending();
+  const submit = () => run("submit", async () => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
     if (response.ok) {
-      refresh();
       refreshBank().catch(() => {});
+      await refresh();
     } else document.getElementById("table-error").textContent = await responseError(response);
-  };
+  });
+  const busy = pending != null;
+  if (href) return html`<a class="table-command table-command-link" ref=${labelRef} href=${href}>${label}</a>`;
   // Walking out of a tournament is not a cash-out: the entry is gone, so ask first.
   if (forfeits) {
     return html`<span class="table-command-confirm">
-      <button class="table-command" type="button" ref=${labelRef} commandfor="forfeit-entry" command="show-modal">${label}</button>
+      <button class=${`table-command ${busy ? "pending" : ""}`} type="button" ref=${labelRef} disabled=${busy} aria-busy=${busy} commandfor="forfeit-entry" command="show-modal">${label}</button>
       <dialog id="forfeit-entry" class="confirm-dialog">
         <form method="dialog">
           <header><h2>Leave the tournament?</h2></header>
@@ -355,7 +373,7 @@ function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refres
       </dialog>
     </span>`;
   }
-  return html`<button class="table-command" type="button" ref=${labelRef} disabled=${disabled} onClick=${submit}>${label}</button>`;
+  return html`<button class=${`table-command ${busy ? "pending" : ""}`} type="button" ref=${labelRef} disabled=${disabled || busy} aria-busy=${busy} onClick=${submit}>${label}</button>`;
 }
 
 /// What the viewer can do about their seat. Busted at a cash table you get two
@@ -398,14 +416,15 @@ function TableCommands({ state, openSeats, refresh }) {
 
 function SeatBot({ state, openSeats, refresh }) {
   if (openSeats.length === 0 || state.tournament?.started) return null;
-  const submit = async (kind) => {
+  const [pending, run] = usePending();
+  const submit = (kind) => run(kind, async () => {
     const response = await fetch(`/tables/${tableId}/bot`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
     if (response.ok) {
-      refresh();
+      await refresh();
     } else document.getElementById("table-error").textContent = await responseError(response);
-  };
+  });
   return html`<span class="seat-bot" aria-label="Seat a bot">
-    ${["fish", "rock", "grinder", "shark"].map((kind) => html`<button type="button" onClick=${() => submit(kind)}>Seat ${kind}</button>`)}
+    ${["fish", "rock", "grinder", "shark"].map((kind) => html`<button class=${pending === kind ? "pending" : ""} type="button" disabled=${pending != null} aria-busy=${pending === kind} onClick=${() => submit(kind)}>Seat ${kind}</button>`)}
   </span>`;
 }
 

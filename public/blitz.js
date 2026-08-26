@@ -1,7 +1,7 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings } from "/public/card-settings.js";
-import { money, refreshBank, responseError } from "/public/shared.js";
+import { money, refreshBank, responseError, usePending } from "/public/shared.js";
 // Shared renderer contracts: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("blitz-app");
@@ -31,7 +31,8 @@ function accuracy(stats) {
 function App() {
   const [run, setRun] = useState(null);
   const [stats, setStats] = useState(initialStats());
-  const [busy, setBusy] = useState(false);
+  const [pending, runPending] = usePending();
+  const busy = pending != null;
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [now, setNow] = useState(Date.now());
@@ -48,8 +49,7 @@ function App() {
       .catch(() => {});
   }, []);
 
-  const start = async (difficulty) => {
-    setBusy(true);
+  const start = (difficulty) => runPending(`start:${difficulty}`, async () => {
     setError("");
     setFeedback("");
     const response = await fetch("/hand-blitz/start", {
@@ -57,7 +57,6 @@ function App() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ difficulty }),
     });
-    setBusy(false);
     if (!response.ok) {
       setError(await responseError(response));
       return;
@@ -66,17 +65,15 @@ function App() {
     setRun(data.run);
     setStats(data.stats);
     refreshBank().catch(() => {});
-  };
+  });
 
-  const answer = async (choice) => {
-    if (!run || busy || !run.active) return;
-    setBusy(true);
+  const answer = (choice) => runPending(`answer:${choice}`, async () => {
+    if (!run?.active) return;
     const response = await fetch("/hand-blitz/answer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ run_id: run.id, round_id: run.round.id, choice }),
     });
-    setBusy(false);
     if (!response.ok) {
       setError(await responseError(response));
       return;
@@ -86,7 +83,7 @@ function App() {
     setStats(data.stats);
     setFeedback(data.correct ? `Correct: ${data.winning_label}` : `${data.timed_out ? "Time" : "Miss"}: ${data.winning_label}`);
     refreshBank().catch(() => {});
-  };
+  });
 
   if (!run) {
     return html`<section class="blitz-menu">
@@ -101,7 +98,7 @@ function App() {
           ["easy", "Easy", "$10.00", "20s"],
           ["normal", "Normal", "$50.00", "12s"],
           ["hard", "Hard", "$200.00", "6s"],
-        ].map(([id, label, buyIn, limit]) => html`<button type="button" disabled=${busy} onClick=${() => start(id)}><b>${label}</b><span>${buyIn} buy-in · ${limit}</span></button>`)}
+        ].map(([id, label, buyIn, limit]) => html`<button type="button" disabled=${busy} aria-busy=${pending === `start:${id}`} onClick=${() => start(id)}><b>${label}</b><span>${buyIn} buy-in · ${limit}</span></button>`)}
       </div>
       ${error && html`<p class="error">${error}</p>`}
     </section>`;
@@ -120,7 +117,7 @@ function App() {
     <div class="blitz-clock"><span style=${{ width: `${progress}%` }}></span></div>
     <${Cards} values=${run.round.board} />
     <div class="blitz-hands">
-      ${run.round.hands.map((hand, index) => html`<button type="button" disabled=${busy || !run.active} onClick=${() => answer(index)} aria-label=${`Choose hand ${index + 1}`}>
+      ${run.round.hands.map((hand, index) => html`<button type="button" disabled=${busy || !run.active} aria-busy=${pending === `answer:${index}`} onClick=${() => answer(index)} aria-label=${`Choose hand ${index + 1}`}>
         <span>Hand ${index + 1}</span>
         <${Cards} values=${hand} />
       </button>`)}

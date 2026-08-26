@@ -639,6 +639,32 @@ test("holds an all-in call in the pinned all-in slot", async ({ page }) => {
   await expect.poll(() => posts).toEqual([{ kind: "call" }]);
 });
 
+test("shows an action as sent and refuses a second click while it flies", async ({ page }) => {
+  const posts = [];
+  let release;
+  await page.route("**/tables/mock/action", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await new Promise((resolve) => { release = resolve; });
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/card-test");
+  await mountTable(page, tableState);
+
+  const call = page.getByRole("button", { name: /^Call/ });
+  await call.click();
+  // The pressed control says so, and every action in the row -- including a
+  // second Call -- stops taking clicks until the answer lands.
+  await expect(call).toHaveClass(/pending/);
+  await expect(call).toHaveAttribute("aria-busy", "true");
+  await expect(call).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Fold" })).toBeDisabled();
+  await call.dispatchEvent("click");
+  await page.waitForTimeout(100);
+  expect(posts, "V34: a laggy network must not turn one call into two").toHaveLength(1);
+  release();
+  await expect(call).not.toHaveClass(/pending/);
+});
+
 test("holds a protected fold for one second", async ({ page }) => {
   const posts = [];
   await page.route("**/tables/mock/action", async (route) => {
