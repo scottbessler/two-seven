@@ -1,6 +1,16 @@
 import { expect, test } from "./fixtures";
+import { expectImage, uncoveredGlyphs } from "./rendering";
 
 test.describe("card test page", () => {
+  test("pins every non-ASCII glyph to a vendored font", async ({ page }) => {
+    // A glyph with no pinned coverage falls through to a host font, which is
+    // exactly how the baselines stopped being reproducible outside the
+    // container. Adding a new symbol to the UI must extend the subset in
+    // tests/e2e/fonts/ rather than silently reintroduce that dependency.
+    await page.goto("/card-test");
+    expect(await uncoveredGlyphs(page)).toEqual([]);
+  });
+
   test("renders the full deck without obvious card-face regressions", async ({ page }) => {
     await page.goto("/card-test");
     await expect(page.locator(".playing-card")).toHaveCount(52);
@@ -33,7 +43,7 @@ test.describe("card test page", () => {
       rows.filter((row) => row.scrollWidth > row.clientWidth).length,
     );
     expect(overflowingSuitRows, "V8: card test suit rows must not scroll horizontally").toBe(0);
-    await expect(page).toHaveScreenshot("card-test.png", { fullPage: true });
+    await expectImage(page, "card-test.png", { fullPage: true });
     await page.evaluate(() => document.documentElement.classList.add("four-color-suits"));
     await expect(page.locator(".playing-card.suit-c").first()).toHaveCSS("color", "rgb(18, 79, 140)");
     await expect(page.locator(".playing-card.suit-d").first()).toHaveCSS("color", "rgb(255, 140, 0)");

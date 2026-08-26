@@ -3,15 +3,6 @@ import { IPHONE_PORTRAIT } from "./tests/e2e/devices";
 import type { DeviceOptions } from "./tests/e2e/fixtures";
 
 /**
- * Image baselines are rendered by the pinned Playwright image, whose fonts and
- * rasterizer no other host reproduces byte for byte. Comparing them anywhere
- * else reports failures that mean nothing, so off the pinned image the default
- * is to skip image comparison outright rather than to compare and be ignored —
- * a run that silently proves nothing is worse than one that says so.
- * `bun run test:e2e:docker` sets E2E_IMAGES to turn them back on locally.
- */
-const compareImages = Boolean(process.env.CI || process.env.E2E_IMAGES);
-
 /** In CI the server is built by its own job; locally cargo still builds it. */
 const serverCommand = process.env.E2E_SERVER_BIN
   ? `PASSKEY_DISABLED=1 PORT=18080 ${process.env.E2E_SERVER_BIN}`
@@ -20,7 +11,6 @@ const serverCommand = process.env.E2E_SERVER_BIN
 export default defineConfig<DeviceOptions>({
   testDir: "./tests/e2e",
   snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{arg}-{projectName}{ext}",
-  ignoreSnapshots: !compareImages,
   expect: {
     toHaveScreenshot: {
       animations: "disabled",
@@ -36,7 +26,16 @@ export default defineConfig<DeviceOptions>({
       // GitHub's job containers give /dev/shm the default 64MB; a full-page
       // screenshot of the table outgrows it and Chromium dies. Not a rendering
       // flag — it only moves the backing store to /tmp.
-      args: ["--disable-dev-shm-usage"],
+      args: [
+        "--disable-dev-shm-usage",
+        // Rasterise text the same way on every host: no hinting, no subpixel
+        // positioning, no LCD filter, one colour profile. With the pinned fonts
+        // in rendering.ts this is what makes a local Linux run match CI.
+        "--font-render-hinting=none",
+        "--disable-font-subpixel-positioning",
+        "--disable-lcd-text",
+        "--force-color-profile=srgb",
+      ],
     },
   },
   ...(process.env.TEST_BASE_URL

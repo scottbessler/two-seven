@@ -1,5 +1,30 @@
 import { IPHONE_LANDSCAPE, IPHONE_MAX_PORTRAIT, IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, useDevice } from "./devices";
 import { expect, test } from "./fixtures";
+import { expectLayout } from "./layout";
+import { expectImage } from "./rendering";
+
+/**
+ * The table's load-bearing boxes. A layout snapshot over these catches the
+ * regressions a full-page image reports as "everything moved", and does it in a
+ * diff a reviewer can read.
+ */
+const TABLE_LAYOUT = [
+  ".site-header",
+  ".table-stage",
+  ".felt",
+  ".table-center",
+  ".board .playing-card",
+  ".seat",
+  ".seat-stack",
+  ".seat-wager",
+  ".seat-role",
+  ".seat.viewer",
+  ".seat.viewer .seat-cards .playing-card",
+  ".decision-area",
+  ".actions button",
+  ".game-log",
+  ".table-controls",
+];
 
 const tableState = {
   id: "mock",
@@ -283,7 +308,7 @@ test("shows live hand cues and event log", async ({ page }) => {
   const liveBox = await viewerCard.boundingBox();
   expect(Math.abs(previewBox.width - liveBox.width)).toBeLessThan(1);
   expect(Math.abs(previewBox.height - liveBox.height)).toBeLessThan(1);
-  await expect(page.locator(".card-config-dialog")).toHaveScreenshot("card-config-dialog.png");
+  await expectImage(page.locator(".card-config-dialog"), "card-config-dialog.png");
   // Card geometry lands in a deferred effect, so wait on the variable itself
   // rather than the slider readout it renders alongside.
   const cardWidthVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"));
@@ -470,7 +495,8 @@ test("shows live hand cues and event log", async ({ page }) => {
     expect(geometry.boardViewerGap, "V24: board cards must keep a visible row gap above the viewer seat").toBeGreaterThanOrEqual(12);
     expect(geometry.radius).not.toContain("%");
   }
-  await expect(page).toHaveScreenshot("live-table.png", { fullPage: true });
+  await expectLayout(page, "live-table", TABLE_LAYOUT);
+  await expectImage(page, "live-table.png", { fullPage: true });
 });
 
 test("hides your own cards until you reach for them in paranoid mode", async ({ page }) => {
@@ -790,7 +816,8 @@ test("offers only fold and call once a shove caps the pot", async ({ page }) => 
   });
   expect(slots.foldWidth, `V47: Fold keeps its narrow edge slot ${JSON.stringify(slots)}`).toBeLessThanOrEqual(slots.barWidth / 7 + 1);
   expect(slots.gap, `V47: a dead zone still separates fold from the closing call ${JSON.stringify(slots)}`).toBeGreaterThan(slots.foldWidth);
-  await expect(page).toHaveScreenshot("capped-call-actions.png", { fullPage: true });
+  await expectLayout(page, "capped-call-actions", TABLE_LAYOUT);
+  await expectImage(page, "capped-call-actions.png", { fullPage: true });
 });
 
 test("keeps fixed-limit capped actions on one aligned row", async ({ page }) => {
@@ -1499,7 +1526,8 @@ test("reflows viewer cards at maximum display settings", async ({ page }) => {
   expect(geometry.cardsEscapeSeat, `V21: max-size viewer cards must stay inside the viewer seat ${JSON.stringify(geometry)}`).toBe(false);
   expect(geometry.faceOverlap, `V21: max-size rank and suit must not collide ${JSON.stringify(geometry)}`).toBe(false);
   expect(geometry.faceEscapesCard, `V21: max-size rank and suit must stay on the card ${JSON.stringify(geometry)}`).toBe(false);
-  await expect(page).toHaveScreenshot("max-card-table.png", { fullPage: true });
+  await expectLayout(page, "max-card-table", TABLE_LAYOUT);
+  await expectImage(page, "max-card-table.png", { fullPage: true });
 });
 
 test("integrates showdown with players and table log", async ({ page }) => {
@@ -1536,7 +1564,8 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await expect(page.locator(".showdown-advance button")).toContainText("OK · 6s");
   await expect(page.locator(".showdown-progress")).toHaveCSS("width", /.+/);
   await expect(page.locator(".last-hand")).toHaveCount(0);
-  await expect(page).toHaveScreenshot("showdown-table.png", { fullPage: true });
+  await expectLayout(page, "showdown-table", TABLE_LAYOUT);
+  await expectImage(page, "showdown-table.png", { fullPage: true });
   await page.locator(".showdown-advance button").click();
   expect(continued).toBe(true);
 });
@@ -1597,7 +1626,8 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
   expect(rail.viewerCardsClipped, `L5: landscape viewer cards must not be clipped ${JSON.stringify(rail)}`).toBe(false);
   expect(rail.stageScrolls, "L4: a landscape table must fit its stage").toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
-  await expect(page).toHaveScreenshot("landscape-table.png", { fullPage: true });
+  await expectLayout(page, "landscape-table", TABLE_LAYOUT);
+  await expectImage(page, "landscape-table.png", { fullPage: true });
 });
 
 test("packs the table into a portrait phone without scrolling", async ({ page }) => {
@@ -1794,7 +1824,8 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   }
   expect(revealLayout.clearsViewer, `V37: odds must not overlap the viewer seat ${JSON.stringify(revealLayout)}`).toBe(true);
   expect(revealLayout.boardGap, `V37: center content must keep a visible viewer gap ${JSON.stringify(revealLayout)}`).toBeGreaterThanOrEqual(12);
-  await expect(page).toHaveScreenshot("allin-reveal-table.png", { fullPage: true });
+  await expectLayout(page, "allin-reveal-table", TABLE_LAYOUT);
+  await expectImage(page, "allin-reveal-table.png", { fullPage: true });
   // Nothing may give the ending away while the board is still coming.
   await expect(page.locator(".seat.winner")).toHaveCount(0);
   await expect(page.locator(".game-log")).not.toContainText("wins");

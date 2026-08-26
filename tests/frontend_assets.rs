@@ -148,6 +148,23 @@ fn css_tokens_are_structurally_isolated() {
     }
 }
 
+/// The e2e harness pins its own fonts (tests/e2e/rendering.ts) so image
+/// baselines do not depend on the host. That means the suite no longer notices
+/// a change to the stacks the app actually ships, so pin them here instead.
+#[test]
+fn production_font_stacks_are_deliberate() {
+    let base = CSS_SOURCES[1].1;
+    let cards = CSS_SOURCES[3].1;
+    assert!(
+        base.contains("font:16px system-ui,sans-serif"),
+        "UI text stays on the platform's own face; the iPhone this is played on gets SF Pro"
+    );
+    assert!(
+        cards.contains(r#"font-family:"Arial Narrow","Roboto Condensed",Arial,sans-serif"#),
+        "card faces keep the condensed stack"
+    );
+}
+
 #[test]
 fn table_island_has_live_state_and_action_contracts() {
     for literal in [
