@@ -24,7 +24,7 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
 | Rust tests | `cargo test --locked` |
 | Rust lint | `cargo fmt --check && cargo clippy --locked --all-targets --all-features` |
 | JS lint | `bun run lint` (`bun run lint:fix` to autofix) |
-| e2e | `bun run test:e2e` (fast local loop; skips image comparison) |
+| e2e | `bun run test:e2e` (fast local loop; skips image comparison — see Notes) |
 | Run server | `cargo run` (:8080), or `./dev.sh` to restart on file change |
 | Everything CI runs | `mise run check` |
 
@@ -36,14 +36,27 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   and by the Playwright web server; use it for any local run you need to sign
   into.
 - e2e snapshots live beside their specs in `tests/e2e/*-snapshots/`. Baselines
-  are rendered in the pinned Playwright container and are platform-independent;
-  regenerate them with `bun run test:e2e:docker -- --update-snapshots`. The
-  `chromium-mobile` project emulates an iPhone 15/16 Pro, safe-area insets
+  are rendered by the pinned Playwright image, which is the only environment
+  that reproduces them: **`bun run test:e2e` skips image comparison entirely**
+  unless `CI` or `E2E_IMAGES` is set, because a comparison against another
+  host's fonts reports failures that mean nothing. Treat a green local run as
+  saying nothing about pixels.
+- To regenerate baselines, run the **Update snapshots** workflow
+  (Actions → Update snapshots → Run workflow, pick the branch). It renders them
+  in the pinned image and commits them back to that branch, so no local Docker
+  daemon is needed. `bun run test:e2e:docker -- --update-snapshots` still works
+  if you have one.
+- The `chromium-mobile` project emulates an iPhone 15/16 Pro, safe-area insets
   included — don't relax the geometry or image tolerance to make a snapshot
-  pass. `bun run test:e2e` remains the fast local loop and skips image
-  comparison.
-- `scripts/e2e-docker.sh` builds and runs the server on the host; only the
-  browser and Playwright tests run inside the container.
+  pass.
+- Prefer a geometry snapshot to an image one. `expectLayout` in
+  `tests/e2e/layout.ts` records boxes and computed styles as JSON that diffs in
+  review and is stable on every platform; images are for what only pixels catch
+  (shadow, radius, gradient, stacking).
+- CI runs the e2e job *inside* the Playwright image and takes the server binary
+  from the `server` job, so no Docker daemon is involved.
+  `scripts/e2e-docker.sh` is the local-only path: it runs the server on the
+  host and the browser in the container.
 - The UI font is Bitter, vendored as variable woff2 subsets in
   `public/vendor/bitter-v42-*.woff2` so an installed PWA keeps its type offline.
   The version lives in the filename because the `@font-face` src sits in static

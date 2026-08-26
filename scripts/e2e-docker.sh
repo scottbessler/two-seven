@@ -54,6 +54,7 @@ docker run --rm --ipc=host \
   --add-host=host.docker.internal:host-gateway \
   --env HOME=/tmp/playwright-home \
   --env TEST_BASE_URL=http://host.docker.internal:18080 \
+  --env E2E_IMAGES=1 \
   --volume "$repo_root:/work" \
   --workdir /work \
   "$image" \
