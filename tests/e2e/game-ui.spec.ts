@@ -639,6 +639,32 @@ test("holds an all-in call in the pinned all-in slot", async ({ page }) => {
   await expect.poll(() => posts).toEqual([{ kind: "call" }]);
 });
 
+test("shows an action as sent and refuses a second click while it flies", async ({ page }) => {
+  const posts = [];
+  let release;
+  await page.route("**/tables/mock/action", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await new Promise((resolve) => { release = resolve; });
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.goto("/card-test");
+  await mountTable(page, tableState);
+
+  const call = page.getByRole("button", { name: /^Call/ });
+  await call.click();
+  // The pressed control says so, and every action in the row -- including a
+  // second Call -- stops taking clicks until the answer lands.
+  await expect(call).toHaveClass(/pending/);
+  await expect(call).toHaveAttribute("aria-busy", "true");
+  await expect(call).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Fold" })).toBeDisabled();
+  await call.dispatchEvent("click");
+  await page.waitForTimeout(100);
+  expect(posts, "V34: a laggy network must not turn one call into two").toHaveLength(1);
+  release();
+  await expect(call).not.toHaveClass(/pending/);
+});
+
 test("holds a protected fold for one second", async ({ page }) => {
   const posts = [];
   await page.route("**/tables/mock/action", async (route) => {
@@ -1338,6 +1364,18 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, { ...unseated, bank_balance: 2_500_000, buy_in: 2_000_000 });
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $20,000"]);
   await expectControlsTappable();
+  // A long buy-in label takes the room its neighbours leave, and if the row is
+  // genuinely too narrow the ellipsis comes with a native tooltip.
+  const buyInLabel = await page.locator(".table-controls .table-command").evaluate((control) => ({
+    clipped: control.scrollWidth > control.clientWidth + 1,
+    title: control.getAttribute("title"),
+    wide: window.innerWidth >= 1024,
+  }));
+  expect(buyInLabel.title, `V54: a clipped command names itself in a tooltip ${JSON.stringify(buyInLabel)}`)
+    .toBe(buyInLabel.clipped ? "Buy In $20,000" : null);
+  if (buyInLabel.wide) {
+    expect(buyInLabel.clipped, `V54: the side rail has room for the whole buy-in ${JSON.stringify(buyInLabel)}`).toBe(false);
+  }
   // Seating a bot is one click: pick the type and the server fills the next seat.
   let botBody;
   await page.route("**/tables/mock/bot", async (route) => {

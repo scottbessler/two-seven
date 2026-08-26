@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "/public/vendor/htm-preact.js";
+
 export function cents(value) {
   return Math.round(Number(value) * 100);
 }
@@ -33,4 +35,49 @@ export async function refreshBank() {
   const account = await response.json();
   announceBank(account);
   return account;
+}
+
+// A label clipped to an ellipsis is unreadable without its full text, so hand
+// the browser a native tooltip — but only while the element is actually
+// truncated, so untruncated controls stay tooltip-free.
+export function useOverflowTitle(label) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const sync = () => {
+      const truncated = element.scrollWidth > element.clientWidth + 1;
+      if (truncated) element.title = label;
+      else element.removeAttribute("title");
+    };
+    sync();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [label]);
+  return ref;
+}
+
+// A click over a laggy network looks like nothing happened, so people click
+// again -- and a second bet is not a harmless repeat. One request at a time:
+// the pressed control names itself while it is in flight, and the rest of the
+// group stays inert until the answer lands.
+export function usePending() {
+  const [pending, setPending] = useState(null);
+  const inFlight = useRef(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  const run = async (key, action) => {
+    if (inFlight.current != null) return;
+    inFlight.current = key;
+    setPending(key);
+    try {
+      await action();
+    } finally {
+      inFlight.current = null;
+      if (alive.current) setPending(null);
+    }
+  };
+  return [pending, run];
 }

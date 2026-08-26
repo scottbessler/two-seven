@@ -1,7 +1,7 @@
 import { html, render, useEffect, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings } from "/public/card-settings.js";
-import { money, refreshBank, responseError, wholeDollarMoney } from "/public/shared.js";
+import { money, refreshBank, responseError, usePending, wholeDollarMoney } from "/public/shared.js";
 // Shared renderer contract: card-corner rank over suit.
 
 const root = document.getElementById("blackjack-app");
@@ -105,7 +105,8 @@ function ShoeVisualization({ shoe }) {
 
 function App() {
   const [game, setGame] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, run] = usePending();
+  const busy = pending != null;
   const [error, setError] = useState("");
   const [balance, setBalance] = useState(0);
   const [trainerSettings, setTrainerSettings] = useState(readTrainerSettings);
@@ -126,8 +127,7 @@ function App() {
 
   useEffect(() => setQuizChoice(null), [game?.id, game?.status]);
 
-  const start = async (amount) => {
-    setBusy(true);
+  const start = (amount) => run(`deal:${amount}`, async () => {
     setError("");
     const response = await fetch("/blackjack/start", {
       method: "POST",
@@ -143,31 +143,28 @@ function App() {
         },
       }),
     });
-    setBusy(false);
     if (!response.ok) {
       setError(await responseError(response));
       return;
     }
     setGame(await response.json());
     refreshBank().catch(() => {});
-  };
+  });
 
-  const act = async (kind) => {
-    setBusy(true);
+  const act = (kind) => run(kind, async () => {
     setError("");
     const response = await fetch(`/blackjack/${kind}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: game.id }),
     });
-    setBusy(false);
     if (!response.ok) {
       setError(await responseError(response));
       return;
     }
     setGame(await response.json());
     refreshBank().catch(() => {});
-  };
+  });
 
   const bets = betOptions(balance);
   const playActionCount = [game?.can_hit, game?.can_stand, game?.can_double, game?.can_split, game?.can_insure].filter(Boolean).length;
@@ -192,14 +189,14 @@ function App() {
       `}
       <div class="actions blackjack-actions" style=${`--action-count:${Math.max(1, actionCount)}`}>
         ${game?.status === "Playing" ? html`
-          ${game.can_hit && html`<button type="button" disabled=${busy} onClick=${() => act("hit")}>Hit</button>`}
-          ${game.can_stand && html`<button type="button" disabled=${busy} onClick=${() => act("stand")}>Stand</button>`}
-          ${game.can_double && html`<button type="button" disabled=${busy} onClick=${() => act("double")}>Double</button>`}
-          ${game.can_split && html`<button type="button" disabled=${busy} onClick=${() => act("split")}>Split</button>`}
-          ${game.can_insure && html`<button type="button" disabled=${busy} onClick=${() => act("insurance")}>Insurance</button>`}
+          ${game.can_hit && html`<button type="button" disabled=${busy} aria-busy=${pending === "hit"} onClick=${() => act("hit")}>Hit</button>`}
+          ${game.can_stand && html`<button type="button" disabled=${busy} aria-busy=${pending === "stand"} onClick=${() => act("stand")}>Stand</button>`}
+          ${game.can_double && html`<button type="button" disabled=${busy} aria-busy=${pending === "double"} onClick=${() => act("double")}>Double</button>`}
+          ${game.can_split && html`<button type="button" disabled=${busy} aria-busy=${pending === "split"} onClick=${() => act("split")}>Split</button>`}
+          ${game.can_insure && html`<button type="button" disabled=${busy} aria-busy=${pending === "insurance"} onClick=${() => act("insurance")}>Insurance</button>`}
         ` : bets.length === 0
           ? html`<span class="deal-broke">Re-up from the coin menu to play a hand.</span>`
-          : bets.map((amount) => html`<button class="deal-action" type="button" disabled=${busy} onClick=${() => start(amount)}>Deal ${wholeDollarMoney(amount)}</button>`)}
+          : bets.map((amount) => html`<button class="deal-action" type="button" disabled=${busy} aria-busy=${pending === `deal:${amount}`} onClick=${() => start(amount)}>Deal ${wholeDollarMoney(amount)}</button>`)}
       </div>
       ${error && html`<p class="error">${error}</p>`}
     </section>

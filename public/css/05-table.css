@@ -129,6 +129,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-command-link{display:grid;place-items:center;min-height:var(--control-h);padding:.45rem .65rem;border:1px solid var(--line-2);border-radius:var(--radius-control);text-decoration:none;font-size:var(--text-action);line-height:1.1;font-weight:700;white-space:nowrap}
 .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){box-sizing:border-box;height:var(--control-h);min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .table-controls button{white-space:nowrap}
+/* These commands sit beside the plain History link; bold made them shout. */
+.table-controls :is(.table-command,.table-command-link,.seat-bot button){font-weight:500}
 .table-controls .table-command-confirm{display:contents}
 .table-shell .actions{padding-bottom:calc(.65rem + var(--safe-bottom))}
 @media(max-width:760px){
@@ -169,9 +171,12 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-shell>.decision-area{grid-column:1/-1;grid-row:2}
   .table-side-rail{grid-column:2;grid-row:1;display:grid;grid-template-rows:minmax(0,1fr) auto;min-width:0;min-height:0;overflow:hidden}
   .table-side-rail .game-log{grid-row:1;height:auto;min-height:0;overflow:auto}
-  .table-side-rail .table-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-row:2;width:100%;min-width:0;margin-top:.75rem;box-sizing:border-box;gap:.35rem}
+  /* Content-sized, not three equal columns: a long buy-in label takes the room
+     a short one leaves behind, and only a genuinely full row makes anything
+     shrink. */
+  .table-side-rail .table-controls{display:flex;flex-wrap:wrap;justify-content:flex-end;grid-row:2;width:100%;min-width:0;margin-top:.75rem;box-sizing:border-box;gap:.35rem}
   .table-side-rail .table-controls #table-error:empty{display:none}
-  .table-side-rail .table-controls > :is(.table-history-link,.table-command,.table-command-link){min-width:0;flex:0 0 auto}
+  .table-side-rail .table-controls > :is(.table-history-link,.table-command,.table-command-link){min-width:0;flex:0 1 auto}
   .table-side-rail .table-controls .seat-bot button{min-width:0}
   .table-stage{container-type:size;height:auto;flex:1 1 auto;grid-template-rows:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);align-items:stretch}
   .table-stage:has(.showdown-result,.showdown-advance){height:auto}
