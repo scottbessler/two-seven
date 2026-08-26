@@ -558,14 +558,14 @@
     "y": 1256,
     "width": 352,
     "height": 44,
-    "display": "grid",
+    "display": "flex",
     "position": "static",
     "fontSize": "16px",
     "fontWeight": "400",
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgba(0, 0, 0, 0)",
     "borderRadius": "0px",
-    "gridTemplateColumns": "114px 114px 114px",
+    "gridTemplateColumns": "none",
     "flexDirection": "row"
   }
 }
