@@ -1,7 +1,7 @@
 import { html, render, useEffect, useRef, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings, useCardSettings } from "/public/card-settings.js";
-import { refreshBank, responseError, wholeDollarMoney as money } from "/public/shared.js";
+import { refreshBank, responseError, useOverflowTitle, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("table-app");
@@ -326,7 +326,8 @@ function TournamentComplete({ champion }) {
 }
 
 function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refresh }) {
-  if (href) return html`<a class="table-command table-command-link" href=${href}>${label}</a>`;
+  const labelRef = useOverflowTitle(label);
+  if (href) return html`<a class="table-command table-command-link" ref=${labelRef} href=${href}>${label}</a>`;
   const submit = async () => {
     const response = await fetch(endpoint, {
       method: "POST",
@@ -341,7 +342,7 @@ function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refres
   // Walking out of a tournament is not a cash-out: the entry is gone, so ask first.
   if (forfeits) {
     return html`<span class="table-command-confirm">
-      <button class="table-command" type="button" commandfor="forfeit-entry" command="show-modal">${label}</button>
+      <button class="table-command" type="button" ref=${labelRef} commandfor="forfeit-entry" command="show-modal">${label}</button>
       <dialog id="forfeit-entry" class="confirm-dialog">
         <form method="dialog">
           <header><h2>Leave the tournament?</h2></header>
@@ -354,7 +355,7 @@ function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refres
       </dialog>
     </span>`;
   }
-  return html`<button class="table-command" type="button" disabled=${disabled} onClick=${submit}>${label}</button>`;
+  return html`<button class="table-command" type="button" ref=${labelRef} disabled=${disabled} onClick=${submit}>${label}</button>`;
 }
 
 /// What the viewer can do about their seat. Busted at a cash table you get two

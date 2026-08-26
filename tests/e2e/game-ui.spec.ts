@@ -1338,6 +1338,18 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   await mountTable(page, { ...unseated, bank_balance: 2_500_000, buy_in: 2_000_000 });
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $20,000"]);
   await expectControlsTappable();
+  // A long buy-in label takes the room its neighbours leave, and if the row is
+  // genuinely too narrow the ellipsis comes with a native tooltip.
+  const buyInLabel = await page.locator(".table-controls .table-command").evaluate((control) => ({
+    clipped: control.scrollWidth > control.clientWidth + 1,
+    title: control.getAttribute("title"),
+    wide: window.innerWidth >= 1024,
+  }));
+  expect(buyInLabel.title, `V54: a clipped command names itself in a tooltip ${JSON.stringify(buyInLabel)}`)
+    .toBe(buyInLabel.clipped ? "Buy In $20,000" : null);
+  if (buyInLabel.wide) {
+    expect(buyInLabel.clipped, `V54: the side rail has room for the whole buy-in ${JSON.stringify(buyInLabel)}`).toBe(false);
+  }
   // Seating a bot is one click: pick the type and the server fills the next seat.
   let botBody;
   await page.route("**/tables/mock/bot", async (route) => {
