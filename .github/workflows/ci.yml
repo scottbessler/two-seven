@@ -2,6 +2,10 @@ name: CI
 on:
   push:
   pull_request:
+  # The Update snapshots workflow commits with GITHUB_TOKEN, and GitHub does not
+  # start workflows for those pushes, so a regenerated baseline needs CI kicked
+  # by hand.
+  workflow_dispatch:
 jobs:
   rust:
     runs-on: ubuntu-latest

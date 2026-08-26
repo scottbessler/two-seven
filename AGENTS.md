@@ -49,6 +49,14 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   once a workflow is on the default branch, which would leave a branch that
   changes rendering unable to update its own baselines.)
   `bun run test:e2e:docker -- --update-snapshots` still works if you have one.
+  The regeneration commit is pushed with `GITHUB_TOKEN`, and GitHub does not
+  start workflows for those pushes — re-run CI by hand (Actions → CI → Run
+  workflow) or push again to verify the new baselines.
+- On Linux you can compare images without any container: the pinned fonts and
+  rasterizer flags make a plain checkout match CI byte for byte, verified across
+  a different Chromium build. `E2E_IMAGES=1 bun run test:e2e` opts in. macOS
+  still will not match — CoreText and FreeType never agree — so that stays a
+  container or CI job.
 - The `chromium-mobile` project emulates an iPhone 15/16 Pro, safe-area insets
   included — don't relax the geometry or image tolerance to make a snapshot
   pass.
