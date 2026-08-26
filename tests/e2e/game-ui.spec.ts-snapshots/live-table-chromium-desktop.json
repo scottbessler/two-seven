@@ -215,7 +215,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 312,
+      "x": 313,
       "y": 82,
       "width": 28,
       "height": 16,
@@ -260,7 +260,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 940,
+      "x": 941,
       "y": 82,
       "width": 28,
       "height": 16,
@@ -292,9 +292,9 @@
   ],
   ".seat-wager": [
     {
-      "x": 94,
+      "x": 95,
       "y": 169,
-      "width": 47,
+      "width": 46,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -337,7 +337,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 733,
+      "x": 734,
       "y": 169,
       "width": 24,
       "height": 18,
@@ -354,7 +354,7 @@
     {
       "x": 940,
       "y": 169,
-      "width": 30,
+      "width": 29,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -369,7 +369,7 @@
     {
       "x": 521,
       "y": 1070,
-      "width": 30,
+      "width": 29,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -384,9 +384,9 @@
   ],
   ".seat-role": [
     {
-      "x": 304,
+      "x": 305,
       "y": 127,
-      "width": 45,
+      "width": 44,
       "height": 13,
       "display": "block",
       "position": "static",
@@ -399,7 +399,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 607,
+      "x": 608,
       "y": 62,
       "width": 8,
       "height": 13,
@@ -416,7 +416,7 @@
     {
       "x": 619,
       "y": 62,
-      "width": 15,
+      "width": 14,
       "height": 13,
       "display": "block",
       "position": "static",
@@ -431,7 +431,7 @@
     {
       "x": 828,
       "y": 62,
-      "width": 15,
+      "width": 14,
       "height": 13,
       "display": "block",
       "position": "static",

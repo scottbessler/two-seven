@@ -11,7 +11,7 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgba(0, 0, 0, 0)",
     "borderRadius": "0px",
-    "gridTemplateColumns": "284px 46px 32px",
+    "gridTemplateColumns": "285px 46px 32px",
     "flexDirection": "row"
   },
   ".table-stage": {
@@ -245,7 +245,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 134,
+      "x": 135,
       "y": 134,
       "width": 28,
       "height": 16,
@@ -305,7 +305,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 180,
+      "x": 181,
       "y": 429,
       "width": 28,
       "height": 16,
@@ -352,7 +352,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 232,
+      "x": 233,
       "y": 157,
       "width": 24,
       "height": 18,
@@ -414,9 +414,9 @@
   ],
   ".seat-role": [
     {
-      "x": 50,
+      "x": 51,
       "y": 210,
-      "width": 45,
+      "width": 44,
       "height": 13,
       "display": "block",
       "position": "static",

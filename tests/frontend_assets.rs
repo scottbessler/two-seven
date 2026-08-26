@@ -153,16 +153,19 @@ fn css_tokens_are_structurally_isolated() {
 /// a change to the stacks the app actually ships, so pin them here instead.
 #[test]
 fn production_font_stacks_are_deliberate() {
+    let tokens = CSS_SOURCES[0].1;
     let base = CSS_SOURCES[1].1;
     let cards = CSS_SOURCES[3].1;
     assert!(
-        base.contains("font:16px system-ui,sans-serif"),
-        "UI text stays on the platform's own face; the iPhone this is played on gets SF Pro"
+        tokens.contains(r#"--font-ui:"Bitter",ui-serif,Georgia,"Times New Roman",serif"#),
+        "UI text is self-hosted Bitter, so an installed PWA keeps its type offline"
     );
     assert!(
-        cards.contains(r#"font-family:"Arial Narrow","Roboto Condensed",Arial,sans-serif"#),
-        "card faces keep the condensed stack"
+        tokens.contains(r#"--font-card:"Arial Narrow","Roboto Condensed",Arial,sans-serif"#),
+        "card faces keep their own condensed stack"
     );
+    assert!(base.contains("font:16px var(--font-ui)"));
+    assert!(cards.contains("font-family:var(--font-card)"));
 }
 
 #[test]

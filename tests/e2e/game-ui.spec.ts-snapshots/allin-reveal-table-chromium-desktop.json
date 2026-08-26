@@ -154,7 +154,7 @@
   ],
   ".seat-stack": [
     {
-      "x": 103,
+      "x": 104,
       "y": 82,
       "width": 28,
       "height": 16,
@@ -169,7 +169,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 312,
+      "x": 313,
       "y": 82,
       "width": 28,
       "height": 16,
@@ -214,7 +214,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 940,
+      "x": 941,
       "y": 82,
       "width": 28,
       "height": 16,
@@ -291,7 +291,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 733,
+      "x": 734,
       "y": 100,
       "width": 24,
       "height": 18,
@@ -338,9 +338,9 @@
   ],
   ".seat-role": [
     {
-      "x": 174,
+      "x": 175,
       "y": 193,
-      "width": 38,
+      "width": 37,
       "height": 13,
       "display": "block",
       "position": "static",
