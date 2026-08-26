@@ -410,8 +410,10 @@ Mark each milestone done here as it lands.
   shared heights, contained single-line labels, and usable tap targets across
   mobile and narrow desktop surfaces; blackjack actions remain readable within
   the dense action-row contract.
-- **V47** Poker action bar = Fold edge ≤ 1/7 + ≤5 equal middle actions + All In
-  edge ≤ 1/7; stack-consuming calls/wagers render only as right-edge All In.
+- **V47** Poker action bar = Fold edge + ≤5 equal middle actions + right edge;
+  every edge action is ≤ 1/7 of the bar. The right edge carries All In and, when
+  the wager range allows one, the custom wager beside it (V56);
+  stack-consuming calls/wagers render only as right-edge All In.
   A call that closes a capped pot takes the same right edge slot and colour but
   keeps its own `Call <amount>` label and submits without a hold, since the
   caller still has chips behind; Fold keeps its narrow slot and a dead zone
@@ -451,6 +453,12 @@ Mark each milestone done here as it lands.
   right-aligned and, until the result is final, one equity/outs box per live
   player; it holds its width whether or not anything is in it, and the shared
   cards size to the room that leaves them.
+- **V56** Whenever a wager range has more than one legal amount, the action bar
+  offers a custom wager to the right of All In. It opens a modal slider over the
+  whole legal range in whole-dollar detents, with both the minimum and the exact
+  maximum reachable, and confirms with a button naming the street total it
+  raises to. It submits the same chips a preset wager would; the presets and the
+  hold-to-confirm All In are unchanged.
 
 ## §T Build tasks
 
@@ -497,6 +505,7 @@ T33|x|stabilize narrow poker state + bot re-raise policy|V53
 T34|x|emulate the real iPhone PWA viewport and safe-area insets in e2e|V42,V54
 T35|x|full-bleed status bar + reserved centre rail for result and equity|V36,V37,V45,V54,V55
 T36|x|close betting when no opponent can answer a raise|V47,V51
+T37|x|add a custom wager slider beside All In|V47,V56
 
 ## §B Bug log
 
