@@ -22,9 +22,6 @@ on:
         type: string
   push:
     branches-ignore: [main]
-concurrency:
-  group: ${{ github.workflow }}-${{ inputs.branch || github.ref }}
-  cancel-in-progress: true
 jobs:
   server:
     if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[update-snapshots]')

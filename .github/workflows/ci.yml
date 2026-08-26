@@ -6,12 +6,6 @@ on:
   # start workflows for those pushes, so a regenerated baseline needs CI kicked
   # by hand.
   workflow_dispatch:
-# A push that supersedes an in-flight run should cancel it rather than queue
-# behind it: two workflows fire per push here, and a starved queue gets runs
-# cancelled before they ever start.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 jobs:
   rust:
     runs-on: ubuntu-latest
