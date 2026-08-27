@@ -72,7 +72,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "7px",
+      "borderRadius": "16px",
       "gridTemplateColumns": "83px",
       "flexDirection": "row"
     },
@@ -87,7 +87,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "7px",
+      "borderRadius": "16px",
       "gridTemplateColumns": "83px",
       "flexDirection": "row"
     },
@@ -102,7 +102,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "7px",
+      "borderRadius": "16px",
       "gridTemplateColumns": "83px",
       "flexDirection": "row"
     },
@@ -117,7 +117,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "7px",
+      "borderRadius": "16px",
       "gridTemplateColumns": "83px",
       "flexDirection": "row"
     },
@@ -132,7 +132,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "7px",
+      "borderRadius": "16px",
       "gridTemplateColumns": "83px",
       "flexDirection": "row"
     },
@@ -147,7 +147,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "7px",
+      "borderRadius": "16px",
       "gridTemplateColumns": "367px",
       "flexDirection": "row"
     }
@@ -256,7 +256,7 @@
       "fontWeight": "700",
       "color": "rgb(244, 217, 139)",
       "backgroundColor": "rgb(23, 43, 37)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
     },
@@ -271,7 +271,7 @@
       "fontWeight": "700",
       "color": "rgb(244, 217, 139)",
       "backgroundColor": "rgb(23, 43, 37)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
     },
@@ -286,7 +286,7 @@
       "fontWeight": "700",
       "color": "rgb(244, 217, 139)",
       "backgroundColor": "rgb(23, 43, 37)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
     },
@@ -301,7 +301,7 @@
       "fontWeight": "700",
       "color": "rgb(244, 217, 139)",
       "backgroundColor": "rgb(23, 43, 37)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
     },
@@ -316,7 +316,7 @@
       "fontWeight": "700",
       "color": "rgb(244, 217, 139)",
       "backgroundColor": "rgb(23, 43, 37)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
     },
@@ -331,7 +331,7 @@
       "fontWeight": "700",
       "color": "rgb(244, 217, 139)",
       "backgroundColor": "rgb(23, 43, 37)",
-      "borderRadius": "6px",
+      "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
     }
@@ -346,8 +346,8 @@
       "position": "static",
       "fontSize": "11px",
       "fontWeight": "700",
-      "color": "rgb(169, 194, 183)",
-      "backgroundColor": "rgb(127, 212, 168)",
+      "color": "rgb(244, 239, 228)",
+      "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.8)",
       "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
@@ -361,8 +361,8 @@
       "position": "static",
       "fontSize": "11px",
       "fontWeight": "700",
-      "color": "rgb(169, 194, 183)",
-      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "color": "rgb(244, 239, 228)",
+      "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.8)",
       "borderRadius": "999px",
       "gridTemplateColumns": "none",
       "flexDirection": "row"
@@ -379,7 +379,7 @@
     "fontWeight": "400",
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-    "borderRadius": "7px",
+    "borderRadius": "16px",
     "gridTemplateColumns": "367px",
     "flexDirection": "row"
   },
