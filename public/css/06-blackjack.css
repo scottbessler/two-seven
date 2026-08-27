@@ -5,7 +5,7 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hid
 .blackjack-shell>#blackjack-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .blackjack-table{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto auto auto;gap:.75rem;flex:1 1 auto;min-height:0;overflow:hidden}
 .blackjack-status-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}
-.blackjack-status-row span{display:grid;place-items:center;min-height:3rem;padding:.45rem;border:1px solid var(--line-2);border-radius:var(--radius-small);background:var(--felt-800);color:var(--muted);font-size:var(--text-small);text-align:center}
+.blackjack-status-row span{display:grid;place-items:center;min-height:3rem;padding:.45rem;border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);font-size:var(--text-small);text-align:center}
 .blackjack-status-row b{color:var(--accent);font-size:var(--text-action)}
 .blackjack-shoe{display:grid;gap:.3rem;min-width:0}
 .blackjack-shoe-bar{position:relative;height:.75rem;overflow:hidden;border:1px solid var(--line-2);border-radius:var(--radius-chip);background:var(--felt-800)}
@@ -25,10 +25,10 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hid
 .blackjack-hand .board{container-type:normal;align-items:flex-end;width:100%;height:auto;min-height:0}
 .blackjack-hand .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),29cqw,78cqh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
 .blackjack-trainer-count{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem}
-.blackjack-trainer-count span{display:grid;place-items:center;min-height:2.4rem;padding:.25rem;border:1px solid var(--line-2);border-radius:var(--radius-small);background:var(--felt-800);color:var(--muted);text-align:center}
+.blackjack-trainer-count span{display:grid;place-items:center;min-height:2.4rem;padding:.25rem;border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-align:center}
 .blackjack-trainer-count b{color:var(--accent)}
-.blackjack-trainer-log{display:grid;gap:.15rem;max-height:7rem;margin:0;padding:.45rem .7rem;overflow:auto;border:1px solid var(--line-legacy);border-radius:var(--radius-small);background:var(--surface-deep);color:var(--muted);font-size:var(--text-small)}
-.blackjack-analysis,.blackjack-quiz{display:grid;gap:.35rem;margin:0;padding:.55rem .65rem;border:1px solid var(--gold);border-radius:var(--radius-small);background:var(--surface-gold);color:var(--ink)}
+.blackjack-trainer-log{display:grid;gap:.15rem;max-height:7rem;margin:0;padding:.45rem .7rem;overflow:auto;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep);color:var(--muted);font-size:var(--text-small)}
+.blackjack-analysis,.blackjack-quiz{display:grid;gap:.35rem;margin:0;padding:.55rem .65rem;border:1px solid var(--gold);border-radius:var(--radius-control);background:var(--surface-gold);color:var(--ink)}
 .blackjack-analysis p,.blackjack-quiz p{margin:0}
 .blackjack-quiz div{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.35rem}
 .blackjack-quiz button{min-width:0;border-color:var(--line-2);background:var(--felt-800);color:var(--ink)}
@@ -50,4 +50,4 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100dvh;overflow:hid
   .blackjack-actions>button{min-height:var(--control-h-compact);font-size:var(--text-small)}
 }
 /* Money lines up as a column wherever it is shown. */
-:where(.blackjack-status-row b){font-variant-numeric:tabular-nums}
+:where(.blackjack-status-row b,.blackjack-hand h2,.blackjack-shoe-text,.blackjack-actions){font-variant-numeric:tabular-nums}
