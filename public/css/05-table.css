@@ -1,4 +1,4 @@
-.seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid var(--line-3);border-radius:var(--radius-surface);background:var(--surface-deep-95);min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat :where(b:not(.seat-cards *)){color:var(--accent)}.seat :where(span:not(.seat-cards,.seat-cards *)){color:var(--muted);font-size:var(--text-small)}
+.seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid var(--line-3);border-radius:var(--radius-control);background:var(--surface-deep-95);min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat :where(b:not(.seat-cards *)){color:var(--accent)}.seat :where(span:not(.seat-cards,.seat-cards *)){color:var(--muted);font-size:var(--text-small)}
 .actions:not(.blackjack-actions){display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions:not(.blackjack-actions) input{max-width:10rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}
 .page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100dvh;overflow:hidden;padding-top:.6rem}
 html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
@@ -29,7 +29,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-stage .seats{display:grid;gap:.4rem;pointer-events:auto}
 .table-stage .other-seats{grid-template-columns:repeat(auto-fit,minmax(7.2rem,1fr))}
 .table-stage .viewer-seats{grid-template-columns:minmax(0,1fr)}
-.table-stage .seat{container-type:inline-size;position:relative;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(3.65rem,1fr) auto;align-items:start;justify-items:center;min-width:0;height:8.55rem;min-height:0;overflow:visible;gap:.08rem;padding:.4rem .45rem;border-radius:var(--radius-surface);pointer-events:auto}
+.table-stage .seat{container-type:inline-size;position:relative;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto minmax(3.65rem,1fr) auto;align-items:start;justify-items:center;min-width:0;height:8.55rem;min-height:0;overflow:visible;gap:.08rem;padding:.4rem .45rem;border-radius:var(--radius-control);pointer-events:auto}
 .table-stage .viewer-seats .seat{height:calc(12.8rem + var(--viewer-stage-extra,0rem));grid-template-rows:auto auto auto minmax(0,1fr)}
 .viewer-summary{display:contents}
 .seat .player-info{position:relative;display:flex;align-items:center;justify-content:center;gap:.3rem}
@@ -72,19 +72,19 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-center:has(.showdown-odds) .board{min-height:4.65rem}
 .showdown-odds{display:flex;justify-content:center;gap:.25rem;flex-wrap:nowrap;max-width:100%;overflow-x:auto;overflow-y:hidden;font-size:var(--text-label);scrollbar-width:none}
 .showdown-odds::-webkit-scrollbar{display:none}
-.showdown-odds span{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.3rem;align-items:center;min-width:0;max-width:26.4rem;padding:.14rem .38rem;border:1px solid var(--line-2);border-radius:var(--radius-chip);background:var(--surface-deep-80);flex:1 1 26.4rem}
+.showdown-odds span{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.3rem;align-items:center;min-width:0;max-width:26.4rem;padding:.14rem .38rem;border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--surface-deep-80);flex:1 1 26.4rem}
 .showdown-odds b{overflow:hidden;color:var(--muted);font-size:var(--text-label);text-overflow:ellipsis;white-space:nowrap}
 .showdown-odds strong{color:var(--gold-hi);font-size:var(--text-small);font-variant-numeric:tabular-nums}
 .showdown-odds small{grid-column:1/-1;overflow:hidden;color:var(--mint);font-size:var(--text-label);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
-.showdown-odds span.leading{border-color:var(--mint);box-shadow:0 0 0 1px var(--mint),0 0 12px 3px var(--mint-44),inset 0 0 12px var(--mint-13)}
-.showdown-odds span.winner{border-color:var(--gold-hi);box-shadow:0 0 0 1px var(--gold-hi),0 0 14px 4px var(--gold-hi-50),inset 0 0 12px var(--gold-hi-14)}
+.showdown-odds span.leading{border-color:var(--mint);box-shadow:inset 0 0 0 1px var(--mint),inset 0 0 12px var(--mint-13)}
+.showdown-odds span.winner{border-color:var(--gold-hi);box-shadow:inset 0 0 0 1px var(--gold-hi),inset 0 0 14px var(--gold-hi-19)}
 .table-rail{display:contents}
 .showdown-result{margin:0;color:var(--muted);font-size:var(--text-small);text-align:center;white-space:normal}
 .showdown-result{color:var(--gold-hi);font-weight:700}
 .seat.acting{border-color:var(--accent)}
-.seat.leading{border-color:var(--mint);box-shadow:0 0 0 2px var(--mint),0 0 18px 5px var(--mint-44),inset 0 0 18px var(--mint-13)}
-.seat.winner{border-color:var(--gold-hi);box-shadow:0 0 0 2px var(--gold-hi),0 0 22px 6px var(--gold-hi-50),inset 0 0 18px var(--gold-hi-14)}
-.seat.champion{border-color:var(--gold-hi);background:linear-gradient(135deg,var(--surface-champion) 0%,var(--felt-800) 58%,var(--surface-champion-gold) 100%);box-shadow:0 0 0 2px var(--gold-hi),0 0 30px 8px var(--gold-hi-60),inset 0 0 24px var(--gold-hi-19)}
+.seat.leading{border-color:var(--mint);box-shadow:0 0 0 2px var(--mint),0 0 10px 1px var(--mint-44),inset 0 0 18px var(--mint-13)}
+.seat.winner{border-color:var(--gold-hi);box-shadow:0 0 0 2px var(--gold-hi),0 0 12px 2px var(--gold-hi-50),inset 0 0 18px var(--gold-hi-14)}
+.seat.champion{border-color:var(--gold-hi);background:linear-gradient(135deg,var(--surface-champion) 0%,var(--felt-800) 58%,var(--surface-champion-gold) 100%);box-shadow:0 0 0 2px var(--gold-hi),0 0 16px 3px var(--gold-hi-60),inset 0 0 24px var(--gold-hi-19)}
 .seat.folded>:not(.seat-card-state){opacity:.58;filter:saturate(.35)}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-control);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
