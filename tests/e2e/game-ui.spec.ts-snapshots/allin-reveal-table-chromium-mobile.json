@@ -1,8 +1,8 @@
 {
   ".site-header": {
-    "x": 7,
+    "x": 0,
     "y": 63,
-    "width": 379,
+    "width": 393,
     "height": 41,
     "display": "grid",
     "position": "relative",
@@ -416,9 +416,9 @@
     }
   ],
   ".decision-area": {
-    "x": 7,
+    "x": 0,
     "y": 568,
-    "width": 379,
+    "width": 393,
     "height": 57,
     "display": "grid",
     "position": "relative",

@@ -244,16 +244,16 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
       ${actions.has("Call") && !callIsAllIn && !cappedCall && html`<button ...${busy("call:", "primary-action")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span class="action-amount">${money(hand.legal_actions.to_call)}</span></button>`}
       ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button ...${busy(`${wagerKind}:${option.amount}`, "wager-action")} aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span class="action-amount">${money(option.total)}</span></button>`)}
     </span>
-    <span class="action-edge action-edge-right">${cappedCall
-      ? html`<button ...${busy("call:", "wager-action all-in-action capped-call")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span class="action-amount">${money(hand.legal_actions.to_call)}</span></button>`
-      : showAllIn && html`<${HoldAction} label="All In" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} ...${busy(callIsAllIn ? "call:" : "all_in:", "wager-action all-in-action")} />`}${showCustomWager && html`<${CustomWager}
+    <span class="action-edge action-edge-right">${showCustomWager && html`<${CustomWager}
       label=${wagerLabel}
       wager=${wagerBounds}
       contribution=${actorContribution}
       disabled=${pending != null}
       className=${`wager-action custom-wager-action${pending?.startsWith(`${wagerKind}:`) ? " pending" : ""}`}
       submit=${(amount) => submit(wagerKind, amount)}
-    />`}</span>
+    />`}${cappedCall
+      ? html`<button ...${busy("call:", "wager-action all-in-action capped-call")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span class="action-amount">${money(hand.legal_actions.to_call)}</span></button>`
+      : showAllIn && html`<${HoldAction} label="All In" hold=${settings.confirmAllIn} submit=${() => submit(callIsAllIn ? "call" : "all_in")} ...${busy(callIsAllIn ? "call:" : "all_in:", "wager-action all-in-action")} />`}</span>
   </div>`;
 }
 

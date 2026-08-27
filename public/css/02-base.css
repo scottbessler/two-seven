@@ -1,7 +1,9 @@
 *{box-sizing:border-box}
 html{background:var(--felt)}
 body{margin:0;background:radial-gradient(circle at top,var(--felt-gradient),var(--felt));color:var(--ink);font:16px var(--font-ui);letter-spacing:var(--tracking-ui);min-height:100dvh}
-.page{max-width:1100px;margin:0 auto;padding:1rem}
+/* The page gutter is a token so a full-width band -- the table's action bar --
+   can pull back out of it by exactly as much as the page put in. */
+.page{--gutter-left:1rem;--gutter-right:1rem;max-width:1100px;margin:0 auto;padding:1rem var(--gutter-right) 1rem var(--gutter-left)}
 .site-header{padding-top:var(--safe-top);position:relative;display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
 .brand{font-weight:700;color:var(--accent);text-decoration:none;font-size:var(--text-title)}
 .bank-widget{position:relative;display:block;border:0;background:none;color:var(--muted);padding:0}

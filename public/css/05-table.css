@@ -1,6 +1,7 @@
 .seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid var(--line-3);border-radius:var(--radius-surface);background:var(--surface-deep-95);min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat :where(b:not(.seat-cards *)){color:var(--accent)}.seat :where(span:not(.seat-cards,.seat-cards *)){color:var(--muted);font-size:var(--text-small)}
 .actions:not(.blackjack-actions){display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions:not(.blackjack-actions) input{max-width:10rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}
-.page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100dvh;overflow:hidden;padding-top:.6rem}
+.page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100dvh;overflow:hidden;padding:.6rem 0 1rem}
+.page:has(.table-shell) .site-header,.page:has(.table-shell) .table-shell{padding-inline:var(--gutter-left) var(--gutter-right)}
 html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .page:has(.table-shell)>#table-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .page:has(.table-shell) .site-header{height:2.75rem;margin-bottom:.25rem;white-space:nowrap}
@@ -95,7 +96,11 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .tournament-complete{display:grid;place-items:center;gap:.1rem;min-height:3rem;padding:.35rem .8rem;border:1px solid var(--gold-hi);border-radius:var(--radius-control);background:linear-gradient(135deg,var(--felt-800),var(--surface-complete));box-shadow:inset 0 0 20px var(--gold-hi-15),0 0 22px var(--gold-hi-27);text-align:center}
 .tournament-complete small{color:var(--muted);font-size:var(--text-label);font-weight:700;text-transform:uppercase}
 .tournament-complete b{color:var(--gold-hi);font-size:var(--text-action)}
-.decision-area{position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;padding:.5rem;border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
+/* The one band that runs the full width of the screen: it pulls back out of
+   the shell's gutter and pays the same distance back as padding, so its rules
+   and background reach both edges while the buttons stay in line with the
+   table above. The shell clips at its padding box, so nothing here is cut. */
+.decision-area{--decision-pad-y:.5rem;--decision-pad-x:.5rem;position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;margin-inline:calc(-1 * var(--gutter-left,0px)) calc(-1 * var(--gutter-right,0px));padding:var(--decision-pad-y) calc(var(--decision-pad-x) + var(--gutter-right,0px)) var(--decision-pad-y) calc(var(--decision-pad-x) + var(--gutter-left,0px));border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
 .table-shell .actions{position:static;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,5fr) minmax(0,1fr);gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
 .action-edge,.action-middle{display:grid;min-width:0;gap:.4rem}
 .action-edge{grid-template-columns:minmax(0,1fr)}
@@ -111,7 +116,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-shell .actions .wager-action{background:var(--surface-house);color:var(--ink)}
 .table-shell .actions .all-in-action{border-color:var(--gold)}
 /* The custom raise rides beside All In, so the right edge takes a second slot
-   and borrows the width the presets no longer need. */
+   and borrows the width the presets no longer need. All In closes the row: the
+   raises, presets and slider alike, stay together to its left. */
 .table-shell .actions:has(.custom-wager){grid-template-columns:minmax(0,1fr) minmax(0,6fr) minmax(0,2fr)}
 .action-edge-right:has(.custom-wager){grid-template-columns:repeat(2,minmax(0,1fr))}
 .custom-wager{display:grid;min-width:0}
@@ -151,7 +157,6 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 /* These commands sit beside the plain History link; bold made them shout. */
 .table-controls :is(.table-command,.table-command-link,.seat-bot button){font-weight:500}
 .table-controls .table-command-confirm{display:contents}
-.table-shell .actions{padding-bottom:calc(.65rem + var(--safe-bottom))}
 @media(max-width:760px){
   .page:has(.table-shell) .site-header{display:grid;grid-template-columns:minmax(0,1fr) auto 2rem;grid-template-rows:auto auto;align-items:center;align-content:start;gap:.05rem .5rem;height:2.55rem;margin-bottom:.15rem;white-space:nowrap}
   .page:has(.table-shell) .brand{grid-column:1;grid-row:1;align-self:end}
@@ -170,7 +175,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .page:has(.table-shell)>#table-app{overflow:hidden}
   .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
   .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.65rem + var(--viewer-stage-extra,0rem))}
-  .decision-area{min-height:3.4rem;padding:.45rem;border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
+  .decision-area{--decision-pad-y:.45rem;--decision-pad-x:.45rem;min-height:3.4rem;border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
   .table-shell .actions{gap:.4rem;width:100%}
   .table-shell .actions button{min-width:0}
   .game-log{align-self:stretch;height:100%;min-height:0;overflow:auto}
@@ -217,7 +222,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 @media (max-width:640px),(max-height:520px){
   html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
-  .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 39.625rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) calc(.45rem + var(--safe-right)) calc(.25rem + var(--safe-bottom)) calc(.45rem + var(--safe-left))}
+  .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 39.625rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);--gutter-left:calc(.45rem + var(--safe-left));--gutter-right:calc(.45rem + var(--safe-right));display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) 0 calc(.25rem + var(--safe-bottom))}
   .page:has(.table-shell) .site-header{flex:0 0 auto;height:2.55rem;margin-bottom:0;padding-top:0}
   .page:has(.table-shell) .brand{font-size:var(--text-body)}
   .header-context{font-size:var(--text-label)}
@@ -281,8 +286,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .card-config-preview{min-height:calc(var(--viewer-card-h-fit-mobile) + .5rem)}
   .table-shell .card-config-preview .playing-card{--card-w:var(--viewer-card-w-fit-mobile);--card-h:var(--viewer-card-h-fit-mobile);--corner-gap:.1rem;margin-left:-.2rem}
 
-  .decision-area{min-height:3.2rem;padding:.35rem .15rem}
-  .table-shell .actions{padding-bottom:0}
+  .decision-area{--decision-pad-y:.35rem;--decision-pad-x:.15rem;min-height:3.2rem}
   .table-shell .actions,.table-shell .actions .action-middle,.table-shell .actions .action-edge{gap:.2rem}
   .table-shell .actions button{display:grid;place-items:center;min-width:0;min-height:var(--control-h);padding:.35rem .15rem;font-size:var(--text-small);line-height:1.1;overflow:hidden;text-align:center}
   .table-shell .actions .action-prefix{display:none}
@@ -319,7 +323,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats.viewer-seats{margin-top:0}
   .table-stage .seats .seat{height:auto;grid-template-rows:auto auto minmax(2.65rem,auto) auto auto;min-height:4.55rem;gap:0;padding:.1rem .2rem;overflow:visible}
   .table-stage .seats .seat.viewer{height:auto;min-height:calc(min(3.2rem,(var(--usable-h) - 16.5rem)/3) + 3.2rem)}
-  .decision-area{min-height:2.35rem;padding:.2rem .15rem}
+  .decision-area{--decision-pad-y:.2rem;--decision-pad-x:.15rem;min-height:2.35rem}
   .table-stage .seats{display:flex;flex-wrap:wrap;align-content:flex-end;justify-content:center;gap:.25rem}
   .table-stage .seats .seat{flex:1 1 4.6rem}
   .table-stage .seats .seat.viewer{flex:2 1 9.5rem;padding:.28rem .3rem}
