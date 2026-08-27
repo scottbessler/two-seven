@@ -100,6 +100,15 @@ fn contains_raw_color_literal(css: &str) -> bool {
     })
 }
 
+fn contains_raw_border_radius_literal(css: &str) -> bool {
+    css.match_indices("border-radius:").any(|(index, _)| {
+        css[index..]
+            .split_once(';')
+            .map_or(&css[index..], |(declaration, _)| declaration)
+            .contains("px")
+    })
+}
+
 #[test]
 fn split_css_assets_are_rendered_and_versioned() {
     for path in [
@@ -153,6 +162,10 @@ fn css_tokens_are_structurally_isolated() {
         assert!(
             !contains_raw_color_literal(css),
             "{name} should not contain raw color literals"
+        );
+        assert!(
+            !contains_raw_border_radius_literal(css),
+            "{name} should use radius tokens instead of raw pixel literals"
         );
     }
 
