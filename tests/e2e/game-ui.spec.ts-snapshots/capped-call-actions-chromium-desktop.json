@@ -1,8 +1,8 @@
 {
   ".site-header": {
-    "x": 16,
+    "x": 0,
     "y": 10,
-    "width": 1408,
+    "width": 1440,
     "height": 44,
     "display": "flex",
     "position": "relative",
@@ -492,9 +492,9 @@
     }
   ],
   ".decision-area": {
-    "x": 16,
+    "x": 0,
     "y": 1316,
-    "width": 1408,
+    "width": 1440,
     "height": 68,
     "display": "grid",
     "position": "relative",
@@ -509,7 +509,7 @@
   ".actions button": [
     {
       "x": 23,
-      "y": 1323,
+      "y": 1328,
       "width": 197,
       "height": 44,
       "display": "block",
@@ -524,7 +524,7 @@
     },
     {
       "x": 825,
-      "y": 1323,
+      "y": 1328,
       "width": 592,
       "height": 44,
       "display": "block",

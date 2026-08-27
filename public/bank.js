@@ -29,6 +29,44 @@ if (document.documentElement.classList.contains("standalone-pwa")) {
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
+// The header total comes from the bank, but the rest of a lobby page is
+// rendered by the server against the balance you had when it loaded: which
+// tables you can afford, and which are filed under "out of reach". A re-up
+// leaves that markup a step behind, and so does money won or lost anywhere
+// else. Re-render those lists from a fresh copy of the page rather than making
+// the player reload it themselves.
+async function refreshLobbyLists() {
+  const current = [...document.querySelectorAll(".table-list")];
+  if (current.length === 0) return;
+  const response = await fetch(window.location.href, { headers: { Accept: "text/html" }, cache: "no-store" });
+  if (!response.ok) return;
+  const page = new DOMParser().parseFromString(await response.text(), "text/html");
+  const fresh = [...page.querySelectorAll(".table-list")];
+  if (fresh.length !== current.length) return;
+  current.forEach((section, index) => {
+    // An open disclosure stays open across the swap; it was a deliberate click.
+    const opened = section.querySelector("details.out-of-reach")?.open;
+    const replacement = fresh[index];
+    const details = replacement.querySelector("details.out-of-reach");
+    if (details && opened) details.open = true;
+    section.replaceWith(replacement);
+  });
+}
+
+// Nothing re-runs when a page comes back from the back/forward cache, so it
+// still shows the balance it was drawn with. Ask the bank again -- on the way
+// back in, and whenever the tab is brought forward after a spell away.
+window.addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  refreshBank().catch(() => {});
+  refreshLobbyLists().catch(() => {});
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  refreshBank().catch(() => {});
+  refreshLobbyLists().catch(() => {});
+});
+
 const balance = document.getElementById("bank-balance");
 const delta = document.getElementById("bank-delta");
 const widget = document.querySelector(".bank-widget");
@@ -80,6 +118,7 @@ if (balance && widget && panel) {
     }
     widget.open = false;
     announceBank(await response.json());
+    await refreshLobbyLists();
   };
   reUp.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -144,7 +183,10 @@ if (balance && widget && panel) {
         body: "{}",
       })
         .then((response) => (response.ok ? response.json() : Promise.reject(response)))
-        .then((account) => announceBank(account))
+        .then((account) => {
+          announceBank(account);
+          return refreshLobbyLists();
+        })
         .catch(() => {});
     });
   }

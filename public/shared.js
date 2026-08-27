@@ -30,7 +30,7 @@ export function announceBank(account) {
 }
 
 export async function refreshBank() {
-  const response = await fetch("/api/bank", { headers: { Accept: "application/json" } });
+  const response = await fetch("/api/bank", { headers: { Accept: "application/json" }, cache: "no-store" });
   if (!response.ok) return null;
   const account = await response.json();
   announceBank(account);
