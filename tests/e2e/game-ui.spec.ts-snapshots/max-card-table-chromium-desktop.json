@@ -118,7 +118,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "16px",
+      "borderRadius": "12px",
       "gridTemplateColumns": "187px",
       "flexDirection": "row"
     },
@@ -133,7 +133,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "16px",
+      "borderRadius": "12px",
       "gridTemplateColumns": "187px",
       "flexDirection": "row"
     },
@@ -148,7 +148,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "16px",
+      "borderRadius": "12px",
       "gridTemplateColumns": "187px",
       "flexDirection": "row"
     },
@@ -163,7 +163,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "16px",
+      "borderRadius": "12px",
       "gridTemplateColumns": "187px",
       "flexDirection": "row"
     },
@@ -178,7 +178,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "16px",
+      "borderRadius": "12px",
       "gridTemplateColumns": "187px",
       "flexDirection": "row"
     },
@@ -193,7 +193,7 @@
       "fontWeight": "400",
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-      "borderRadius": "16px",
+      "borderRadius": "12px",
       "gridTemplateColumns": "1024px",
       "flexDirection": "row"
     }
@@ -455,7 +455,7 @@
     "fontWeight": "400",
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "color(srgb 0.0509804 0.121569 0.105882 / 0.94902)",
-    "borderRadius": "16px",
+    "borderRadius": "12px",
     "gridTemplateColumns": "1024px",
     "flexDirection": "row"
   },
