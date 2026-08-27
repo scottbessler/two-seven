@@ -4,7 +4,7 @@
 html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .page:has(.table-shell)>#table-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .page:has(.table-shell) .site-header{height:2.75rem;margin-bottom:.25rem;white-space:nowrap}
-.header-context{position:relative;display:inline-flex;align-items:center;gap:.25rem;min-width:0;max-width:min(42vw,34rem);overflow:visible;color:var(--muted);font-size:var(--text-body);font-weight:700}
+.header-context{position:relative;display:inline-flex;align-items:center;gap:.25rem;min-width:0;max-width:min(42vw,34rem);overflow:visible;color:var(--muted);font-size:var(--text-body);font-weight:600}
 .header-info{position:relative;display:inline-grid;place-items:center;flex:0 0 auto;color:var(--muted);font-size:var(--text-label);cursor:help}
 .header-info-tooltip{position:absolute;left:50%;top:calc(100% + .45rem);z-index:30;display:none;width:max-content;max-width:min(22rem,calc(100vw - 1rem));padding:.45rem .55rem;border:1px solid var(--line-2);border-radius:var(--radius-small);background:var(--surface-dark);color:var(--ink);font-size:var(--text-label);line-height:1.35;white-space:normal;text-align:left;transform:translateX(-50%);box-shadow:0 8px 24px var(--shadow-67)}
 .header-info:hover .header-info-tooltip,.header-info:focus .header-info-tooltip{display:block}
@@ -40,7 +40,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .player-tooltip span,.player-tooltip small{color:var(--muted)}
 .player-info:hover .player-tooltip,.player-info:focus .player-tooltip,.player-info:focus-within .player-tooltip{display:block}
 .other-seats .player-tooltip{transform:translate(-50%,.35rem)}
-.seat .seat-stack{color:var(--accent);font-size:var(--text-small);font-weight:800;font-variant-numeric:tabular-nums}
+.seat .seat-stack{color:var(--accent);font-size:var(--text-small);font-weight:700;font-variant-numeric:tabular-nums}
 .seat-corner-badges,.seat-outcome-badges,.seat-card-state{display:flex;min-height:.85rem;align-items:center;justify-content:center;gap:.2rem}
 .seat-corner-badges{position:absolute;right:.2rem;top:.2rem;z-index:6;min-height:0;max-width:calc(100% - .4rem);overflow:hidden;justify-content:flex-end}
 .seat-card-state{align-self:center;min-height:0}
@@ -49,7 +49,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat .winner-role{border-color:var(--gold-hi);background:var(--gold-hi);color:var(--ink-on-gold)}
 .seat .seat-role{padding:.1rem .3rem;border:1px solid var(--line-2);border-radius:var(--radius-chip);color:var(--ink-muted);font-size:var(--text-label);font-weight:var(--weight-label);line-height:1;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 .seat .state-role{border-color:var(--line-2);color:var(--muted)}
-.seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;max-width:100%;margin:0 auto;padding:.1rem .3rem;border:1px solid var(--gold);border-radius:var(--radius-small);background:var(--surface-wager);color:var(--wager-ink);font-size:var(--text-label);font-weight:800;box-shadow:0 3px 8px var(--shadow-47);transform:none}
+.seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;max-width:100%;margin:0 auto;padding:.1rem .3rem;border:1px solid var(--gold);border-radius:var(--radius-small);background:var(--surface-wager);color:var(--wager-ink);font-size:var(--text-label);font-weight:700;box-shadow:0 3px 8px var(--shadow-47);transform:none}
 .seat .seat-wager.no-wager{visibility:hidden}
 .seat .seat-wager.checked-wager{border-color:var(--line-2);background:transparent;color:var(--muted);box-shadow:none}
 .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;left:auto;display:flex;justify-content:center;align-self:center;max-width:100%;margin:0 auto;z-index:4;transform:none;transition:transform .2s cubic-bezier(.2,.8,.2,1.25);transform-origin:center top}
@@ -74,12 +74,12 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .showdown-odds span{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.3rem;align-items:center;min-width:0;max-width:26.4rem;padding:.14rem .38rem;border:1px solid var(--line-2);border-radius:var(--radius-small);background:var(--surface-deep-80);flex:1 1 26.4rem}
 .showdown-odds b{overflow:hidden;color:var(--muted);font-size:var(--text-label);text-overflow:ellipsis;white-space:nowrap}
 .showdown-odds strong{color:var(--gold-hi);font-size:var(--text-small);font-variant-numeric:tabular-nums}
-.showdown-odds small{grid-column:1/-1;overflow:hidden;color:var(--mint);font-size:var(--text-label);font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.showdown-odds small{grid-column:1/-1;overflow:hidden;color:var(--mint);font-size:var(--text-label);font-weight:700;text-overflow:ellipsis;white-space:nowrap}
 .showdown-odds span.leading{border-color:var(--mint);box-shadow:0 0 0 1px var(--mint),0 0 12px 3px var(--mint-44),inset 0 0 12px var(--mint-13)}
 .showdown-odds span.winner{border-color:var(--gold-hi);box-shadow:0 0 0 1px var(--gold-hi),0 0 14px 4px var(--gold-hi-50),inset 0 0 12px var(--gold-hi-14)}
 .table-rail{display:contents}
 .showdown-result{margin:0;color:var(--muted);font-size:var(--text-small);text-align:center;white-space:normal}
-.showdown-result{color:var(--gold-hi);font-weight:800}
+.showdown-result{color:var(--gold-hi);font-weight:700}
 .seat.acting{border-color:var(--accent)}
 .seat.leading{border-color:var(--mint);box-shadow:0 0 0 2px var(--mint),0 0 18px 5px var(--mint-44),inset 0 0 18px var(--mint-13)}
 .seat.winner{border-color:var(--gold-hi);box-shadow:0 0 0 2px var(--gold-hi),0 0 22px 6px var(--gold-hi-50),inset 0 0 18px var(--gold-hi-14)}
@@ -92,7 +92,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .house-deal button{background:var(--surface-house);border-color:var(--line-3);color:var(--ink)}
 .showdown-advance b{position:relative;z-index:1;font-size:inherit}
 .tournament-complete{display:grid;place-items:center;gap:.1rem;min-height:3rem;padding:.35rem .8rem;border:1px solid var(--gold-hi);border-radius:var(--radius-small);background:linear-gradient(135deg,var(--felt-800),var(--surface-complete));box-shadow:inset 0 0 20px var(--gold-hi-15),0 0 22px var(--gold-hi-27);text-align:center}
-.tournament-complete small{color:var(--muted);font-size:var(--text-label);font-weight:800;text-transform:uppercase}
+.tournament-complete small{color:var(--muted);font-size:var(--text-label);font-weight:700;text-transform:uppercase}
 .tournament-complete b{color:var(--gold-hi);font-size:var(--text-action)}
 .decision-area{position:relative;z-index:5;display:grid;align-content:center;min-height:3.7rem;padding:.5rem;border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
 .table-shell .actions{position:static;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,5fr) minmax(0,1fr);gap:.4rem;padding:0;border:0;background:none;box-shadow:none}
@@ -120,13 +120,13 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .wager-dialog form{display:grid;gap:.9rem;margin:0;padding:1rem}
 .wager-dialog header{display:flex;align-items:baseline;justify-content:space-between;gap:1rem}
 .wager-dialog h2{margin:0;font-size:var(--text-action)}
-.wager-dialog output{color:var(--gold);font-size:var(--text-title);font-weight:800}
+.wager-dialog output{color:var(--gold);font-size:var(--text-title);font-weight:700}
 /* Thumb sized for a thumb: the slider is the whole point of the dialog. */
 .wager-dialog input[type=range]{width:100%;height:2.75rem;margin:0;padding:0;accent-color:var(--gold);touch-action:pan-y}
 .wager-range{display:flex;justify-content:space-between;gap:1rem;margin:-.6rem 0 0;color:var(--muted);font-size:var(--text-small)}
 .wager-dialog footer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:.5rem}
 .table-shell .actions .wager-dialog footer button{min-height:var(--control-h-primary);padding:.5rem .75rem;border-radius:var(--radius-small);background:var(--felt-800);color:var(--muted);font-size:var(--text-action)}
-.table-shell .actions .wager-dialog footer button.wager-confirm{border-color:var(--gold);background:var(--gold);color:var(--ink-on-gold);font-weight:800}
+.table-shell .actions .wager-dialog footer button.wager-confirm{border-color:var(--gold);background:var(--gold);color:var(--ink-on-gold);font-weight:700}
 /* Nothing competes for the middle once the pot is capped, so the closing
    call gets room to name itself while Fold keeps its narrow edge slot. */
 .table-shell .actions:has(.capped-call){grid-template-columns:minmax(0,1fr) minmax(0,3fr) minmax(0,3fr)}
@@ -134,7 +134,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .game-log ol{display:grid;grid-template-columns:1fr;gap:.3rem .8rem;align-content:start;margin:0;padding:0;list-style:none}
 .game-log li{display:grid;grid-template-columns:4.25rem 1fr;gap:.45rem;min-width:0;font-size:var(--text-small)}
 .game-log li span{color:var(--muted)}
-.game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:600}
+.game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:500}
 .game-log .status-log b{color:var(--accent)}
 .game-log .result-log b{color:var(--gold-hi)}
 .table-controls{justify-content:flex-end;padding-bottom:0}
@@ -144,7 +144,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 /* The bot control rides alongside the buy-in/leave command as a dialog. */
 .table-controls .seat-bot{display:contents}
 .table-history-link{display:grid;place-items:center;padding:.45rem .65rem;min-height:var(--control-h);border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-decoration:none;line-height:1.1;font-size:var(--text-action);white-space:nowrap}
-.table-command-link{display:grid;place-items:center;min-height:var(--control-h);padding:.45rem .65rem;border:1px solid var(--line-2);border-radius:var(--radius-control);text-decoration:none;font-size:var(--text-action);line-height:1.1;font-weight:700;white-space:nowrap}
+.table-command-link{display:grid;place-items:center;min-height:var(--control-h);padding:.45rem .65rem;border:1px solid var(--line-2);border-radius:var(--radius-control);text-decoration:none;font-size:var(--text-action);line-height:1.1;font-weight:600;white-space:nowrap}
 .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){box-sizing:border-box;height:var(--control-h);min-height:var(--control-h);padding:.45rem .65rem;font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .table-controls button{white-space:nowrap}
 /* These commands sit beside the plain History link; bold made them shout. */

@@ -17,7 +17,7 @@
   --radius-card:4px;--radius-control:12px;--radius-surface:16px;--radius-chip:999px;--card-aspect:1.39;
   --font-ui:"Bitter",ui-serif,Georgia,"Times New Roman",serif;--tracking-ui:-.01em;
   --text-display:28px;--text-title:20px;--text-action:17px;--text-body:15px;--text-small:13px;--text-label:11px;
-  --weight-display:800;--weight-title:800;--weight-action:800;--weight-body:700;--weight-small:600;--weight-label:800;
+  --weight-display:700;--weight-title:700;--weight-action:700;--weight-body:600;--weight-small:500;--weight-label:700;
   --safe-top:env(safe-area-inset-top,0px);--safe-right:env(safe-area-inset-right,0px);--safe-bottom:env(safe-area-inset-bottom,0px);--safe-left:env(safe-area-inset-left,0px);--usable-h:calc(100dvh - var(--safe-top) - var(--safe-bottom));
   --felt:var(--felt-600);--felt-light:var(--felt-500);--card:#183029;--card-ink:#111;--muted:var(--ink-muted);--accent:var(--gold);
   --felt-gradient:#1d5948;--felt-card:#183029;--surface-deep:#0d1f1b;--surface-dark:#091713;--surface-raised:#17362e;--surface-back:#193f35;--surface-wager:#172b25;--surface-blitz:#15382f;--surface-danger:#351b1b;--surface-gold:#2a2514;--surface-champion:#1b3d32;--surface-champion-gold:#423618;--surface-complete:#3d3216;--surface-house:#245a49;--surface-backdrop:#06100d;
