@@ -1,5 +1,5 @@
 /* Every card face is rank over suit at one size: no pips, no court art. */
-.card-corner{position:absolute;inset:0;z-index:2;display:grid;place-content:center;gap:calc(var(--card-w)*.05);line-height:1}
+.card-corner{position:absolute;inset:0;z-index:2;display:grid;place-content:center;justify-items:center;text-align:center;gap:calc(var(--card-w)*.05);line-height:1}
 .card-corner b,.card-corner i{font-size:min(calc(var(--card-w)*.58),calc(var(--card-w)*.42*var(--card-rank-percent,1)))}
 .card-corner b{font-weight:var(--card-rank-weight,700);letter-spacing:0;-webkit-text-stroke:var(--card-rank-stroke,0) currentColor;paint-order:stroke fill}
 .card-corner i{font-style:normal}
@@ -28,5 +28,5 @@
 .card-config-preview .playing-card:first-child{margin-left:0;transform:rotate(-3deg)}
 .card-config-preview .playing-card:last-child{transform:rotate(3deg)}
 .card-config-dialog label span{display:flex;justify-content:space-between;gap:1rem}
-.card-config-dialog output{color:var(--accent);font-weight:800}
+.card-config-dialog output{color:var(--accent);font-weight:700}
 .card-config-dialog input{width:100%;height:1rem;margin:0;padding:0;accent-color:var(--accent)}
