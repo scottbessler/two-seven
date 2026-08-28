@@ -18,6 +18,8 @@ pub struct SeatView {
     /// Somebody has already paid for this seat and is waiting on the hand in
     /// progress, so it is not on offer to anyone else.
     pub reserved: bool,
+    /// Set when a person is sitting here, so the UI can link to their page.
+    pub user_id: Option<uuid::Uuid>,
     pub display_name: Option<String>,
     pub sitting_out: bool,
     pub hole_cards: Option<Vec<Card>>,
@@ -82,6 +84,8 @@ pub struct TableView {
 pub struct LeaderboardRow {
     pub rank: usize,
     pub name: String,
+    /// Set for a person, whose page the standings link to. The house has none.
+    pub player_id: Option<uuid::Uuid>,
     /// House regulars are ranked alongside people, and marked as such.
     pub house: bool,
     pub balance: Cents,
@@ -155,6 +159,7 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             occupant: format!("seat {}", player.seat),
             bot: false,
             reserved: false,
+            user_id: None,
             display_name: None,
             sitting_out: false,
             hole_cards: viewer
@@ -339,6 +344,10 @@ fn seat_view(
         },
         bot: seat.occupant.as_bot().is_some(),
         reserved: seat.pending_arrival.is_some(),
+        user_id: match seat.occupant {
+            SeatOccupant::Human { user_id } => Some(user_id),
+            SeatOccupant::Empty | SeatOccupant::Bot { .. } => None,
+        },
         display_name: display_name.cloned(),
         sitting_out: seat.sitting_out,
         hole_cards: None,
