@@ -447,7 +447,7 @@ function TableCommands({ state, openSeats, refresh }) {
   // A table full of house players still has room: you take one of their seats.
   const seatsForYou = state.tournament
     ? openSeats
-    : [...openSeats, ...state.seats.filter((seat) => seat.bot)];
+    : [...openSeats, ...state.seats.filter((seat) => seat.bot && !seat.reserved)];
   const canAffordCashSeat = state.tournament || (state.bank_balance ?? 0) >= state.buy_in;
   const viewer = state.viewer_seat == null
     ? null
@@ -461,6 +461,10 @@ function TableCommands({ state, openSeats, refresh }) {
   const commands = [];
   if (state.viewer_leaving) {
     commands.push({ label: "Leaving...", disabled: true });
+  } else if (state.viewer_joining) {
+    // The seat is paid for; the hand already running has to end first.
+    commands.push({ label: "Seated next hand...", disabled: true });
+    commands.push({ ...leave, label: "Cancel" });
   } else if (viewer || state.viewer_eliminated) {
     if (!state.tournament && viewer.stack <= 0 && !state.hand) {
       commands.push({ label: `Re-Buy In ${money(state.buy_in)}`, endpoint: `/tables/${tableId}/rebuy`, disabled: !canAffordCashSeat });
@@ -526,7 +530,7 @@ function TableApp() {
   const otherSeats = ordered.filter((seat) => seat.index !== state.viewer_seat);
   const runout = runoutState(showdown, resultPause - remaining);
   const board = hand?.board || (showdown ? showdown.board.slice(0, runout.cards) : []);
-  const openSeats = state.seats.filter((seat) => seat.occupant === "empty");
+  const openSeats = state.seats.filter((seat) => seat.occupant === "empty" && !seat.reserved);
   // The result only reads once the whole board is out.
   const settled = runout.cards >= (showdown?.board?.length ?? 0);
   // Nobody is seated, so no next hand is coming on its own: once the result

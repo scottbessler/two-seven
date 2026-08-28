@@ -109,6 +109,10 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
             tracing::warn!(%id, %error, "banking house profits failed");
             continue;
         }
+        if let Err(error) = seat_pending_arrivals(state, id).await {
+            tracing::warn!(%id, %error, "seating a waiting player failed");
+            continue;
+        }
         if let Err(error) = rebuy_busted_cash_bots(state, id).await {
             tracing::warn!(%id, %error, "cash bot rebuy failed");
             continue;
@@ -183,20 +187,38 @@ pub async fn retire_custom_cash_tables(state: &AppState) -> Result<(), anyhow::E
         let Some(table) = state.tables.get(id).await else {
             continue;
         };
-        let stacks = {
+        let (stacks, waiting, buy_in) = {
             let table = table.lock().await;
             if table.cash_tier.is_some()
                 || !matches!(table.mode, crate::table::TableMode::Cash { .. })
             {
                 continue;
             }
-            table
-                .seats
-                .iter()
-                .filter(|seat| seat.stack > 0)
-                .map(|seat| (seat.occupant.clone(), seat.stack))
-                .collect::<Vec<_>>()
+            (
+                table
+                    .seats
+                    .iter()
+                    .filter(|seat| seat.stack > 0)
+                    .map(|seat| (seat.occupant.clone(), seat.stack))
+                    .collect::<Vec<_>>(),
+                table
+                    .seats
+                    .iter()
+                    .filter_map(|seat| seat.pending_arrival)
+                    .collect::<Vec<_>>(),
+                table.buy_in,
+            )
         };
+        // A seat somebody paid for but never got is given back to them.
+        for user in waiting {
+            if let Err(error) = state
+                .bank
+                .cash_out(AccountOwner::User(user), id, buy_in)
+                .await
+            {
+                tracing::warn!(%id, %error, "refunding a waiting player failed");
+            }
+        }
         // Nobody loses chips to the clear-out.
         for (occupant, stack) in stacks {
             let owner = match occupant {
@@ -250,11 +272,9 @@ async fn seat_a_house_player(state: &AppState, id: uuid::Uuid) -> Result<(), any
         if table.hand.is_some() {
             return Ok(());
         }
-        let Some(vacancy) = table
-            .seats
-            .iter()
-            .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
-        else {
+        let Some(vacancy) = table.seats.iter().position(|seat| {
+            matches!(seat.occupant, SeatOccupant::Empty) && seat.pending_arrival.is_none()
+        }) else {
             return Ok(());
         };
         let Some(bot) = crate::cash::house_bot(&table, tier, vacancy) else {
@@ -429,6 +449,69 @@ async fn bank_bot_profits(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow
             .await
         {
             tracing::warn!(%id, %error, "banking a house player's profit failed");
+        }
+    }
+    Ok(())
+}
+
+/// Hands over the seats people paid for while the house was still mid-hand.
+/// The swap waits for the hand to end so that nobody is dealt into a hand they
+/// did not pay into, and so that settlement writes the house player's chips to
+/// the house player rather than over the newcomer's buy-in.
+async fn seat_pending_arrivals(state: &AppState, id: uuid::Uuid) -> Result<(), anyhow::Error> {
+    let table = state
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| anyhow::anyhow!("table missing"))?;
+    let (buy_in, arrivals) = {
+        let table = table.lock().await;
+        // Never rearrange a table mid-hand.
+        if table.hand.is_some() {
+            return Ok(());
+        }
+        (
+            table.buy_in,
+            table
+                .seats
+                .iter()
+                .enumerate()
+                .filter_map(|(seat, value)| value.pending_arrival.map(|user| (seat, user)))
+                .collect::<Vec<_>>(),
+        )
+    };
+    for (seat, user) in arrivals {
+        let mut displaced = None;
+        state
+            .tables
+            .update(id, |table| {
+                if table.hand.is_some() {
+                    return Ok(());
+                }
+                let value = table
+                    .seats
+                    .get_mut(seat)
+                    .ok_or_else(|| anyhow::anyhow!("seat missing"))?;
+                if value.pending_arrival != Some(user) {
+                    return Ok(());
+                }
+                displaced = value.occupant.as_bot().map(|bot| (bot, value.stack));
+                *value = crate::table::Seat {
+                    occupant: SeatOccupant::Human { user_id: user },
+                    stack: buy_in,
+                    sitting_out: false,
+                    pending_departure: false,
+                    pending_arrival: None,
+                };
+                Ok(())
+            })
+            .await?;
+        // A house player who lost their seat takes their settled chips with it.
+        if let Some((bot, stack)) = displaced {
+            state
+                .bank
+                .cash_out(AccountOwner::Bot(bot), id, stack)
+                .await?;
         }
     }
     Ok(())
@@ -632,12 +715,14 @@ mod tests {
             stack: 45_000,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         table.seats[1] = crate::table::Seat {
             occupant: SeatOccupant::bot(crate::table::Bot::new(BotKind::Rock, 0)),
             stack: 19_000,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         let id = tables.insert(table).await.unwrap();
 
@@ -705,6 +790,7 @@ mod tests {
             stack: 20_000,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         let id = tables.insert(table).await.unwrap();
         let mut events = tables.subscribe();
@@ -831,12 +917,14 @@ mod tests {
             stack: 0,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         table.seats[1] = Seat {
             occupant: SeatOccupant::bot(crate::table::Bot::new(BotKind::Fish, 0)),
             stack: 100,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         bank.buy_in(
             AccountOwner::Bot(crate::table::Bot::new(BotKind::Fish, 0)),
@@ -953,6 +1041,7 @@ mod tests {
                 stack: 100,
                 sitting_out: false,
                 pending_departure: false,
+                pending_arrival: None,
             };
         }
         let initial_table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
@@ -1069,6 +1158,7 @@ mod tests {
                 stack: 100,
                 sitting_out: false,
                 pending_departure: false,
+                pending_arrival: None,
             };
         }
         let initial_table_chips = table.seats.iter().map(|seat| seat.stack).sum::<i64>();
@@ -1191,6 +1281,7 @@ mod tests {
                 stack: 100,
                 sitting_out: false,
                 pending_departure: false,
+                pending_arrival: None,
             };
         }
         let id = tables.insert(table).await.unwrap();
@@ -1317,6 +1408,7 @@ mod tests {
             stack: 50,
             sitting_out: true,
             pending_departure: true,
+            pending_arrival: None,
         };
         let tournament_id = tables.insert(tournament).await.unwrap();
         settle_pending_departures(&state, tournament_id)
@@ -1358,6 +1450,7 @@ mod tests {
             stack: 50,
             sitting_out: true,
             pending_departure: true,
+            pending_arrival: None,
         };
         let cash_id = tables.insert(cash).await.unwrap();
         settle_pending_departures(&state, cash_id).await.unwrap();

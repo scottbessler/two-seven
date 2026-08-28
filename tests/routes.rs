@@ -1410,6 +1410,7 @@ async fn eliminated_tournament_player_returns_as_a_spectator() {
         stack: 0,
         sitting_out: false,
         pending_departure: false,
+        pending_arrival: None,
     };
     table.seats[1] = two_seven::table::Seat {
         occupant: two_seven::table::SeatOccupant::bot(two_seven::table::Bot::new(
@@ -1419,6 +1420,7 @@ async fn eliminated_tournament_player_returns_as_a_spectator() {
         stack: 200_000,
         sitting_out: false,
         pending_departure: false,
+        pending_arrival: None,
     };
     let id = t.tables.insert(table).await.unwrap();
     let cookie_value = cookie(&t.key, user);
@@ -2450,4 +2452,267 @@ async fn blackjack_start_rejects_live_game_and_resume_returns_it() {
     assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
     let after = t.bank.account(AccountOwner::User(user)).await.unwrap();
     assert_eq!(before.entries, after.entries);
+}
+
+/// Sitting down while the house is mid-hand must not hand the newcomer a live
+/// bot's hand, and settlement must not overwrite their buy-in with whatever
+/// that seat happened to be holding.
+#[tokio::test]
+async fn v57_joining_mid_hand_keeps_the_whole_buy_in() {
+    use two_seven::table::{Bot, BotKind, SeatOccupant};
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "Latecomer".into(),
+            display_name: "Latecomer".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let buy_in = BankStore::RE_UP_AMOUNT;
+    let id = seat_table(&t, "Mid-hand", 3, buy_in, false).await;
+
+    // The house is already playing when the newcomer walks up.
+    t.tables
+        .update(id, |table| {
+            // The house has been at it a while, so no stack matches the buy-in.
+            for (index, seat) in table.seats.iter_mut().enumerate() {
+                seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Fish, index as u8));
+                seat.stack = buy_in / 4 + index as i64 * 7_000;
+            }
+            table.bot_hands_requested = 1;
+            two_seven::table::maybe_start_hand(table);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    {
+        let table = t.tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        assert!(table.hand.is_some(), "the house should be mid-hand");
+    }
+
+    let before = table_money(&t, id).await;
+
+    let join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join.status(), StatusCode::OK);
+
+    // Whoever is seated for the newcomer must not be playing the live hand.
+    {
+        let table = t.tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        let seat = table.seats.iter().position(
+            |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+        );
+        if let (Some(seat), Some(hand)) = (seat, table.hand.as_ref()) {
+            assert!(
+                !hand.players.iter().any(|player| player.seat == seat),
+                "a newcomer was dealt into a hand they never paid into"
+            );
+        }
+    }
+
+    // Run the hand out: everyone but the first player folds.
+    t.tables
+        .update(id, |table| {
+            if let Some(hand) = table.hand.as_mut() {
+                let seats: Vec<usize> = hand.players.iter().map(|player| player.seat).collect();
+                for seat in seats.into_iter().skip(1) {
+                    let _ = hand.fold_seat(seat);
+                }
+            }
+            two_seven::table::settle_finished_hand(table);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    two_seven::driver::tick_once(&t.state).await.unwrap();
+
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    let seat = table
+        .seats
+        .iter()
+        .find(|seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user))
+        .expect("the newcomer should be seated once the hand is over");
+    assert_eq!(
+        seat.stack, buy_in,
+        "the buy-in must survive the hand that was already running"
+    );
+    drop(table);
+    assert_eq!(
+        table_money(&t, id).await,
+        before,
+        "sitting down must not create or destroy money"
+    );
+}
+
+/// Every cent the house and its players hold: banked money net of loans, plus
+/// the chips sitting on the table.
+async fn table_money(t: &T, id: Uuid) -> i64 {
+    let banked: i64 = t
+        .bank
+        .accounts()
+        .await
+        .iter()
+        .map(|account| account.net_balance())
+        .sum();
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    // Mid-hand the seat still holds its pre-hand stack, so the live players'
+    // chips and the pot are the honest count for the seats in the hand.
+    let chips: i64 = match table.hand.as_ref() {
+        Some(hand) => {
+            let dealt: Vec<usize> = hand.players.iter().map(|player| player.seat).collect();
+            hand.pot
+                + hand.players.iter().map(|player| player.stack).sum::<i64>()
+                + table
+                    .seats
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| !dealt.contains(index))
+                    .map(|(_, seat)| seat.stack)
+                    .sum::<i64>()
+        }
+        None => table.seats.iter().map(|seat| seat.stack).sum(),
+    };
+    banked + chips
+}
+
+/// Backing out of a seat you are still waiting for refunds the buy-in, and
+/// leaves the house player who is still sitting there alone.
+#[tokio::test]
+async fn v57_cancelling_a_waiting_seat_refunds_the_buy_in() {
+    use two_seven::table::{Bot, BotKind, SeatOccupant};
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "Waiter".into(),
+            display_name: "Waiter".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let buy_in = BankStore::RE_UP_AMOUNT;
+    let before = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    let id = seat_table(&t, "Waiting", 3, buy_in, false).await;
+    t.tables
+        .update(id, |table| {
+            for (index, seat) in table.seats.iter_mut().enumerate() {
+                seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Fish, index as u8));
+                seat.stack = buy_in;
+            }
+            table.bot_hands_requested = 1;
+            two_seven::table::maybe_start_hand(table);
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join.status(), StatusCode::OK);
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance,
+        before.balance - buy_in,
+        "the buy-in is taken while the seat is held"
+    );
+
+    // Waiting a second time must not charge twice.
+    let again = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(again.status(), StatusCode::BAD_REQUEST);
+
+    let leave = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/leave"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(leave.status(), StatusCode::OK);
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance,
+        before.balance,
+        "backing out gives the buy-in back"
+    );
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    assert!(
+        table
+            .seats
+            .iter()
+            .all(|seat| seat.pending_arrival.is_none()),
+        "no seat is still spoken for"
+    );
+    assert!(
+        table
+            .seats
+            .iter()
+            .all(|seat| seat.occupant.as_bot().is_some()),
+        "the house keeps the table it was already playing"
+    );
 }

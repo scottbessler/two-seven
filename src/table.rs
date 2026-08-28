@@ -485,6 +485,11 @@ pub struct Seat {
     pub sitting_out: bool,
     #[serde(default)]
     pub pending_departure: bool,
+    /// A person who has paid their buy-in and is waiting for the hand already
+    /// running to finish before they take this seat from the house. Nobody may
+    /// be dropped into a hand that was dealt without them.
+    #[serde(default)]
+    pub pending_arrival: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -595,6 +600,7 @@ impl Table {
                     stack: 0,
                     sitting_out: false,
                     pending_departure: false,
+                    pending_arrival: None,
                 })
                 .collect(),
             button: 0,

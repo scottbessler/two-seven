@@ -277,6 +277,7 @@ pub async fn register_tournament(
                 stack: state.config.starting_chips,
                 sitting_out: false,
                 pending_departure: false,
+                pending_arrival: None,
             };
             state.registered += 1;
             state.prize_pool += state.config.buy_in;
@@ -650,6 +651,7 @@ pub async fn table_page(
     Ok(Html(render::table_page(&table_view_with_banks(
         &table,
         viewer,
+        Some(user),
         bank_balance,
         &banks,
         &names,
@@ -871,6 +873,7 @@ pub async fn table_state(
     Ok(Json(table_view_with_banks(
         &table,
         viewer,
+        user,
         bank_balance,
         &banks,
         &names,
@@ -899,6 +902,7 @@ pub async fn table_events(
         serde_json::to_string(&table_view_with_banks(
             &table,
             viewer,
+            user,
             bank_balance,
             &banks,
             &names,
@@ -933,6 +937,7 @@ pub async fn table_events(
                             let data = serde_json::to_string(&table_view_with_banks(
                                 &table,
                                 viewer,
+                                user,
                                 bank_balance,
                                 &banks,
                                 &names,
@@ -979,11 +984,7 @@ pub async fn join_table(
     }
     {
         let table = table_arc.lock().await;
-        if table
-            .seats
-            .iter()
-            .any(|seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user))
-        {
+        if seated_or_arriving(&table, user) {
             return Err(AppError::bad_request("you are already seated"));
         }
         if crate::cash::seat_for_human(&table.seats).is_none() {
@@ -995,17 +996,28 @@ pub async fn join_table(
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let mut displaced = None;
+    let mut pending = false;
     let result = s
         .tables
         .update(id, |t| {
-            if t.seats.iter().any(
-                |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
-            ) {
+            if seated_or_arriving(t, user) {
                 return Err(anyhow::anyhow!("you are already seated"));
             }
             // A human takes an empty seat, or a house player's if there is none.
             let seat = crate::cash::seat_for_human(&t.seats)
                 .ok_or_else(|| anyhow::anyhow!("table is full"))?;
+            // The only seats left may be playing the hand that is already out.
+            // Taking one now would deal this person somebody else's cards and
+            // let settlement write that seat's chips over their buy-in, so the
+            // seat is reserved and claimed when the hand is done.
+            if t.hand
+                .as_ref()
+                .is_some_and(|hand| hand.players.iter().any(|player| player.seat == seat))
+            {
+                t.seats[seat].pending_arrival = Some(user);
+                pending = true;
+                return Ok(());
+            }
             displaced = t.seats[seat]
                 .occupant
                 .as_bot()
@@ -1015,6 +1027,7 @@ pub async fn join_table(
                 stack: buy_in,
                 sitting_out: false,
                 pending_departure: false,
+                pending_arrival: None,
             };
             maybe_start_hand(t);
             Ok(())
@@ -1028,7 +1041,16 @@ pub async fn join_table(
     if let Some((bot, stack)) = displaced {
         let _ = s.bank.cash_out(AccountOwner::Bot(bot), id, stack).await;
     }
-    Ok(Json(serde_json::json!({"ok":true})))
+    Ok(Json(serde_json::json!({"ok":true,"pending":pending})))
+}
+
+/// Whether this person holds a seat at the table, or has paid for one that the
+/// hand in progress has not freed up yet. Either way they must not buy in twice.
+fn seated_or_arriving(table: &crate::table::Table, user: Uuid) -> bool {
+    table.seats.iter().any(|seat| {
+        matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user)
+            || seat.pending_arrival == Some(user)
+    })
 }
 
 pub async fn leave_table(
@@ -1042,6 +1064,41 @@ pub async fn leave_table(
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
     let mut recorded = Vec::new();
+    // Somebody still waiting on the hand in progress has chips in the table's
+    // account but no seat yet, so their buy-in is what comes back.
+    let (waiting, buy_in) = {
+        let t = table.lock().await;
+        (
+            t.seats
+                .iter()
+                .position(|seat| seat.pending_arrival == Some(user)),
+            t.buy_in,
+        )
+    };
+    if let Some(index) = waiting {
+        // The driver may have seated them between the two locks, so the refund
+        // is owed only if this is the call that gave the reservation back.
+        let mut cancelled = false;
+        s.tables
+            .update(id, |t| {
+                if let Some(seat) = t.seats.get_mut(index)
+                    && seat.pending_arrival == Some(user)
+                {
+                    seat.pending_arrival = None;
+                    cancelled = true;
+                }
+                Ok(())
+            })
+            .await
+            .map_err(AppError::internal)?;
+        if cancelled {
+            s.bank
+                .cash_out(AccountOwner::User(user), id, buy_in)
+                .await
+                .map_err(AppError::internal)?;
+            return Ok(Json(serde_json::json!({"ok":true})));
+        }
+    }
     let (seat, stack, tournament, live_hand) = {
         let mut t = table.lock().await;
         if t.hand.as_ref().is_some_and(|hand| hand.complete) {
