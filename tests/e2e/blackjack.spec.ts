@@ -291,3 +291,103 @@ test("blackjack mobile uses the available card and action space", async ({ page 
     /* oxlint-enable no-await-in-loop */
   }
 });
+
+// A hand keeps hitting until it stands or busts, and a split turns one hand
+// into as many as four, so neither the card count nor the hand count is fixed
+// when the stylesheet sizes them.
+function longHandGame(hands) {
+  const player = hands[0].cards;
+  return {
+    id: "00000000-0000-0000-0000-000000000003",
+    bet: 1000,
+    player,
+    dealer: ["As"],
+    player_score: hands[0].score,
+    dealer_score: null,
+    status: "Playing",
+    message: "Choose an action.",
+    payout: 0,
+    can_hit: true,
+    can_stand: true,
+    can_double: false,
+    can_split: false,
+    can_insure: false,
+    insurance: 0,
+    hands,
+    active_hand: 0,
+    settings: { decks: 8, penetration_percent: 50, counting_tutor: false, counting_quiz: false, bet_analyzer: false },
+    count: null,
+    trainer_log: [],
+    quiz: null,
+    analysis: [],
+    shoe: { decks: 8, total_cards: 416, dealt_cards: 9, remaining_cards: 407, cut_card: 208, penetration_percent: 50, hands_dealt: 1, fresh_shuffle: true },
+  };
+}
+
+const LONG_HAND = [{ cards: ["2h", "3c", "4d", "2s", "3h", "2c", "5d"], bet: 1000, score: 21, status: "Active", blackjack: false }];
+const SPLIT_HANDS = [
+  { cards: ["8h", "5c", "4d"], bet: 1000, score: 17, status: "Active", blackjack: false },
+  { cards: ["8d", "3c", "6d", "2h"], bet: 1000, score: 19, status: "Stand", blackjack: false },
+  { cards: ["8s", "9c"], bet: 1000, score: 17, status: "Stand", blackjack: false },
+  { cards: ["8c", "Td"], bet: 1000, score: 18, status: "Stand", blackjack: false },
+];
+
+for (const [name, hands] of [
+  ["a seven-card hand", LONG_HAND],
+  ["four split hands", SPLIT_HANDS],
+] as const) {
+  test(`blackjack keeps ${name} on screen`, async ({ page }) => {
+    await signIn(page, "blackjacklonghand");
+    await page.request.post("/api/bank", { data: {} });
+    await page.route("**/blackjack/start", async (route) => {
+      await route.fulfill({ json: longHandGame([...hands]) });
+    });
+
+    for (const device of [IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, IPHONE_MAX_PORTRAIT, IPHONE_LANDSCAPE]) {
+      /* oxlint-disable no-await-in-loop */
+      const viewport = device.viewport;
+      await useDevice(page, device);
+      await page.goto("/blackjack");
+      await page.getByRole("button", { name: "Deal $10" }).click();
+      // The dealer's hand plus one section per player hand.
+      await expect(page.locator(".blackjack-play-area .blackjack-hand")).toHaveCount(hands.length + 1);
+
+      const layout = await page.locator(".blackjack-play-area").evaluate((area) => {
+        const areaBox = area.getBoundingClientRect();
+        return {
+          documentScrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+          hands: [...area.querySelectorAll(".blackjack-hand")].map((hand) => {
+            const handBox = hand.getBoundingClientRect();
+            const cards = [...hand.querySelectorAll(".playing-card")].map((card) => card.getBoundingClientRect());
+            return {
+              cards: cards.length,
+              width: Math.round(handBox.width),
+              overflowLeft: Math.round(handBox.left - Math.min(...cards.map((card) => card.left))),
+              overflowRight: Math.round(Math.max(...cards.map((card) => card.right)) - handBox.right),
+              overflowBottom: Math.round(Math.max(...cards.map((card) => card.bottom)) - areaBox.bottom),
+              minCardWidth: Math.round(Math.min(...cards.map((card) => card.width))),
+            };
+          }),
+        };
+      });
+
+      expect(layout.documentScrolls, `V42: blackjack must not scroll the document at ${JSON.stringify(viewport)}`).toBe(false);
+      expect(
+        layout.hands.every((hand) => hand.overflowLeft <= 1 && hand.overflowRight <= 1),
+        `V42: every card must stay inside its own hand ${JSON.stringify({ viewport, layout })}`,
+      ).toBe(true);
+      expect(
+        layout.hands.every((hand) => hand.overflowBottom <= 1),
+        `V42: every card must stay inside the play area ${JSON.stringify({ viewport, layout })}`,
+      ).toBe(true);
+      // Shrinking to fit is only a fix while the rank stays legible: a quarter
+      // of the two-card width is the floor, which the collapsed split rows
+      // (5px cards) missed by an order of magnitude.
+      expect(
+        layout.hands.every((hand) => hand.minCardWidth >= 24),
+        `V42: blackjack cards must stay readable ${JSON.stringify({ viewport, layout })}`,
+      ).toBe(true);
+      /* oxlint-enable no-await-in-loop */
+    }
+  });
+}

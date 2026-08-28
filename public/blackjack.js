@@ -26,9 +26,13 @@ function betOptions(balance) {
 }
 
 function Hand({ title, cards, score, hidden }) {
+  // A hand keeps drawing until it stands or busts, so the card count is not a
+  // constant the stylesheet can assume. `--card-count` hands it to CSS, which
+  // divides the hand's width by it and keeps a long hand on screen.
+  const count = cards.length + (hidden ? 1 : 0);
   return html`<section class="blackjack-hand">
     <h2>${title}${score == null ? "" : ` · ${score}`}</h2>
-    <div class="board">
+    <div class="board" style=${`--card-count:${count}`}>
       ${cards.map((card) => html`<${Card} value=${card} interactive=${true} />`)}
       ${hidden && html`<${Card} hidden=${true} interactive=${true} />`}
     </div>
