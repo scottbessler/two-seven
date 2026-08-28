@@ -92,6 +92,11 @@ check or a call.
 Actions are validated (legality, then wager bounds) **before** any event is
 logged or chips move; a rejected action leaves the hand untouched.
 
+A player who runs out of time (SPEC §6, tables with more than one person at
+them) has one of these actions played for them — `Check` when `to_call == 0`,
+`Fold` otherwise — through the same entry point, so a timeout is an ordinary
+transition of this machine and logs an ordinary event.
+
 ## Event log
 
 Every transition appends `HandEvent`s in causal order: `Ante`/`SmallBlind`/

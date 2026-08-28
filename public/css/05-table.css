@@ -91,6 +91,13 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat.winner{border-color:var(--gold-hi);box-shadow:0 0 0 2px var(--gold-hi),0 0 12px 2px var(--gold-hi-50),inset 0 0 18px var(--gold-hi-14)}
 .seat.champion{border-color:var(--gold-hi);background:linear-gradient(135deg,var(--surface-champion) 0%,var(--felt-800) 58%,var(--surface-champion-gold) 100%);box-shadow:0 0 0 2px var(--gold-hi),0 0 16px 3px var(--gold-hi-60),inset 0 0 24px var(--gold-hi-19)}
 .seat.folded>:not(.seat-card-state){opacity:.58;filter:saturate(.35)}
+/* The clock on the player to act. It is drawn over its box rather than in it,
+   so a turn starting or ending never moves anything. */
+.turn-clock{position:absolute;z-index:7;display:block;overflow:hidden;background:var(--line-1);pointer-events:none}
+.turn-clock>i{display:block;height:100%;background:var(--accent);transition:width .1s linear}
+.turn-clock.urgent>i{background:var(--danger)}
+.seat .seat-clock{left:.45rem;right:.45rem;bottom:.25rem;height:.2rem;border-radius:var(--radius-chip)}
+.decision-area>.decision-clock{left:0;right:0;top:0;height:.2rem}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-control);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid var(--gold);border-radius:var(--radius-control)}

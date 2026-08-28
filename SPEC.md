@@ -156,7 +156,9 @@ exact equality.
 ```
 Table { id, name, variant: Variant::Holdem, stakes: Stakes, mode: TableMode,
         max_seats, min_buy_in, max_buy_in, seats: Vec<Seat>, button, hand: Option<Hand>,
-        last_hand: Option<HandSummary>, hand_no, next_action_at, created_at, updated_at }
+        last_hand: Option<HandSummary>, hand_no, next_action_at, turn_clock: Option<TurnClock>,
+        created_at, updated_at }
+TurnClock { seat, hand_no, decision, deadline }
 Stakes    = Limit { small_bet, big_bet } | NoLimit { small_blind, big_blind }
 TableMode = Cash { no_debt: bool } | Tournament(TournamentState)
 Seat      { occupant: Empty | Human{user_id} | Bot{kind}, stack, sitting_out, ... }
@@ -169,6 +171,15 @@ Seat      { occupant: Empty | Human{user_id} | Bot{kind}, stack, sitting_out, ..
   showdown.
 - Bots act on a timer as well, giving a human-paced feel; the driver task is the
   only thing that advances bot turns (§8).
+- **The turn clock.** A table with more than one person dealt in gives whoever
+  is to act ten seconds (`TURN_SECONDS`). When it runs out the table plays the
+  cheapest legal action for them: a check where checking is free, a fold where
+  it is not. One person alone with the house keeps nobody waiting and is never
+  put on the clock, and the house is never on it either — bots act on the
+  driver's own pacing. A `TurnClock` belongs to exactly one decision (seat,
+  hand, and events logged so far), so time is never carried from one turn to
+  the next, and a clock left over from a decision that is finished — or from a
+  table the last of the company has left — is simply taken away.
 
 ## 7. Bots
 
@@ -189,9 +200,13 @@ and the board) — the same redacted view a human gets (§V3).
 - `TableStore` broadcasts the id of any table that changed; `GET /tables/{id}/events`
   streams a redacted `TableView` snapshot immediately and on every change.
 - A single background task ticks a few times per second and, for each table,
-  performs whatever the clock says is due: act for a bot whose turn it is, or
-  deal the next hand. All mutation goes through the same engine entry points the
-  HTTP handlers use, so there is one rules path.
+  performs whatever the clock says is due: put the person to act on the turn
+  clock or act for them once it has run out (§6), act for a bot whose turn it
+  is, or deal the next hand. All mutation goes through the same engine entry
+  points the HTTP handlers use, so there is one rules path.
+- The `TableView` carries `turn_deadline` and `turn_seconds` so the client can
+  draw the countdown without knowing the rule; a table nobody is on the clock
+  at sends no deadline and draws nothing.
 
 ## 9. Routes
 

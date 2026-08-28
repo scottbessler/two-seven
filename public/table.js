@@ -9,6 +9,8 @@ const tableId = root?.dataset.tableId;
 const SHOWDOWN_PAUSE_MS = 6_000;
 const FOLD_RESULT_PAUSE_MS = 3_000;
 const RUNOUT_STEP_MS = 5_000;
+// The last stretch of somebody's turn, when the bar turns urgent.
+const URGENT_TURN_MS = 3_000;
 
 // An all-in board arrives a street at a time. Elapsed time since the hand
 // ended decides how much of it is face up and who is currently ahead.
@@ -46,7 +48,21 @@ function blindRole(events, seat) {
   return null;
 }
 
-function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, leading, settled, champion }) {
+// How long the player to act has left. The whole table watches it -- knowing
+// somebody is nearly out of time is half of why the clock is there -- so it
+// draws on the acting seat as well as under the viewer's own buttons.
+function TurnClock({ remaining, duration, className, announce }) {
+  const left = duration > 0 ? Math.max(0, Math.min(1, remaining / duration)) : 0;
+  const seconds = Math.ceil(remaining / 1000);
+  return html`<span
+    class=${`turn-clock ${className} ${remaining <= URGENT_TURN_MS ? "urgent" : ""}`}
+    role=${announce ? "timer" : undefined}
+    aria-label=${announce ? `${seconds}s to act` : undefined}
+    aria-hidden=${announce ? undefined : "true"}
+  ><i style=${{ width: `${left * 100}%` }}></i></span>`;
+}
+
+function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, leading, settled, champion, clock }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
@@ -84,6 +100,7 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
       : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
     ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
+    ${clock && html`<${TurnClock} ...${clock} className="seat-clock" />`}
   </article>`;
 }
 
@@ -523,6 +540,10 @@ function TableApp() {
   const resultPause = 1000 * (state?.result_pause_seconds
     ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);
   const remaining = useResultClock(Boolean(showdown), state?.next_hand_at, resultPause);
+  // A table with more than one person at it puts whoever is to act on a clock;
+  // when it runs out the server checks or folds for them.
+  const turnDuration = 1000 * (state?.turn_seconds || 10);
+  const turnRemaining = useResultClock(Boolean(state?.turn_deadline), state?.turn_deadline, turnDuration);
   if (!state) return html`<p class="loading">Loading table…</p>`;
   const hand = state.hand;
   const handEvents = hand?.events || showdown?.events || [];
@@ -549,7 +570,8 @@ function TableApp() {
     : hand
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} />`;
+  const turnClock = state.turn_deadline ? { remaining: turnRemaining, duration: turnDuration } : null;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
@@ -566,7 +588,7 @@ function TableApp() {
       ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}
       <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} trigger=${false} />
     </section>
-    <section class="decision-area">${tournamentComplete
+    <section class="decision-area">${hand?.legal_actions && turnClock && html`<${TurnClock} ...${turnClock} className="decision-clock" announce=${true} />`}${tournamentComplete
       ? html`<${TournamentComplete} champion=${champion} />`
       : showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`

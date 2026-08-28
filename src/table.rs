@@ -1,5 +1,5 @@
 use crate::{
-    holdem::{Hand, HandSummary},
+    holdem::{Action, Hand, HandSummary},
     money::{Cents, format_cents},
 };
 use chrono::{DateTime, Utc};
@@ -166,11 +166,167 @@ impl FromStr for BotKind {
 mod bot_kind_tests {
     use super::{
         BlindLevel, Bot, BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS,
-        SHOWDOWN_PAUSE_SECONDS, SeatOccupant, Stakes, Table, TableMode, TournamentConfig,
-        TournamentState, maybe_start_hand, next_button, result_pause_seconds,
+        SHOWDOWN_PAUSE_SECONDS, SeatOccupant, Stakes, TURN_SECONDS, Table, TableMode,
+        TournamentConfig, TournamentState, maybe_start_hand, next_button, result_pause_seconds,
+        run_turn_clock, turn_clock_due,
     };
-    use crate::holdem::HandSummary;
+    use crate::holdem::{Action, HandSummary};
+    use chrono::{Duration, Utc};
     use std::{collections::BTreeMap, str::FromStr};
+
+    /// A heads-up cash table, seated as asked, with a hand already dealt.
+    fn dealt_table(occupants: [SeatOccupant; 2]) -> Table {
+        let mut table = Table::new(
+            "the clock".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            20_000,
+        );
+        for (seat, occupant) in table.seats.iter_mut().zip(occupants) {
+            seat.occupant = occupant;
+            seat.stack = 20_000;
+        }
+        maybe_start_hand(&mut table);
+        assert!(table.hand.is_some(), "the test needs a hand to act in");
+        table
+    }
+
+    fn a_person() -> SeatOccupant {
+        SeatOccupant::Human {
+            user_id: uuid::Uuid::new_v4(),
+        }
+    }
+
+    #[test]
+    fn nobody_is_on_the_clock_at_a_table_they_have_to_themselves() {
+        let mut table = dealt_table([a_person(), SeatOccupant::bot(Bot::new(BotKind::Rock, 0))]);
+        let now = Utc::now();
+        assert!(!table.runs_a_turn_clock());
+        assert!(!turn_clock_due(&table, now));
+        assert_eq!(run_turn_clock(&mut table, now), None);
+        assert_eq!(table.turn_clock, None, "one person may take all night");
+        // Even long past any deadline, the hand is where it was.
+        assert_eq!(
+            run_turn_clock(&mut table, now + Duration::seconds(600)),
+            None
+        );
+        assert!(table.hand.as_ref().is_some_and(|hand| !hand.complete));
+    }
+
+    #[test]
+    fn the_clock_folds_for_a_person_who_is_facing_a_bet() {
+        let mut table = dealt_table([a_person(), a_person()]);
+        let now = Utc::now();
+        assert!(
+            table.runs_a_turn_clock(),
+            "two people keep each other waiting"
+        );
+        // Heads-up, the small blind is first to act and owes the big blind.
+        let seat = table.hand.as_ref().unwrap().current_player.unwrap();
+
+        assert!(turn_clock_due(&table, now), "nobody is on the clock yet");
+        assert_eq!(
+            run_turn_clock(&mut table, now),
+            None,
+            "winding is not acting"
+        );
+        let clock = table.turn_clock.expect("the clock is wound");
+        assert_eq!(clock.seat, seat);
+        assert_eq!(clock.deadline, now + Duration::seconds(TURN_SECONDS));
+
+        // A second look before the deadline changes nothing at all.
+        let nearly = now + Duration::seconds(TURN_SECONDS - 1);
+        assert!(!turn_clock_due(&table, nearly));
+        assert_eq!(run_turn_clock(&mut table, nearly), None);
+        assert_eq!(table.turn_clock, Some(clock), "the clock is not restarted");
+
+        let due = now + Duration::seconds(TURN_SECONDS);
+        assert!(turn_clock_due(&table, due));
+        assert_eq!(run_turn_clock(&mut table, due), Some(Action::Fold));
+        assert_eq!(table.turn_clock, None, "a spent clock is put away");
+        let hand = table.hand.as_ref().unwrap();
+        assert!(
+            hand.players
+                .iter()
+                .any(|player| player.seat == seat && player.folded)
+        );
+        assert!(hand.complete, "heads-up, a fold ends the hand");
+    }
+
+    #[test]
+    fn the_clock_checks_where_checking_is_free() {
+        let mut table = dealt_table([a_person(), a_person()]);
+        let now = Utc::now();
+        // The small blind completes, leaving the big blind their option: they
+        // owe nothing, so running out of time costs them nothing either.
+        table
+            .hand
+            .as_mut()
+            .unwrap()
+            .apply_action(Action::Call)
+            .unwrap();
+        let seat = table.hand.as_ref().unwrap().current_player.unwrap();
+        assert_eq!(table.hand.as_ref().unwrap().last_bet, 200);
+
+        run_turn_clock(&mut table, now);
+        assert_eq!(
+            run_turn_clock(&mut table, now + Duration::seconds(TURN_SECONDS)),
+            Some(Action::Check),
+        );
+        let hand = table.hand.as_ref().unwrap();
+        assert!(!hand.complete, "a free check plays on");
+        assert!(
+            hand.players
+                .iter()
+                .any(|player| player.seat == seat && !player.folded),
+            "nobody folds a hand they could see for nothing",
+        );
+    }
+
+    #[test]
+    fn each_decision_gets_its_own_ten_seconds() {
+        let mut table = dealt_table([a_person(), a_person()]);
+        let now = Utc::now();
+        run_turn_clock(&mut table, now);
+        let first = table.turn_clock.expect("the first decision is timed");
+
+        // They act with time to spare; the next player starts from ten again,
+        // not from what was left over.
+        let acted = now + Duration::seconds(TURN_SECONDS - 4);
+        table
+            .hand
+            .as_mut()
+            .unwrap()
+            .apply_action(Action::Call)
+            .unwrap();
+        assert!(turn_clock_due(&table, acted), "the clock has changed hands");
+        run_turn_clock(&mut table, acted);
+        let second = table.turn_clock.expect("the next decision is timed too");
+        assert_ne!(second.seat, first.seat);
+        assert_eq!(second.deadline, acted + Duration::seconds(TURN_SECONDS));
+    }
+
+    #[test]
+    fn a_clock_is_taken_away_when_the_company_leaves() {
+        let mut table = dealt_table([a_person(), a_person()]);
+        let now = Utc::now();
+        run_turn_clock(&mut table, now);
+        assert!(table.turn_clock.is_some());
+
+        // Left alone with the house, nobody is holding them to anything.
+        table.seats[1].occupant = SeatOccupant::bot(Bot::new(BotKind::Rock, 0));
+        assert!(
+            turn_clock_due(&table, now),
+            "a stale clock is the driver's to clear"
+        );
+        assert_eq!(run_turn_clock(&mut table, now), None);
+        assert_eq!(table.turn_clock, None);
+        assert!(!turn_clock_due(&table, now + Duration::seconds(600)));
+    }
 
     #[test]
     fn every_bot_is_a_distinct_person() {
@@ -517,6 +673,29 @@ pub struct Table {
     /// table with no people at it deals only when somebody watching says so.
     #[serde(default)]
     pub bot_hands_requested: u32,
+    /// The clock the person to act is on, when the table runs one.
+    #[serde(default)]
+    pub turn_clock: Option<TurnClock>,
+}
+
+/// The clock a person is under while it is their turn. It belongs to one
+/// decision -- the seat, the hand, and how much of that hand had already
+/// happened when it started -- so time bought for one turn can never be spent
+/// on the next.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct TurnClock {
+    pub seat: usize,
+    pub hand_no: u64,
+    /// Events logged when the clock started: every action appends one, so this
+    /// changes the moment anybody acts.
+    pub decision: usize,
+    pub deadline: DateTime<Utc>,
+}
+
+impl TurnClock {
+    fn is_same_decision(&self, other: &Self) -> bool {
+        self.seat == other.seat && self.hand_no == other.hand_no && self.decision == other.decision
+    }
 }
 
 /// A finished hand, kept whole for later inspection: who sat where, what they
@@ -542,6 +721,10 @@ pub struct HandRecordSeat {
     pub stack_after: Cents,
 }
 
+/// How long a person has to act. One person alone with the house keeps nobody
+/// waiting and is never timed out; the moment a second person sits down,
+/// everybody is playing on somebody else's evening.
+pub const TURN_SECONDS: i64 = 10;
 pub const SHOWDOWN_PAUSE_SECONDS: i64 = 6;
 pub const FOLD_RESULT_PAUSE_SECONDS: i64 = 3;
 /// An all-in board runs out one street at a time so the table can watch it.
@@ -612,6 +795,7 @@ impl Table {
             cash_tier: None,
             bot_hands_requested: 0,
             next_action_at: None,
+            turn_clock: None,
         }
     }
 }
@@ -635,6 +819,92 @@ impl Table {
                 .seats
                 .iter()
                 .any(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }) && deals_in(seat))
+    }
+
+    /// Whether this table puts people on the clock. Somebody playing the house
+    /// on their own keeps nobody waiting, so they may take all night; two
+    /// people at the same table are spending each other's time, and neither
+    /// may spend more than `TURN_SECONDS` of it on one decision.
+    pub fn runs_a_turn_clock(&self) -> bool {
+        self.seats
+            .iter()
+            .filter(|seat| matches!(seat.occupant, SeatOccupant::Human { .. }) && deals_in(seat))
+            .count()
+            > 1
+    }
+}
+
+/// The clock the decision in front of the table belongs under, if it belongs
+/// under one at all.
+fn turn_clock_for(table: &Table, now: DateTime<Utc>) -> Option<TurnClock> {
+    let hand = table.hand.as_ref()?;
+    if hand.complete || !table.runs_a_turn_clock() {
+        return None;
+    }
+    let seat = hand.current_player?;
+    // The house acts on its own timer (the driver's), not on this one.
+    if !matches!(table.seats.get(seat)?.occupant, SeatOccupant::Human { .. }) {
+        return None;
+    }
+    Some(TurnClock {
+        seat,
+        hand_no: table.hand_no,
+        decision: hand.events.len(),
+        deadline: now + chrono::Duration::seconds(TURN_SECONDS),
+    })
+}
+
+/// Whether the clock needs winding, stopping, or spending -- the driver's cue
+/// that a table with nothing else going on still has something to do.
+pub fn turn_clock_due(table: &Table, now: DateTime<Utc>) -> bool {
+    match (turn_clock_for(table, now), table.turn_clock) {
+        (Some(wanted), Some(running)) => {
+            !running.is_same_decision(&wanted) || running.deadline <= now
+        }
+        (wanted, running) => wanted.is_some() != running.is_some(),
+    }
+}
+
+/// Put the person to act on the clock, and, when their time is up, play the
+/// hand for them. The forced action is the one that costs nothing: a check
+/// where checking is free, a fold where it is not. Returns what was played.
+pub fn run_turn_clock(table: &mut Table, now: DateTime<Utc>) -> Option<Action> {
+    let Some(wanted) = turn_clock_for(table, now) else {
+        // Nobody is on the clock: a hand that ended, a bot to act, or the last
+        // of the company leaving takes it away.
+        table.turn_clock = None;
+        return None;
+    };
+    let Some(running) = table
+        .turn_clock
+        .filter(|running| running.is_same_decision(&wanted))
+    else {
+        // A decision nobody has been timing yet: wind the clock and let them
+        // think.
+        table.turn_clock = Some(wanted);
+        return None;
+    };
+    if running.deadline > now {
+        return None;
+    }
+    table.turn_clock = None;
+    let hand = table.hand.as_mut()?;
+    let action = if hand.legal_actions().is_some_and(|legal| legal.to_call == 0) {
+        Action::Check
+    } else {
+        Action::Fold
+    };
+    match hand.apply_action(action) {
+        Ok(()) => {
+            // Whoever is next starts their ten seconds here, rather than
+            // waiting on the driver to come round again.
+            table.turn_clock = turn_clock_for(table, now);
+            Some(action)
+        }
+        Err(error) => {
+            tracing::warn!(%error, seat = running.seat, "turn clock action rejected");
+            None
+        }
     }
 }
 
@@ -711,6 +981,7 @@ pub fn maybe_start_hand(table: &mut Table) {
         ante,
     ));
     table.next_action_at = None;
+    table.turn_clock = None;
 }
 
 fn deal_seed(table: Uuid, hand_no: u64, entropy: u64) -> u64 {
@@ -812,6 +1083,7 @@ pub fn settle_finished_hand(table: &mut Table) -> Option<HandRecord> {
         summary: summary.clone(),
     };
     table.last_hand = Some(summary);
+    table.turn_clock = None;
     table.next_action_at = Some(
         Utc::now() + chrono::Duration::seconds(result_pause_seconds(table.last_hand.as_ref())),
     );

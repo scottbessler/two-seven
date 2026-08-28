@@ -73,6 +73,13 @@ pub struct TableView {
     pub last_hand: Option<HandSummary>,
     pub next_hand_at: Option<DateTime<Utc>>,
     pub result_pause_seconds: i64,
+    /// When the person to act runs out of time and the table acts for them.
+    /// Absent when nobody is on the clock, which is most of the time: a table
+    /// with only one person at it never puts anybody on one.
+    pub turn_deadline: Option<DateTime<Utc>>,
+    /// The whole length of that clock, so the client can draw how much is left
+    /// without knowing the rule.
+    pub turn_seconds: i64,
     /// Nobody is sitting at this table, so it only plays when asked to.
     pub can_deal: bool,
     pub tournament: Option<TournamentView>,
@@ -272,6 +279,16 @@ pub fn table_view_with_banks(
         },
         // The client paces the runout against this, so it must not guess it.
         result_pause_seconds: crate::table::result_pause_seconds(table.last_hand.as_ref()),
+        turn_deadline: table
+            .turn_clock
+            .filter(|clock| {
+                table
+                    .hand
+                    .as_ref()
+                    .is_some_and(|hand| hand.current_player == Some(clock.seat))
+            })
+            .map(|clock| clock.deadline),
+        turn_seconds: crate::table::TURN_SECONDS,
         can_deal: table.hand.is_none()
             && table.waits_for_a_watcher()
             && table.seats.iter().filter(|seat| seat.stack > 0).count() >= 2,
