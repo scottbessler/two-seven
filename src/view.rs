@@ -15,6 +15,9 @@ pub struct SeatView {
     pub occupant: String,
     /// True when the house is sitting here, which a person may take over.
     pub bot: bool,
+    /// Somebody has already paid for this seat and is waiting on the hand in
+    /// progress, so it is not on offer to anyone else.
+    pub reserved: bool,
     pub display_name: Option<String>,
     pub sitting_out: bool,
     pub hole_cards: Option<Vec<Card>>,
@@ -61,6 +64,9 @@ pub struct TableView {
     pub viewer_seat: Option<usize>,
     pub viewer_eliminated: bool,
     pub viewer_leaving: bool,
+    /// The viewer has paid to sit down but the hand already running has to
+    /// finish before the seat is theirs.
+    pub viewer_joining: bool,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub next_hand_at: Option<DateTime<Utc>>,
@@ -148,6 +154,7 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             stack: player.stack,
             occupant: format!("seat {}", player.seat),
             bot: false,
+            reserved: false,
             display_name: None,
             sitting_out: false,
             hole_cards: viewer
@@ -210,6 +217,7 @@ pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
         table,
         viewer,
         None,
+        None,
         &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
     )
@@ -218,6 +226,7 @@ pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
 pub fn table_view_with_banks(
     table: &Table,
     viewer: Option<usize>,
+    viewer_id: Option<uuid::Uuid>,
     bank_balance: Option<Cents>,
     banks: &std::collections::HashMap<usize, Account>,
     names: &std::collections::HashMap<usize, String>,
@@ -243,6 +252,12 @@ pub fn table_view_with_banks(
         viewer_leaving: viewer
             .and_then(|index| table.seats.get(index))
             .is_some_and(|seat| seat.pending_departure),
+        viewer_joining: viewer_id.is_some_and(|user| {
+            table
+                .seats
+                .iter()
+                .any(|seat| seat.pending_arrival == Some(user))
+        }),
         hand: table.hand.as_ref().map(|hand| hand_view(hand, viewer)),
         last_hand: table.last_hand.clone(),
         next_hand_at: if table.hand.is_none() && table.last_hand.is_some() {
@@ -323,6 +338,7 @@ fn seat_view(
             }
         },
         bot: seat.occupant.as_bot().is_some(),
+        reserved: seat.pending_arrival.is_some(),
         display_name: display_name.cloned(),
         sitting_out: seat.sitting_out,
         hole_cards: None,
@@ -380,6 +396,7 @@ mod tests {
             stack: 20_000,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         table.seats[1] = Seat {
             occupant: SeatOccupant::Human {
@@ -388,6 +405,7 @@ mod tests {
             stack: 0,
             sitting_out: false,
             pending_departure: false,
+            pending_arrival: None,
         };
         table.last_hand = Some(crate::holdem::HandSummary {
             board: Vec::new(),

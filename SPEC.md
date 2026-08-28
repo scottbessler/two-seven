@@ -459,6 +459,12 @@ Mark each milestone done here as it lands.
   maximum reachable, and confirms with a button naming the street total it
   raises to. It submits the same chips a preset wager would; the presets and the
   hold-to-confirm All In are unchanged.
+- **V57** ∀ seat dealt into the hand in progress, its occupant is fixed until
+  `table.hand` is `None`. A person buying into an occupied seat is recorded as
+  that seat's `pending_arrival`, is charged once, is never a player in the hand
+  already dealt, and takes the seat only after settlement — with exactly the
+  table buy-in, while the house player leaves with its settled chips. Backing
+  out before the swap returns the buy-in.
 
 ## §T Build tasks
 
@@ -506,6 +512,7 @@ T34|x|emulate the real iPhone PWA viewport and safe-area insets in e2e|V42,V54
 T35|x|full-bleed status bar + reserved centre rail for result and equity|V36,V37,V45,V54,V55
 T36|x|close betting when no opponent can answer a raise|V47,V51
 T37|x|add a custom wager slider beside All In|V47,V56
+T38|x|reserve a mid-hand cash seat instead of taking a live one|V1,V12,V57
 
 ## §B Bug log
 
@@ -645,3 +652,4 @@ B9|2026-08-24|mobile snapshots emulated a Pixel 7 with zero insets, hiding stage
 B10|2026-08-24|12ce6a8 put compact dealer/blind badges back in flow, spending a row per seat, and the empty showdown result reserved a full-width band above the viewer seat|V45,V55
 B11|2026-08-24|a full-raise shove left must_call clear, so a caller facing an all-in shorter stack was still offered Raise and All In with nobody able to answer|V47,V51
 B12|2026-08-25|standalone iOS exposed transparent root canvas + zero bottom inset, blackening status area and clipping lifecycle controls|V54
+B13|2026-08-27|joining a cash table mid-hand swapped the newcomer into a house player's live seat, so they played a hand they never paid into and settlement wrote that seat's hand-final stack over their buy-in, destroying the difference and paying the displaced bot its stale pre-hand stack|V1,V57

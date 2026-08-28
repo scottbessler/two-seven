@@ -156,14 +156,19 @@ pub fn house_bot(table: &Table, tier: usize, seat: usize) -> Option<Bot> {
 
 /// The first empty seat, or a bot's seat when a human needs one and the table
 /// is otherwise full. A human never displaces another human.
+/// The seat a person sits in: an empty one, or a house player's if there is
+/// none. A seat somebody else has already paid to take is spoken for, so it is
+/// not on offer even while the house is still sitting in it.
 pub fn seat_for_human(seats: &[Seat]) -> Option<usize> {
     seats
         .iter()
-        .position(|seat| matches!(seat.occupant, SeatOccupant::Empty))
+        .position(|seat| {
+            matches!(seat.occupant, SeatOccupant::Empty) && seat.pending_arrival.is_none()
+        })
         .or_else(|| {
             seats
                 .iter()
-                .position(|seat| seat.occupant.as_bot().is_some())
+                .position(|seat| seat.occupant.as_bot().is_some() && seat.pending_arrival.is_none())
         })
 }
 
