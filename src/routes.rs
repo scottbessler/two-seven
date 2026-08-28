@@ -10,7 +10,7 @@ use crate::{
     session::{AuthUser, MaybeUser},
     table::{
         BlindLevel, BotKind, SeatOccupant, Stakes, Table, TableMode, TournamentConfig,
-        TournamentState, maybe_start_hand, settle_finished_hand,
+        TournamentState, maybe_start_hand, run_turn_clock, settle_finished_hand,
     },
     view::{LobbyTableView, LobbyTournamentView, table_view_with_banks},
 };
@@ -1177,6 +1177,9 @@ pub async fn action(
             if complete {
                 recorded.extend(settle_finished_hand(t));
             }
+            // Hand the clock straight to whoever is next, so nobody inherits
+            // the seconds this decision left behind.
+            run_turn_clock(t, Utc::now());
             Ok(())
         })
         .await

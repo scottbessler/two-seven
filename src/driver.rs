@@ -1,7 +1,10 @@
 use crate::{
     app::AppState,
     bank::{AccountOwner, LedgerKind},
-    table::{SeatOccupant, Table, TableMode, maybe_start_hand, settle_finished_hand},
+    table::{
+        SeatOccupant, Table, TableMode, maybe_start_hand, run_turn_clock, settle_finished_hand,
+        turn_clock_due,
+    },
     view::hand_view,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -49,10 +52,17 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                         }
                         return Ok(());
                     }
-                    let Some(hand) = table.hand.as_mut() else {
+                    // Whoever is to act, the clock is the first thing due: it
+                    // is wound for a person, taken away from anybody who is not
+                    // one, and, once it has run out, spent on their behalf.
+                    if run_turn_clock(table, now).is_some() {
+                        if table.hand.as_ref().is_some_and(|hand| hand.complete) {
+                            recorded.extend(settle_finished_hand(table));
+                        }
                         return Ok(());
-                    };
-                    let Some(seat) = hand.current_player else {
+                    }
+                    let Some(seat) = table.hand.as_ref().and_then(|hand| hand.current_player)
+                    else {
                         return Ok(());
                     };
                     let Some(bot) = table
@@ -60,6 +70,9 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                         .get(seat)
                         .and_then(|value| value.occupant.as_bot())
                     else {
+                        return Ok(());
+                    };
+                    let Some(hand) = table.hand.as_mut() else {
                         return Ok(());
                     };
                     if table.next_action_at.is_none() {
@@ -86,6 +99,9 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                     if hand.complete {
                         recorded.extend(settle_finished_hand(table));
                     }
+                    // The house has moved; if a person is next, their clock
+                    // starts with the same update the table sees.
+                    run_turn_clock(table, now);
                     Ok(())
                 })
                 .await
@@ -130,6 +146,11 @@ fn driver_update_due(table: &Table, now: DateTime<Utc>) -> bool {
     let Some(hand) = &table.hand else {
         return table.next_action_at.is_none_or(|at| at <= now) && can_start_hand(table);
     };
+    // A person to act is the driver's business too: somebody has to hold them
+    // to their ten seconds.
+    if turn_clock_due(table, now) {
+        return true;
+    }
     let Some(seat) = hand.current_player else {
         return false;
     };
@@ -715,6 +736,87 @@ mod tests {
         assert!(
             event.is_err(),
             "idle driver ticks should not broadcast table {id}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_driver_acts_for_a_person_whose_time_runs_out() {
+        let root = std::env::temp_dir().join(format!("two-seven-turn-clock-{}", Uuid::new_v4()));
+        let tables = TableStore::load(&root).await.unwrap();
+        let state = AppState {
+            users: Arc::new(UserStore::load(&root).await.unwrap()),
+            bank: BankStore::load(&root).await.unwrap(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
+            blitz: BlitzStore::load(&root).await.unwrap(),
+            tables: tables.clone(),
+            history: crate::history::HistoryStore::load(&root).await.unwrap(),
+            stats: crate::stats::StatsStore::load(&root).await.unwrap(),
+            admin_password: Arc::new("test-admin-password".into()),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        let mut table = Table::new(
+            "two of us".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            20_000,
+        );
+        for seat in table.seats.iter_mut() {
+            seat.occupant = SeatOccupant::Human {
+                user_id: Uuid::new_v4(),
+            };
+            seat.stack = 20_000;
+        }
+        let id = tables.insert(table).await.unwrap();
+
+        let start = Utc::now();
+        // The first tick deals; the second puts the player to act on the clock.
+        tick_once_at(&state, start).await.unwrap();
+        tick_once_at(&state, start).await.unwrap();
+        let seat = {
+            let table = tables.get(id).await.unwrap();
+            let table = table.lock().await;
+            let hand = table.hand.as_ref().expect("a hand is dealt");
+            assert_eq!(
+                table.turn_clock.map(|clock| clock.deadline),
+                Some(start + Duration::seconds(crate::table::TURN_SECONDS)),
+                "the person to act is on the clock",
+            );
+            hand.current_player.expect("somebody is to act")
+        };
+
+        // Nothing happens while they still have time.
+        tick_once_at(&state, start + Duration::seconds(9))
+            .await
+            .unwrap();
+        {
+            let table = tables.get(id).await.unwrap();
+            let table = table.lock().await;
+            assert_eq!(table.hand.as_ref().unwrap().current_player, Some(seat));
+        }
+
+        // Once it runs out the table folds for them, which heads-up ends the
+        // hand -- and the hand is settled like any other.
+        tick_once_at(&state, start + Duration::seconds(11))
+            .await
+            .unwrap();
+        let table = tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        assert!(table.hand.is_none(), "the folded hand is settled");
+        assert_eq!(table.turn_clock, None);
+        let summary = table.last_hand.as_ref().expect("a result to show");
+        assert!(
+            summary.awards.iter().all(|award| award.seat != seat),
+            "the seat that timed out wins nothing",
+        );
+        assert!(
+            state.history.recent(id, 10).await.len() == 1,
+            "the hand it ended is written to history",
         );
     }
 

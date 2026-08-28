@@ -521,6 +521,35 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expectImage(page, "live-table.png", { fullPage: true });
 });
 
+test("counts down the player on the clock without moving the table", async ({ page }) => {
+  // A table one person has to themselves runs no clock, and draws none.
+  await mountTable(page, tableState);
+  await expect(page.locator(".seat.acting")).toHaveCount(1);
+  await expect(page.locator(".turn-clock")).toHaveCount(0);
+  const stageBefore = await page.locator(".table-stage").boundingBox();
+  const actionsBefore = await page.locator(".actions").boundingBox();
+
+  await mountTable(page, {
+    ...tableState,
+    turn_seconds: 10,
+    turn_deadline: new Date(Date.now() + 9_000).toISOString(),
+  });
+  // The seat that is to act carries the clock, and so do the viewer's own
+  // buttons, since the viewer is the one being timed here.
+  await expect(page.locator(".seat.acting .seat-clock")).toHaveCount(1);
+  await expect(page.getByRole("timer")).toHaveAttribute("aria-label", /^\d+s to act$/);
+
+  // It drains, and nothing it is drawn over moves while it does.
+  const filled = page.locator(".seat.acting .seat-clock > i");
+  const width = () => filled.evaluate((bar) => bar.getBoundingClientRect().width);
+  const before = await width();
+  expect(before).toBeGreaterThan(0);
+  await page.waitForTimeout(1_500);
+  expect(await width()).toBeLessThan(before);
+  expect(await page.locator(".table-stage").boundingBox()).toEqual(stageBefore);
+  expect(await page.locator(".actions").boundingBox()).toEqual(actionsBefore);
+});
+
 test("hides your own cards until you reach for them in paranoid mode", async ({ page }) => {
   await mountTable(page, tableState);
   const viewerCard = page.locator(".seat.viewer .seat-cards .playing-card").first();
