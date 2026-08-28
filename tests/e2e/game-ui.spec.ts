@@ -922,6 +922,18 @@ test("keeps a player tooltip inside a narrow desktop viewport", async ({ page })
   expect(tooltipBox.y + tooltipBox.height, "V20: narrow player tooltip bottom edge must remain visible").toBeLessThanOrEqual(832);
 });
 
+test("opens a seated player's page from their name", async ({ page }) => {
+  const seated = "3f1d1c9e-6a2b-4f3c-8d5e-1a2b3c4d5e6f";
+  await mountTable(page, {
+    ...tableState,
+    seats: tableState.seats.map((seat) => (seat.display_name === "Sam" ? { ...seat, user_id: seated } : seat)),
+  });
+  const name = page.locator(".seat .player-info .player-link").filter({ hasText: "Sam" });
+  await expect(name).toHaveAttribute("href", `/player/${seated}`);
+  // A house regular has no page to open.
+  await expect(page.locator(".seat .player-info").filter({ hasText: "Mina" }).locator("a")).toHaveCount(0);
+});
+
 test("keeps compact portrait opponent seats visible", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const inspectRail = async (state, expectOutcome = false) => {

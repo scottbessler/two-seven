@@ -64,8 +64,13 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
     : beforeAwards;
   const winner = settled && awarded > 0;
   const classes = ["seat", viewer && "viewer", seat.index === button && "dealer", current && "acting", player?.folded && "folded", player?.all_in && "all-in", leading && "leading", winner && "winner", champion && "champion"].filter(Boolean).join(" ");
+  // A person's name is a way through to their page (and to handing them
+  // money); the house has no page to go to.
+  const name = seat.user_id
+    ? html`<a class="player-link" href=${`/player/${seat.user_id}`}>${label}</a>`
+    : label;
   const playerInfo = html`<span class="player-info" tabindex="0">
-    <strong>${label}</strong><i aria-hidden="true">ⓘ</i>
+    <strong>${name}</strong><i aria-hidden="true">ⓘ</i>
     <span class="player-tooltip" role="tooltip"><b>Lifetime balance ${seat.bank_balance == null ? "Unavailable" : money(seat.bank_balance)}</b><span>Stack ${money(stack)}</span>${seat.bank_entries.slice(-3).toReversed().map((entry) => html`<small>${entry.memo}: ${entry.delta >= 0 ? "+" : ""}${money(entry.delta)}</small>`)}</span>
   </span>`;
   const stackLabel = html`<span class="seat-stack">${money(stack)}</span>`;

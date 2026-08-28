@@ -115,19 +115,108 @@ pub async fn index(State(s): State<AppState>, MaybeUser(user): MaybeUser) -> Htm
 }
 
 pub async fn player_page(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
-    let user_record = s.users.get(user).await;
-    let name = user_record
-        .as_ref()
-        .map_or_else(|| "Player".to_string(), |user| user.display_name.clone());
+    let name = s
+        .users
+        .get(user)
+        .await
+        .map_or_else(|| "Player".to_string(), |user| user.display_name);
+    Html(render_player(&s, user, &name, None).await)
+}
+
+/// Somebody else's page, reached from a seat or the standings. Your own id
+/// lands back on your own page rather than offering you your own money.
+pub async fn other_player_page(
+    AuthUser(viewer): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Html<String>, AppError> {
+    let player = s
+        .users
+        .get(id)
+        .await
+        .ok_or_else(|| AppError::not_found("no such player"))?;
+    let gift = if id == viewer {
+        None
+    } else {
+        Some(render::GiftPanel {
+            player_id: id,
+            player_name: player.display_name.clone(),
+            your_balance: balance_of(&s, viewer).await,
+        })
+    };
+    Ok(Html(
+        render_player(&s, id, &player.display_name, gift.as_ref()).await,
+    ))
+}
+
+async fn render_player(
+    s: &AppState,
+    id: Uuid,
+    name: &str,
+    gift: Option<&render::GiftPanel>,
+) -> String {
+    let owner = AccountOwner::User(id);
     let account = s
         .bank
-        .account(AccountOwner::User(user))
+        .account(owner.clone())
         .await
         .expect("account can be created");
-    let owner = AccountOwner::User(user);
     let poker = s.stats.of(&owner).await;
-    let blitz = s.blitz.stats(user).await;
-    Html(render::player_page(&name, &account, poker, &blitz))
+    let blitz = s.blitz.stats(id).await;
+    render::player_page(id, name, &account, poker, &blitz, gift)
+}
+
+#[derive(Deserialize)]
+pub struct GiftRequest {
+    pub amount: crate::money::Cents,
+}
+
+/// Hands another player money out of your own account. The bank moves both
+/// ledgers together; this only decides whether the gift is allowed.
+pub async fn gift_player(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<GiftRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    if id == user {
+        return Err(AppError::bad_request("that account is your own"));
+    }
+    let recipient = s
+        .users
+        .get(id)
+        .await
+        .ok_or_else(|| AppError::not_found("no such player"))?;
+    if !crate::bank::valid_gift_amount(input.amount) {
+        return Err(AppError::bad_request(
+            "money is sent in whole $1,000 chips, up to $1,000,000 at a time",
+        ));
+    }
+    let sender_name = s
+        .users
+        .get(user)
+        .await
+        .map_or_else(|| "a player".to_string(), |user| user.display_name);
+    let (sender, received) = s
+        .bank
+        .transfer(
+            AccountOwner::User(user),
+            AccountOwner::User(id),
+            input.amount,
+            format!("gift to {}", recipient.display_name),
+            format!("gift from {sender_name}"),
+        )
+        .await
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    Ok(Json(serde_json::json!({
+        "account": crate::bank::account_json(&sender),
+        "recipient": {
+            "id": id,
+            "name": recipient.display_name,
+            "balance": received.balance,
+            "net_balance": received.net_balance(),
+        },
+    })))
 }
 
 pub async fn new_table(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
@@ -761,6 +850,10 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
             crate::view::LeaderboardRow {
                 rank: index + 1,
                 name,
+                player_id: match &owner {
+                    crate::bank::AccountOwner::User(id) => Some(*id),
+                    crate::bank::AccountOwner::Bot(_) => None,
+                },
                 house,
                 balance: account.balance,
                 net_balance: account.net_balance(),

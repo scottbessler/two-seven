@@ -92,6 +92,11 @@ Rules
   house players affected; human accounts are untouched.
 - Legacy bank account JSON is wiped once on the non-debt bank migration.
 - Cash-out returns the seat's remaining stack to the account.
+- Players can hand each other money in whole $1,000 chips, up to $1,000,000 per
+  gift. A gift appends a `Gift` entry to both accounts under one lock — a debit
+  naming the recipient, a credit naming the sender — so the total on the books
+  does not move. Gifts to yourself, amounts off the $1,000 increment, and gifts
+  larger than your balance are refused.
 - The bank is the settlement layer: chips only enter play through a `BuyIn` and
   only leave through a `CashOut`/prize, so `sum(balances) + sum(chips in play)`
   is invariant (§V1).
@@ -110,7 +115,10 @@ panel closes when clicking or tapping outside it or pressing Escape, returning
 focus to the coin-menu summary. Seat labels at a table show the seat owner's
 bank balance the same way (bots included).
 The signed-in player page shows account summary, recent ledger rows, and a
-ledger-derived finances-over-time chart.
+ledger-derived finances-over-time chart. A person's name at a table and in the
+standings links to their own copy of that page; the house's does not, having no
+page. Somebody else's page adds a $1,000 stepper that sends them money from
+your account, and redraws both the summary and the ledger once it lands.
 
 ## 5. Hold'em rules implemented
 
@@ -307,6 +315,10 @@ Mark each milestone done here as it lands.
 - **V17** A user's poker cash-out charges at most 10% of positive table winnings
   for loan interest, rounded down and recorded separately; no fee is charged
   without winnings or loans, and bots never pay this fee.
+- **V58** A gift moves money between two accounts and never makes any: both
+  ledger entries are written under one lock, the amount is a whole $1,000 chip
+  up to $1,000,000, and a gift to yourself, off the increment, or beyond your
+  balance leaves both accounts untouched.
 - **V37** Admin bot-loan forgiveness clears `loan_count` on every indebted bot
   without changing balances or human accounts, and persists the affected
   accounts.
@@ -516,6 +528,7 @@ T35|x|full-bleed status bar + reserved centre rail for result and equity|V36,V37
 T36|x|close betting when no opponent can answer a raise|V47,V51
 T37|x|add a custom wager slider beside All In|V47,V56
 T38|x|reserve a mid-hand cash seat instead of taking a live one|V1,V12,V57
+T39|x|link player names to their page and let people gift $1,000 chips|V1,V2,V58
 
 ## §B Bug log
 

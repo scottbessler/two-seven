@@ -287,11 +287,21 @@ pub fn card_test() -> String {
     )
 }
 
+/// What the page needs to offer somebody money: who they are, and what the
+/// viewer has to give.
+pub struct GiftPanel {
+    pub player_id: Uuid,
+    pub player_name: String,
+    pub your_balance: Cents,
+}
+
 pub fn player_page(
+    id: Uuid,
     name: &str,
     account: &crate::bank::Account,
     poker: crate::stats::PlayerStats,
     blitz: &crate::blitz::BlitzStats,
+    gift: Option<&GiftPanel>,
 ) -> String {
     let entries = account
         .entries
@@ -316,19 +326,65 @@ pub fn player_page(
             r#"<table class="finance-ledger"><thead><tr><th>When</th><th>Event</th><th>Change</th><th>Balance</th></tr></thead><tbody>{entries}</tbody></table>"#
         )
     };
+    // Your own page reads as yours; somebody else's says whose it is and
+    // offers a way back to your own.
+    let (blurb, nav) = match gift {
+        None => (
+            "Your bankroll over time.".to_string(),
+            r#"<a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a>"#,
+        ),
+        Some(_) => (
+            format!("{}&#39;s bankroll over time.", escape(name)),
+            r#"<a href="/player">Your page</a> · <a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a>"#,
+        ),
+    };
     let body = format!(
-        r#"<section class="player-page"><header class="history-top"><div><h1>{}</h1><p>Your bankroll over time.</p></div><nav><a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a></nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section><section class="finance-panel"><h2>Finances</h2>{}</section><section class="finance-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        id,
         escape(name),
+        blurb,
+        nav,
         format_cents(account.balance),
         format_cents(account.loan_debt()),
         format_cents(account.net_balance()),
         account.loan_count,
         format_cents(poker.net),
         blitz.accuracy_percent(),
+        gift.map_or_else(String::new, gift_panel),
         finance_chart(account),
         ledger
     );
-    layout(&format!("{name} player"), &body, "")
+    layout(
+        &format!("{name} player"),
+        &body,
+        &gift.map_or_else(String::new, |_| {
+            format!(
+                r#"<script type="module" src="{}" defer></script>"#,
+                asset("/public/player.js")
+            )
+        }),
+    )
+}
+
+/// Money changes hands in whole $1,000 chips, so the control is a stepper
+/// rather than a free-text amount: there is no wrong number to type.
+fn gift_panel(gift: &GiftPanel) -> String {
+    let increment = crate::bank::BankStore::GIFT_INCREMENT;
+    let controls = if gift.your_balance >= increment {
+        format!(
+            r#"<div class="gift-controls"><button class="gift-step" type="button" data-step="-1" aria-label="Send $1,000 less">−</button><output class="gift-amount">{}</output><button class="gift-step" type="button" data-step="1" aria-label="Send $1,000 more">+</button><button class="gift-send" type="button">Send</button></div><p class="gift-status" role="status"></p>"#,
+            format_cents(increment)
+        )
+    } else {
+        r#"<p class="gift-status" role="status">You need at least $1,000 in the bank to send anything.</p>"#.to_string()
+    };
+    format!(
+        r#"<section class="finance-panel gift-panel" data-player-id="{}" data-increment="{increment}" data-balance="{}"><h2>Send money</h2><p>Hand {} chips out of your own account, in $1,000 units. You have <b class="gift-balance">{}</b>.</p>{controls}</section>"#,
+        gift.player_id,
+        gift.your_balance,
+        escape(&gift.player_name),
+        format_cents(gift.your_balance),
+    )
 }
 
 fn finance_chart(account: &crate::bank::Account) -> String {
@@ -470,10 +526,17 @@ pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
                     )
                 })
                 .collect::<String>();
+            let name = match row.player_id {
+                Some(id) => format!(
+                    r#"<a class="player-link" href="/player/{id}">{}</a>"#,
+                    escape(&row.name)
+                ),
+                None => escape(&row.name),
+            };
             format!(
                 "<tr><td class=\"rank\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td class=\"money\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}%</td><td class=\"money\">{}</td>{}</tr>",
                 row.rank,
-                escape(&row.name),
+                name,
                 if row.house { " <i class=\"house-tag\">house</i>" } else { "" },
                 format_cents(row.balance),
                 format_cents(row.net_balance),

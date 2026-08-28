@@ -16,6 +16,7 @@
 .leaderboard-table .rank{color:var(--muted);font-variant-numeric:tabular-nums}
 .leaderboard-table .money{font-variant-numeric:tabular-nums;font-weight:700}
 .leaderboard-table .blitz-empty{color:var(--line-2)}
+.leaderboard-table .player-link{color:inherit;text-decoration:underline;text-underline-offset:2px}
 .house-tag{padding:.05rem .3rem;border:1px solid var(--line-2);border-radius:var(--radius-chip);color:var(--muted);font-size:var(--text-label);font-style:normal}
 /* Player page: compact account history with a ledger-derived chart. */
 .player-page{display:grid;gap:.9rem;padding-bottom:2rem}
@@ -35,6 +36,10 @@
 .finance-ledger td{padding:.35rem .5rem;border-top:1px solid var(--line-1)}
 .finance-ledger .money{font-variant-numeric:tabular-nums;font-weight:700}
 .finance-ledger .positive{color:var(--mint)}.finance-ledger .negative{color:var(--danger-ink)}
+.gift-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
+.gift-controls .gift-step{min-width:2.75rem;background:var(--felt-800);color:var(--ink)}
+.gift-amount{min-width:6rem;color:var(--accent);font-size:var(--text-title);font-variant-numeric:tabular-nums;text-align:center}
+.gift-status{margin:0;color:var(--muted);font-size:var(--text-small);min-height:1.2em}
 /* Hand history is a debugging view: dense, readable, no table chrome. */
 .history-shell{display:grid;gap:.75rem;padding-bottom:2rem}
 .history-top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:1rem}

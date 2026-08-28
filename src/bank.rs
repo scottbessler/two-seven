@@ -31,6 +31,7 @@ pub enum LedgerKind {
     HandBlitzWin { run: Uuid },
     BlackjackBet { game: Uuid },
     BlackjackPayout { game: Uuid },
+    Gift { peer: AccountOwner },
     Adjustment,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -78,6 +79,12 @@ pub fn account_json(account: &Account) -> serde_json::Value {
     );
     value
 }
+/// A gift is a positive, whole number of $1,000 chips, bounded by the largest
+/// amount that may ride on anything else in the game.
+pub fn valid_gift_amount(amount: Cents) -> bool {
+    (BankStore::GIFT_INCREMENT..=BankStore::MAX_GIFT).contains(&amount)
+        && amount % BankStore::GIFT_INCREMENT == 0
+}
 struct Inner {
     accounts: HashMap<AccountOwner, Account>,
 }
@@ -89,6 +96,10 @@ pub struct BankStore {
 impl BankStore {
     pub const RE_UP_AMOUNT: Cents = 100_000;
     pub const RE_UP_THRESHOLD: Cents = Self::RE_UP_AMOUNT;
+    /// Money changes hands between people in whole $1,000 chips, the same unit
+    /// a loan comes in, capped at one gift per the largest game entry.
+    pub const GIFT_INCREMENT: Cents = 100_000;
+    pub const MAX_GIFT: Cents = crate::money::MAX_GAME_ENTRY;
     /// Bump this to start the house over on the next boot: money, loans,
     /// history and their playing record.
     pub const HOUSE_RESET_MARKER: &'static str = "bank-house-reset-2.marker";
@@ -156,18 +167,7 @@ impl BankStore {
     pub async fn account(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;
         if !guard.accounts.contains_key(&owner) {
-            let now = Utc::now();
-            guard.accounts.insert(
-                owner.clone(),
-                Account {
-                    owner: owner.clone(),
-                    balance: 0,
-                    loan_count: 0,
-                    entries: Vec::new(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            );
+            Self::ensure_account_locked(&mut guard.accounts, &owner);
             self.persist(guard.accounts.get(&owner).expect("inserted"))
                 .await?;
         }
@@ -223,20 +223,7 @@ impl BankStore {
         memo: String,
     ) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;
-        if !guard.accounts.contains_key(&owner) {
-            let now = Utc::now();
-            guard.accounts.insert(
-                owner.clone(),
-                Account {
-                    owner: owner.clone(),
-                    balance: 0,
-                    loan_count: 0,
-                    entries: Vec::new(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            );
-        }
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
         let account = guard.accounts.get_mut(&owner).expect("account");
         if account.balance + delta < 0 {
             return Err(anyhow::anyhow!("insufficient funds"));
@@ -266,20 +253,7 @@ impl BankStore {
             return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
         }
         let mut guard = self.inner.lock().await;
-        if !guard.accounts.contains_key(&owner) {
-            let now = Utc::now();
-            guard.accounts.insert(
-                owner.clone(),
-                Account {
-                    owner: owner.clone(),
-                    balance: 0,
-                    loan_count: 0,
-                    entries: Vec::new(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            );
-        }
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
         if matches!(owner, AccountOwner::Bot(_)) || !no_debt {
             let balance = guard.accounts[&owner].balance;
             if balance < amount {
@@ -326,20 +300,7 @@ impl BankStore {
     }
     pub async fn re_up(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;
-        if !guard.accounts.contains_key(&owner) {
-            let now = Utc::now();
-            guard.accounts.insert(
-                owner.clone(),
-                Account {
-                    owner: owner.clone(),
-                    balance: 0,
-                    loan_count: 0,
-                    entries: Vec::new(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            );
-        }
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
         if guard.accounts[&owner].balance >= Self::RE_UP_THRESHOLD {
             return Err(anyhow::anyhow!("re-up is only available below $1,000"));
         }
@@ -357,20 +318,7 @@ impl BankStore {
     }
     pub async fn repay_loan(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;
-        if !guard.accounts.contains_key(&owner) {
-            let now = Utc::now();
-            guard.accounts.insert(
-                owner.clone(),
-                Account {
-                    owner: owner.clone(),
-                    balance: 0,
-                    loan_count: 0,
-                    entries: Vec::new(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            );
-        }
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
         let account = guard.accounts.get_mut(&owner).expect("account");
         if account.loan_count == 0 {
             return Err(anyhow::anyhow!("no outstanding loans"));
@@ -397,20 +345,7 @@ impl BankStore {
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;
-        if !guard.accounts.contains_key(&owner) {
-            let now = Utc::now();
-            guard.accounts.insert(
-                owner.clone(),
-                Account {
-                    owner: owner.clone(),
-                    balance: 0,
-                    loan_count: 0,
-                    entries: Vec::new(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            );
-        }
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
         let account = guard.accounts.get_mut(&owner).expect("account");
         let loan_count = account.loan_count.min(10);
         let staked = account
@@ -519,6 +454,54 @@ impl BankStore {
         )
         .await
     }
+    /// Hands money from one account to another in whole $1,000 chips.
+    ///
+    /// Both ledgers move under one lock, so nobody can spend the same chips
+    /// twice, and the pair of entries cancels out: the total on the books is
+    /// unchanged (§V1). The two files are written debit first, so a crash
+    /// between them can only lose the gift, never mint it.
+    pub async fn transfer(
+        &self,
+        from: AccountOwner,
+        to: AccountOwner,
+        amount: Cents,
+        from_memo: String,
+        to_memo: String,
+    ) -> Result<(Account, Account), anyhow::Error> {
+        if from == to {
+            return Err(anyhow::anyhow!("that account is your own"));
+        }
+        if !valid_gift_amount(amount) {
+            return Err(anyhow::anyhow!(
+                "money is sent in whole $1,000 chips, up to $1,000,000 at a time"
+            ));
+        }
+        let mut guard = self.inner.lock().await;
+        Self::ensure_account_locked(&mut guard.accounts, &from);
+        Self::ensure_account_locked(&mut guard.accounts, &to);
+        if guard.accounts[&from].balance < amount {
+            return Err(anyhow::anyhow!("not enough to send that"));
+        }
+        Self::append_locked(
+            guard.accounts.get_mut(&from).expect("account"),
+            LedgerKind::Gift { peer: to.clone() },
+            -amount,
+            from_memo,
+            0,
+        );
+        Self::append_locked(
+            guard.accounts.get_mut(&to).expect("account"),
+            LedgerKind::Gift { peer: from.clone() },
+            amount,
+            to_memo,
+            0,
+        );
+        let sender = guard.accounts[&from].clone();
+        let recipient = guard.accounts[&to].clone();
+        self.persist(&sender).await?;
+        self.persist(&recipient).await?;
+        Ok((sender, recipient))
+    }
     async fn persist(&self, account: &Account) -> Result<(), anyhow::Error> {
         let name = match account.owner {
             AccountOwner::User(id) => format!("user-{id}.json"),
@@ -529,6 +512,19 @@ impl BankStore {
         tokio::fs::write(&tmp, serde_json::to_vec_pretty(account)?).await?;
         tokio::fs::rename(tmp, path).await?;
         Ok(())
+    }
+    fn ensure_account_locked(accounts: &mut HashMap<AccountOwner, Account>, owner: &AccountOwner) {
+        accounts.entry(owner.clone()).or_insert_with(|| {
+            let now = Utc::now();
+            Account {
+                owner: owner.clone(),
+                balance: 0,
+                loan_count: 0,
+                entries: Vec::new(),
+                created_at: now,
+                updated_at: now,
+            }
+        });
     }
     fn append_locked(
         account: &mut Account,
@@ -1018,6 +1014,117 @@ mod tests {
 
     fn tempfile_dir() -> PathBuf {
         std::env::temp_dir().join(format!("two-seven-bank-{}", Uuid::new_v4()))
+    }
+
+    #[tokio::test]
+    async fn a_gift_moves_whole_thousands_and_keeps_the_books_level() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let giver = AccountOwner::User(Uuid::new_v4());
+        let taker = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(giver.clone()).await.unwrap();
+        bank.append(
+            giver.clone(),
+            LedgerKind::Adjustment,
+            BankStore::GIFT_INCREMENT,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+        let before = bank.account(giver.clone()).await.unwrap().balance;
+
+        let (sender, recipient) = bank
+            .transfer(
+                giver.clone(),
+                taker.clone(),
+                BankStore::GIFT_INCREMENT,
+                "gift to Taker".into(),
+                "gift from Giver".into(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(sender.balance, before - BankStore::GIFT_INCREMENT);
+        assert_eq!(recipient.balance, BankStore::GIFT_INCREMENT);
+        assert_eq!(
+            sender.balance + recipient.balance,
+            before,
+            "V1: a gift moves money, it does not make any"
+        );
+        assert_eq!(
+            sender.entries.last().unwrap().kind,
+            LedgerKind::Gift {
+                peer: taker.clone()
+            }
+        );
+        assert_eq!(
+            recipient.entries.last().unwrap().kind,
+            LedgerKind::Gift {
+                peer: giver.clone()
+            }
+        );
+        assert_eq!(recipient.entries.last().unwrap().memo, "gift from Giver");
+        assert_eq!(sender.loan_count, 1, "giving money away repays nothing");
+        // V2 holds on both sides of the transfer.
+        for account in [&sender, &recipient] {
+            assert_eq!(
+                account
+                    .entries
+                    .iter()
+                    .map(|entry| entry.delta)
+                    .sum::<Cents>(),
+                account.balance
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_gift_is_refused_below_a_thousand_off_the_increment_or_over_budget() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let giver = AccountOwner::User(Uuid::new_v4());
+        let taker = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(giver.clone()).await.unwrap();
+        let gift = async |amount| {
+            bank.transfer(
+                giver.clone(),
+                taker.clone(),
+                amount,
+                "gift".into(),
+                "gift".into(),
+            )
+            .await
+        };
+
+        assert!(gift(0).await.is_err(), "nothing is not a gift");
+        assert!(gift(-BankStore::GIFT_INCREMENT).await.is_err());
+        assert!(gift(50_000).await.is_err(), "half a chip is not a chip");
+        assert!(gift(150_000).await.is_err(), "nor is a chip and a half");
+        assert!(
+            gift(BankStore::MAX_GIFT + BankStore::GIFT_INCREMENT)
+                .await
+                .is_err()
+        );
+        assert!(
+            gift(BankStore::GIFT_INCREMENT * 2).await.is_err(),
+            "you cannot give away what you do not have"
+        );
+        assert!(
+            bank.transfer(
+                giver.clone(),
+                giver.clone(),
+                BankStore::GIFT_INCREMENT,
+                "gift".into(),
+                "gift".into()
+            )
+            .await
+            .is_err(),
+            "your own account is not somebody else"
+        );
+        assert_eq!(
+            bank.account(giver).await.unwrap().balance,
+            BankStore::RE_UP_AMOUNT,
+            "a refused gift leaves the account alone"
+        );
+        assert_eq!(bank.account(taker).await.unwrap().balance, 0);
     }
 }
 

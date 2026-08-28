@@ -47,6 +47,11 @@ pub fn router(s: AppState) -> Router {
         .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
         .route("/player", get(routes::player_page))
+        .route("/player/{id}", get(routes::other_player_page))
+        .route(
+            "/player/{id}/gift",
+            axum::routing::post(routes::gift_player),
+        )
         .route("/leaderboard", get(routes::leaderboard))
         .route("/blackjack", get(routes::blackjack))
         .route("/admin", get(routes::admin_page).post(routes::admin_action))
@@ -300,6 +305,7 @@ fn asset_version() -> String {
         "public/shared.js",
         "public/card.js",
         "public/lobby.js",
+        "public/player.js",
         "public/table.js",
         "public/card-settings.js",
         "public/vendor/htm-preact.js",

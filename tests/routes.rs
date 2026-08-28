@@ -2716,3 +2716,183 @@ async fn v57_cancelling_a_waiting_seat_refunds_the_buy_in() {
         "the house keeps the table it was already playing"
     );
 }
+
+/// Registers a player and returns their id, for the tests that need two people.
+async fn register(t: &T, username: &str, display_name: &str) -> Uuid {
+    let id = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id,
+            username: username.into(),
+            display_name: display_name.into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    id
+}
+
+async fn page(t: &T, uri: &str, cookie_value: &str) -> (StatusCode, String) {
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(uri)
+                .header(header::COOKIE, cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (status, String::from_utf8_lossy(&body).to_string())
+}
+
+async fn gift(t: &T, to: Uuid, amount: i64, cookie_value: &str) -> (StatusCode, String) {
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/player/{to}/gift"))
+                .header(header::COOKIE, cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!("{{\"amount\":{amount}}}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    (status, String::from_utf8_lossy(&body).to_string())
+}
+
+#[tokio::test]
+async fn a_players_page_opens_from_the_standings_and_offers_them_money() {
+    let t = appx().await;
+    let viewer = register(&t, "vera", "Vera").await;
+    let other = register(&t, "otto", "Otto").await;
+    let cookie_value = cookie(&t.key, viewer);
+    // Only accounts on the books are ranked, so both players have one.
+    for id in [viewer, other] {
+        t.bank.re_up(AccountOwner::User(id)).await.unwrap();
+    }
+
+    let (status, standings) = page(&t, "/leaderboard", &cookie_value).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        standings.contains(&format!(
+            r#"<a class="player-link" href="/player/{other}">Otto</a>"#
+        )),
+        "a name in the standings is a way to that player's page"
+    );
+
+    let (status, html) = page(&t, &format!("/player/{other}"), &cookie_value).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("Otto&#39;s bankroll over time."));
+    assert!(
+        html.contains("gift-panel"),
+        "somebody else's page can be paid"
+    );
+    assert!(html.contains(r#"data-increment="100000""#));
+    assert!(html.contains("finance-chart"));
+
+    // Your own page is still your own, whichever way you arrive at it.
+    for uri in ["/player", &format!("/player/{viewer}")] {
+        let (status, html) = page(&t, uri, &cookie_value).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(html.contains("Your bankroll over time."));
+        assert!(
+            !html.contains("gift-panel"),
+            "{uri} offered you your own money"
+        );
+    }
+
+    let (status, _) = page(&t, &format!("/player/{}", Uuid::new_v4()), &cookie_value).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn gifts_move_whole_thousands_between_players() {
+    let t = appx().await;
+    let giver = register(&t, "gil", "Gil").await;
+    let taker = register(&t, "tess", "Tess").await;
+    let cookie_value = cookie(&t.key, giver);
+    t.bank.re_up(AccountOwner::User(giver)).await.unwrap();
+    t.bank
+        .append(
+            AccountOwner::User(giver),
+            LedgerKind::Adjustment,
+            100_000,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+
+    let (status, body) = gift(&t, taker, 200_000, &cookie_value).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let payload: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(payload["account"]["balance"], 0);
+    assert_eq!(payload["recipient"]["balance"], 200_000);
+    assert_eq!(payload["recipient"]["name"], "Tess");
+    let given = t.bank.account(AccountOwner::User(taker)).await.unwrap();
+    assert_eq!(given.balance, 200_000);
+    assert_eq!(given.entries.last().unwrap().memo, "gift from Gil");
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(giver))
+            .await
+            .unwrap()
+            .entries
+            .last()
+            .unwrap()
+            .memo,
+        "gift to Tess"
+    );
+    // The gift shows up on the receiving player's page.
+    let (_, html) = page(&t, "/player", &cookie(&t.key, taker)).await;
+    assert!(html.contains("gift from Gil"));
+
+    // Nothing left to give, and nothing that is not a whole $1,000 chip.
+    let (status, body) = gift(&t, taker, 100_000, &cookie_value).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    t.bank
+        .append(
+            AccountOwner::User(giver),
+            LedgerKind::Adjustment,
+            500_000,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+    for amount in [0, -100_000, 50_000, 150_000, 100_000_100] {
+        let (status, body) = gift(&t, taker, amount, &cookie_value).await;
+        assert_eq!(
+            status,
+            StatusCode::BAD_REQUEST,
+            "{amount} was allowed: {body}"
+        );
+    }
+    let (status, _) = gift(&t, giver, 100_000, &cookie_value).await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "your own account is not a gift"
+    );
+    let (status, _) = gift(&t, Uuid::new_v4(), 100_000, &cookie_value).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(giver))
+            .await
+            .unwrap()
+            .balance,
+        500_000,
+        "a refused gift leaves the money where it is"
+    );
+}
