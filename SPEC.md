@@ -396,6 +396,9 @@ Mark each milestone done here as it lands.
 - **V42** Mobile poker and blackjack game surfaces fit portrait and landscape
   viewports without document or internal stage scrolling; action buttons share
   one height/font and keep labels contained, and blackjack cards remain readable.
+  A blackjack hand fits its cards inside its own width however many it holds,
+  and every hand on the table — split hands included — gets an equal share of
+  the play area.
 - **V43** Completed desktop showdowns reserve stable clearance for outside
   outcome badges; seats, cards, and badges never overlap center table content.
 - **V44** Action bars distribute their visible buttons across the full available
@@ -653,3 +656,4 @@ B10|2026-08-24|12ce6a8 put compact dealer/blind badges back in flow, spending a 
 B11|2026-08-24|a full-raise shove left must_call clear, so a caller facing an all-in shorter stack was still offered Raise and All In with nobody able to answer|V47,V51
 B12|2026-08-25|standalone iOS exposed transparent root canvas + zero bottom inset, blackening status area and clipping lifecycle controls|V54
 B13|2026-08-27|joining a cash table mid-hand swapped the newcomer into a house player's live seat, so they played a hand they never paid into and settlement wrote that seat's hand-final stack over their buy-in, destroying the difference and paying the displaced bot its stale pre-hand stack|V1,V57
+B14|2026-08-28|blackjack sized every card at a fixed 29cqw share of its hand, so a fourth card pushed the row past the hand's width and a long mobile hand ran off screen; the play area also gave its two explicit rows all the height, collapsing split hands three and beyond to nothing|V42
