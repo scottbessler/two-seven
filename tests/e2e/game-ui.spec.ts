@@ -1843,7 +1843,10 @@ function allInRunout({ board, leaders, odds, awaiting = true }) {
   };
 }
 
-const preflopShove = allInRunout({
+// A factory, not a value: `advance_at` is five seconds from whenever it is
+// called, so a fixture built at file-load time would already be expired by the
+// time a test that takes screenshots gets around to reading the clock.
+const preflopShove = () => allInRunout({
   board: [],
   leaders: [1],
   odds: [
@@ -1853,7 +1856,7 @@ const preflopShove = allInRunout({
 });
 
 test("runs an all-in board out one street at a time", async ({ page }) => {
-  await mountTable(page, preflopShove);
+  await mountTable(page, preflopShove());
   const board = page.locator(".board .playing-card");
   const result = page.locator(".showdown-result");
 
@@ -1909,6 +1912,9 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   // A seated player may turn the next card; the server's deadline turns it
   // anyway, so it counts down like the next hand does and a press only ever
   // brings it forward.
+  // Remounted with a fresh deadline: the layout pass and the screenshots above
+  // spend real seconds, and this is about how the clock reads when it starts.
+  await mountTable(page, preflopShove());
   await expect(page.locator(".showdown-advance button")).toContainText("Next card · 5s");
   await expect(page.locator(".showdown-advance .showdown-progress")).toBeVisible();
 
