@@ -42,6 +42,13 @@ pub struct HandView {
     pub events: Vec<HandEvent>,
     pub last_bet: Cents,
     pub to_call: Cents,
+    /// Betting is closed and the board is incomplete: the table is waiting on
+    /// the next card, which a press or the deadline turns over (§V59).
+    pub awaiting_advance: bool,
+    /// Who leads, and on what equity, on the board as it stands right now.
+    /// Live, not a replay of a decided result.
+    pub runout_leaders: Vec<usize>,
+    pub runout_odds: Vec<crate::holdem::ShowdownOdds>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -173,13 +180,13 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
                 .filter(|seat| *seat == player.seat)
                 .map(|_| player.hole_cards.clone())
                 .or_else(|| {
-                    hand.summary.as_ref().and_then(|summary| {
-                        summary
-                            .revealed_hole_cards
-                            .iter()
-                            .find(|(seat, _)| *seat == player.seat)
-                            .map(|(_, cards)| cards.clone())
-                    })
+                    hand.summary
+                        .as_ref()
+                        .map(|summary| summary.revealed_hole_cards.clone())
+                        .unwrap_or_else(|| hand.exposed_hole_cards())
+                        .iter()
+                        .find(|(seat, _)| *seat == player.seat)
+                        .map(|(_, cards)| cards.clone())
                 }),
             bank_balance: None,
             bank_entries: Vec::new(),
@@ -212,6 +219,9 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             })
             .collect(),
         events: hand.events.clone(),
+        awaiting_advance: hand.awaits_runout(),
+        runout_leaders: hand.leaders_now(),
+        runout_odds: hand.odds_now(),
         last_bet: hand.last_bet,
         to_call: hand.current_player.map_or(0, |seat| {
             hand.players
@@ -243,7 +253,15 @@ pub fn table_view_with_banks(
     banks: &std::collections::HashMap<usize, Account>,
     names: &std::collections::HashMap<usize, String>,
 ) -> TableView {
-    let viewer_eliminated = viewer.is_some_and(|seat| table.tournament_seat_is_eliminated(seat));
+    // Seat identity is fixed for as long as the viewer is a player in the hand
+    // in progress -- runout included. It answers who was dealt in, not who is
+    // currently holding chips, so a bust-out cannot move them off their own row
+    // before the last card is face up (§V33).
+    let dealt_into_live_hand = table.hand.as_ref().is_some_and(|hand| {
+        viewer.is_some_and(|seat| hand.players.iter().any(|player| player.seat == seat))
+    });
+    let viewer_eliminated = viewer.is_some_and(|seat| table.tournament_seat_is_eliminated(seat))
+        && !dealt_into_live_hand;
     let viewer = viewer.filter(|_| !viewer_eliminated);
     let tournament_result_visible = !terminal_tournament_result_pending(table);
     TableView {
@@ -450,6 +468,82 @@ mod tests {
             reveal_odds: Vec::new(),
         });
         table
+    }
+
+    /// §V33: the reported regression. A tournament bust-out must not take the
+    /// viewer's seat away while the hand that busted them is still on the
+    /// table -- that is what moved their player off the viewer row and up
+    /// among the opponents before the board had finished running out.
+    #[test]
+    fn v33_a_busted_seat_is_held_until_the_hand_leaves_the_table() {
+        let mut table = terminal_tournament();
+        // Seat 1 is broke, and still a player in the hand in progress.
+        table.seats[1].stack = 0;
+        table.hand = Some(crate::holdem::Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[20_000, 10_000],
+            0,
+            7,
+        ));
+
+        let live = table_view(&table, Some(1));
+        assert_eq!(
+            live.viewer_seat,
+            Some(1),
+            "a player in the live hand keeps their own seat"
+        );
+        assert!(
+            !live.viewer_eliminated,
+            "elimination cannot land before the hand leaves the table"
+        );
+
+        // Once the hand is gone the seat is honestly eliminated.
+        table.hand = None;
+        let settled = table_view(&table, Some(1));
+        assert_eq!(settled.viewer_seat, None);
+        assert!(settled.viewer_eliminated);
+    }
+
+    /// §V59: a hand parked on its runout exposes the cards and who leads, and
+    /// still carries no result for anything to leak.
+    #[test]
+    fn v59_a_parked_runout_shows_cards_but_no_result() {
+        let mut table = terminal_tournament();
+        let mut hand = crate::holdem::Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            77,
+        );
+        hand.apply_action(crate::holdem::Action::AllIn).unwrap();
+        hand.apply_action(crate::holdem::Action::Call).unwrap();
+        assert!(hand.awaits_runout());
+        table.hand = Some(hand);
+
+        let view = table_view(&table, Some(0));
+        let hand_view = view.hand.expect("a hand is on the table");
+        assert!(
+            hand_view.awaiting_advance,
+            "the table waits on the next card"
+        );
+        assert!(hand_view.board.is_empty(), "no board until it is advanced");
+        assert!(hand_view.summary.is_none(), "no result to leak");
+        assert!(!hand_view.runout_leaders.is_empty(), "somebody is ahead");
+        assert_eq!(
+            hand_view
+                .seats
+                .iter()
+                .filter(|seat| seat.hole_cards.is_some())
+                .count(),
+            2,
+            "both hands are face up once betting is closed"
+        );
     }
 
     #[test]

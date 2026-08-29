@@ -25,6 +25,11 @@ stateDiagram-v2
     Flop --> Turn : round complete / deal 1 card
     Turn --> River : round complete / deal 1 card
     River --> Showdown : round complete / evaluate + award pots
+    Preflop --> Runout : betting closed, board incomplete
+    Flop --> Runout : betting closed, board incomplete
+    Turn --> Runout : betting closed, board incomplete
+    Runout --> Runout : advance / deal one street
+    Runout --> Showdown : advance deals the river / evaluate + award pots
     Preflop --> Complete : one live player / fold win
     Flop --> Complete : one live player / fold win
     Turn --> Complete : one live player / fold win
@@ -37,15 +42,43 @@ Transitions are named by `StreetTransition`:
 
 | Transition | Guard | Effect |
 |---|---|---|
-| `Deal(next)` | round complete, ≥2 live players | deal board cards, log a `Deal` event, enter a fresh betting round |
+| `Deal(next)` | round complete, ≥2 live players, betting still open | deal board cards, log a `Deal` event, enter a fresh betting round |
+| `Deal(next)` | round complete, ≥2 live players, **betting closed** | park in `Runout`: deal nothing, prompt nobody, wait for an advance |
 | `Showdown` | river round complete, ≥2 live players | return uncalled excess, evaluate hands, award every pot |
 | `FoldWin` | one live player remains | return uncalled excess, award the whole pot without showdown |
 
 Entry action for each post-flop street (`enter_betting_round`): reset
 `last_bet`/`last_raise`/`wagers`, clear per-player `street_contribution`,
 `acted`, and `must_call`, then seat the first actor clockwise from the button.
-If nobody can act (everyone live is all in), the machine immediately advances
-again, running out the board to showdown.
+If nobody can act (everyone live is all in), the machine parks in `Runout`
+instead of dealing the rest of the board.
+
+## Runout
+
+`Runout` is a real, persisted state, not a client animation (§V59): betting is
+closed with two or more live players and the board is incomplete. It is the
+condition `awaiting_advance`, and while the hand sits in it:
+
+* `current_player` is `None` — it prompts nobody;
+* `summary` is `None` — **no result exists yet**, so there is nothing about the
+  outcome for a view to leak or embargo;
+* every unfolded seat's hole cards are face up (`exposed_hole_cards`), and
+  `leaders_now`/`odds_now` read the board as it stands.
+
+`Hand::advance_runout` is the only exit, and it deals exactly one street. It is
+driven from outside the machine by whichever comes first:
+
+| Driver | Where |
+|---|---|
+| a seated human's press | `POST /tables/{id}/advance`, refused inside `RUNOUT_FLOOR_MS` of the last card |
+| the always-armed deadline | driver tick, `RUNOUT_STEP_SECONDS` |
+
+The deadline is always armed, so a table nobody is watching still finishes its
+board; a press only ever brings a card forward. Dealing the river re-enters the
+betting round, finds no actor, and transitions to `Showdown` — which is the only
+place a result comes from once betting has closed. Pots are therefore awarded,
+and the hand settles, exactly as the last card lands: no seat can be eliminated,
+and no stack can move, before the board is face up.
 
 ## Betting round machine
 

@@ -9,8 +9,13 @@
 //! Transitions fire only when the hosted betting round reports
 //! [`RoundStatus::Complete`](super::RoundStatus::Complete). On entry to each
 //! post-flop street the machine deals board cards, resets the round state,
-//! and seats the first actor; if nobody can act (everyone is all in) it
-//! immediately advances again, running out the board to showdown.
+//! and seats the first actor.
+//!
+//! If nobody can act -- everyone live is all in -- the machine does not run the
+//! board out. It parks in `Runout`: betting is closed, the board is incomplete,
+//! and it waits for [`Hand::advance_runout`] to deal exactly one street. The
+//! result is therefore computed as the last card lands rather than up front and
+//! hidden afterwards, which is what keeps a showdown from being spoiled (§V59).
 
 use super::{Award, Hand, HandEvent, HandEventKind, HandSummary, Street};
 use crate::table::Stakes;
@@ -55,23 +60,58 @@ impl Hand {
                 return;
             }
             StreetTransition::Deal(next) => {
-                if self.runout_from.is_none() && self.betting_is_closed() {
-                    self.runout_from = Some(self.board.len());
+                // Betting is closed for good, so the rest of the board is a
+                // runout. Park instead of dealing it: each street waits for an
+                // explicit advance, and the result is computed as the last card
+                // lands rather than now and hidden afterwards (§V59).
+                if self.betting_is_closed() {
+                    if self.runout_from.is_none() {
+                        self.runout_from = Some(self.board.len());
+                    }
+                    self.current_player = None;
+                    self.awaiting_advance = true;
+                    return;
                 }
-                let cards = if next == Street::Flop { 3 } else { 1 };
-                for _ in 0..cards {
-                    self.board.push(self.deck.deal().expect("deck has cards"));
-                }
-                self.street = next;
+                self.deal_street(next);
             }
         }
+        self.enter_betting_round();
+    }
+
+    /// Deal one street's cards and log the deal.
+    fn deal_street(&mut self, next: Street) {
+        let cards = if next == Street::Flop { 3 } else { 1 };
+        for _ in 0..cards {
+            self.board.push(self.deck.deal().expect("deck has cards"));
+        }
+        self.street = next;
         self.events.push(HandEvent {
             street: self.street,
             seat: None,
             kind: HandEventKind::Deal,
             amount: 0,
         });
+    }
+
+    /// Deal the next street of a parked runout: one call, one street. Returns
+    /// whether anything moved, so a press that beats the deadline and the
+    /// deadline itself cannot deal the same street twice. Dealing the river
+    /// resolves the hand, which is the only place a result comes from once
+    /// betting is closed.
+    pub fn advance_runout(&mut self) -> bool {
+        if !self.awaits_runout() {
+            return false;
+        }
+        let next = match self.street {
+            Street::Preflop => Street::Flop,
+            Street::Flop => Street::Turn,
+            Street::Turn => Street::River,
+            Street::River | Street::Showdown | Street::Complete => return false,
+        };
+        self.awaiting_advance = false;
+        self.deal_street(next);
         self.enter_betting_round();
+        true
     }
 
     /// No further betting is possible once at most one live player still has
@@ -267,6 +307,9 @@ mod tests {
         );
         hand.apply_action(Action::AllIn).unwrap();
         hand.apply_action(Action::Call).unwrap();
+        // The result exists only once the board is out (§V59).
+        assert!(!hand.leaders_now().is_empty(), "a leader before any board");
+        while hand.advance_runout() {}
         let summary = hand.summary.as_ref().expect("summary");
 
         // Somebody is ahead as the hands turn over, before any board lands.
@@ -312,6 +355,9 @@ mod tests {
         );
         hand.apply_action(Action::AllIn).unwrap();
         hand.apply_action(Action::Call).unwrap();
+        // Every street of the runout is advanced explicitly (§V59); the record
+        // of who led on each is written as the hand resolves.
+        while hand.advance_runout() {}
         assert!(hand.complete);
         let summary = hand.summary.as_ref().expect("summary");
         // Betting closed before the flop, so the whole board is a runout.
@@ -359,11 +405,72 @@ mod tests {
         assert_eq!(hand.runout_from, None, "both players can still bet");
     }
 
+    /// §V59: betting closing with the board incomplete parks the hand. No
+    /// result exists until the last card is dealt, so there is nothing to
+    /// embargo and nothing a client has to be trusted to replay.
+    #[test]
+    fn v59_an_all_in_runout_parks_until_each_street_is_advanced() {
+        let mut hand = no_limit(&[10_000, 10_000], 77);
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::Call).unwrap();
+
+        // Betting is closed preflop: cards face up, board untouched, no result.
+        assert!(hand.awaits_runout(), "parked on the reveal, not resolved");
+        assert!(!hand.complete);
+        assert!(hand.summary.is_none(), "no result exists yet");
+        assert!(hand.board.is_empty(), "the flop waits to be advanced");
+        assert_eq!(hand.exposed_hole_cards().len(), 2, "hands are turned over");
+        assert!(!hand.leaders_now().is_empty(), "somebody is ahead already");
+
+        for (streets, cards) in [(1, 3), (2, 4)] {
+            assert!(hand.advance_runout(), "advance {streets} deals a street");
+            assert_eq!(hand.board.len(), cards);
+            assert!(hand.awaits_runout(), "still parked before the river");
+            assert!(hand.summary.is_none(), "still no result at {cards} cards");
+        }
+
+        // The river is the one card that resolves the hand.
+        assert!(hand.advance_runout());
+        assert_eq!(hand.board.len(), 5);
+        assert!(hand.complete, "the last card settles the hand");
+        assert!(hand.summary.is_some(), "the result arrives with the river");
+        assert!(!hand.awaits_runout());
+        assert!(
+            !hand.advance_runout(),
+            "a resolved hand advances no further"
+        );
+    }
+
+    /// A press that beats the deadline and the deadline itself both call
+    /// `advance_runout`; only one of them may deal the street.
+    #[test]
+    fn v59_advancing_twice_over_deals_one_street() {
+        let mut hand = no_limit(&[10_000, 10_000], 91);
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::Call).unwrap();
+        assert!(hand.advance_runout());
+        let board = hand.board.clone();
+        hand.awaiting_advance = false;
+        assert!(!hand.advance_runout(), "no second deal without a park");
+        assert_eq!(hand.board, board);
+    }
+
+    /// A fold-win has nothing to reveal, so it never parks.
+    #[test]
+    fn v59_a_fold_win_does_not_park() {
+        let mut hand = no_limit(&[10_000, 10_000], 12);
+        hand.apply_action(Action::Fold).unwrap();
+        assert!(hand.complete);
+        assert!(!hand.awaits_runout());
+    }
+
     #[test]
     fn all_in_preflop_runs_out_the_board() {
         let mut hand = no_limit(&[50, 50], 22);
         hand.apply_action(Action::AllIn).unwrap();
         hand.apply_action(Action::Call).unwrap();
+        let streets = std::iter::from_fn(|| hand.advance_runout().then_some(())).count();
+        assert_eq!(streets, 3, "flop, turn and river each take an advance");
         assert!(hand.complete);
         assert_eq!(hand.board.len(), 5);
         assert_eq!(hand.street, Street::Showdown);

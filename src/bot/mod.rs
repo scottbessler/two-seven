@@ -184,6 +184,11 @@ mod tests {
                     if hand.complete {
                         break;
                     }
+                    // A parked runout prompts nobody: the board runs out on
+                    // its own before anyone can act again (§V59).
+                    if hand.advance_runout() {
+                        continue;
+                    }
                     let legal = hand.legal_actions().expect("action");
                     let view = hand_view(&hand, Some(legal.seat));
                     let action = kind.act(&view, &legal, seed + turn);
@@ -276,6 +281,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 0,
             to_call: 0,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         let legal = LegalActions {
             seat: 0,
@@ -326,6 +334,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 0,
             to_call: 0,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         let legal = LegalActions {
             seat: 0,
@@ -362,6 +373,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 200,
             to_call: 200,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         let legal = LegalActions {
             seat: 0,
@@ -410,6 +424,9 @@ mod tests {
                     seed,
                 );
                 while hand.street == crate::holdem::Street::Preflop && !hand.complete {
+                    if hand.advance_runout() {
+                        continue;
+                    }
                     let legal = hand.legal_actions().expect("preflop action");
                     let view = hand_view(&hand, Some(legal.seat));
                     let action = kind.act(&view, &legal, seed + 10_000);
@@ -455,6 +472,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 2,
             to_call: 2,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         assert_eq!(players_behind(&view, 0), 2);
         assert_eq!(players_behind(&view, 5), 3);
@@ -520,6 +540,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 0,
             to_call: 0,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         let legal = LegalActions {
             seat: 0,
@@ -576,6 +599,9 @@ mod tests {
             }],
             last_bet: 0,
             to_call: 0,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         assert_eq!(opponent_tier(&view, 1), OpponentTier::Passive);
     }

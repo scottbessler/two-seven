@@ -15,6 +15,32 @@ fn play_random(mut hand: Hand, seed: u64) -> Hand {
         if hand.complete {
             break;
         }
+        // §V59: betting closed with the board incomplete is a real state. It
+        // prompts nobody, holds no result, and is left one street per advance.
+        if hand.awaits_runout() {
+            assert!(
+                hand.current_player.is_none(),
+                "seed {seed}: a parked runout prompts nobody"
+            );
+            assert!(
+                hand.summary.is_none(),
+                "seed {seed}: no result exists before the board is out"
+            );
+            assert!(
+                hand.board.len() < 5,
+                "seed {seed}: a complete board cannot still be parked"
+            );
+            let before = hand.board.len();
+            assert!(
+                hand.advance_runout(),
+                "seed {seed}: a parked runout advances"
+            );
+            assert!(
+                hand.board.len() > before,
+                "seed {seed}: an advance deals at least one card"
+            );
+            continue;
+        }
         let legal = hand.legal_actions().unwrap_or_else(|| {
             panic!(
                 "seed {seed}: street {:?}, current {:?}, players {:?}",

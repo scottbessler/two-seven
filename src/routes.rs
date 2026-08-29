@@ -1376,6 +1376,50 @@ pub async fn deal_bot_hand(
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
+/// Deal the next street of a parked all-in runout. Any seated human may press
+/// it; the driver's deadline fires anyway, so this only ever brings a card
+/// forward. Refused inside `RUNOUT_FLOOR_MS` of the last one so a fast clicker
+/// cannot skip the table's look at the board (§V59).
+pub async fn advance_runout(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    s.tables
+        .update(id, |table| {
+            let seated = table.seats.iter().any(
+                |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+            );
+            if !seated {
+                return Err(anyhow::anyhow!("you are not seated"));
+            }
+            if !table
+                .hand
+                .as_ref()
+                .is_some_and(crate::holdem::Hand::awaits_runout)
+            {
+                return Err(anyhow::anyhow!("no card to turn"));
+            }
+            let deadline = chrono::Duration::seconds(crate::table::RUNOUT_STEP_SECONDS);
+            let floor = chrono::Duration::milliseconds(crate::table::RUNOUT_FLOOR_MS);
+            if table
+                .next_action_at
+                .is_some_and(|at| at - deadline + floor > Utc::now())
+            {
+                return Err(anyhow::anyhow!("wait for the card"));
+            }
+            let Some(hand) = table.hand.as_mut() else {
+                return Ok(());
+            };
+            hand.advance_runout();
+            table.next_action_at = None;
+            Ok(())
+        })
+        .await
+        .map_err(|error| AppError::bad_request(error.to_string()))?;
+    Ok(Json(serde_json::json!({"ok":true})))
+}
+
 pub async fn continue_table(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
@@ -1392,18 +1436,9 @@ pub async fn continue_table(
             if table.hand.is_some() || table.last_hand.is_none() {
                 return Err(anyhow::anyhow!("no showdown to continue"));
             }
-            // The runout occupies the first stretch of the pause and cannot be
-            // cut short; only the time to read the result may be skipped.
-            let runout =
-                chrono::Duration::seconds(crate::table::runout_seconds(table.last_hand.as_ref()));
-            let pause = chrono::Duration::seconds(crate::table::result_pause_seconds(
-                table.last_hand.as_ref(),
-            ));
-            let earliest = table
-                .next_action_at
-                .map(|at| at - pause + runout)
-                .unwrap_or_else(Utc::now);
-            table.next_action_at = Some(earliest.max(Utc::now()));
+            // The board already ran out live, so the whole remaining pause is
+            // time to read the result and may be skipped (§V59).
+            table.next_action_at = Some(Utc::now());
             Ok(())
         })
         .await
