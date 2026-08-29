@@ -1855,6 +1855,30 @@ const preflopShove = () => allInRunout({
   ],
 });
 
+test("shows the bots' cards mid-hand when the server sends them", async ({ page }) => {
+  // The x-ray is an account option the server enforces; the client's job is
+  // simply to draw whatever hole cards arrive, betting still in progress.
+  await mountTable(page, {
+    ...tableState,
+    hand: {
+      ...tableState.hand,
+      seats: [
+        { index: 1, hole_cards: ["Ac", "Ad"] },
+        { index: 5, hole_cards: ["7h", "Td"] },
+      ],
+    },
+  });
+
+  const mina = page.locator(".seat", { hasText: "Mina" });
+  await expect(mina.locator(".seat-cards.revealed")).toBeVisible();
+  await expect(mina.locator(".seat-cards .playing-card")).toHaveCount(2);
+  await expect(page.locator(".seat", { hasText: "Jo" }).locator(".seat-cards.revealed")).toBeVisible();
+  // Nothing has been settled by looking: it is still somebody's turn.
+  await expect(page.locator(".seat.winner")).toHaveCount(0);
+  // A seat the server said nothing about stays face down.
+  await expect(page.locator(".seat", { hasText: "Sam" }).locator(".seat-cards.revealed")).toHaveCount(0);
+});
+
 test("runs an all-in board out one street at a time", async ({ page }) => {
   await mountTable(page, preflopShove());
   const board = page.locator(".board .playing-card");
