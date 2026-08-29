@@ -190,7 +190,7 @@ mod tests {
                         continue;
                     }
                     let legal = hand.legal_actions().expect("action");
-                    let view = hand_view(&hand, Some(legal.seat));
+                    let view = hand_view(&hand, Some(legal.seat), &[]);
                     let action = kind.act(&view, &legal, seed + turn);
                     hand.apply_action(action).unwrap_or_else(|error| {
                         panic!(
@@ -214,7 +214,7 @@ mod tests {
             7,
         );
         let legal = hand.legal_actions().unwrap();
-        let mut view = hand_view(&hand, Some(legal.seat));
+        let mut view = hand_view(&hand, Some(legal.seat), &[]);
         view.events
             .extend((0..MAX_BOT_STREET_RAISES).map(|_| HandEvent {
                 street: crate::holdem::Street::Preflop,
@@ -428,7 +428,7 @@ mod tests {
                         continue;
                     }
                     let legal = hand.legal_actions().expect("preflop action");
-                    let view = hand_view(&hand, Some(legal.seat));
+                    let view = hand_view(&hand, Some(legal.seat), &[]);
                     let action = kind.act(&view, &legal, seed + 10_000);
                     if matches!(
                         action,

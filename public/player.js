@@ -81,3 +81,35 @@ if (panel && controls) {
 
   draw();
 }
+
+// Account options are the server's business -- it is what enforces them -- so
+// each toggle posts the whole set and reports what came back.
+const options = document.querySelector(".options-panel");
+if (options) {
+  const status = options.querySelector(".option-status");
+  const boxes = {
+    unfunded_tournaments: options.querySelector("[name=unfunded-tournaments]"),
+    see_bot_cards: options.querySelector("[name=see-bot-cards]"),
+  };
+  const save = async () => {
+    const body = Object.fromEntries(Object.entries(boxes).map(([key, box]) => [key, box.checked]));
+    for (const box of Object.values(boxes)) box.disabled = true;
+    try {
+      const response = await fetch("/player/settings", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (response.ok) {
+        const saved = await response.json();
+        for (const [key, box] of Object.entries(boxes)) box.checked = Boolean(saved[key]);
+        status.textContent = "Saved.";
+      } else status.textContent = await responseError(response);
+    } catch {
+      status.textContent = "That did not save. Try again.";
+    } finally {
+      for (const box of Object.values(boxes)) box.disabled = false;
+    }
+  };
+  for (const box of Object.values(boxes)) box.addEventListener("change", save);
+}

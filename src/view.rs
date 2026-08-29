@@ -161,7 +161,7 @@ pub struct TournamentView {
     pub finished: bool,
 }
 
-pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
+pub fn hand_view(hand: &Hand, viewer: Option<usize>, x_ray: &[usize]) -> HandView {
     let your_hole_cards = viewer.and_then(|seat| {
         hand.players
             .iter()
@@ -183,6 +183,11 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
             hole_cards: viewer
                 .filter(|seat| *seat == player.seat)
                 .map(|_| player.hole_cards.clone())
+                .or_else(|| {
+                    x_ray
+                        .contains(&player.seat)
+                        .then(|| player.hole_cards.clone())
+                })
                 .or_else(|| {
                     hand.summary
                         .as_ref()
@@ -238,6 +243,15 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>) -> HandView {
     }
 }
 
+/// Whether this viewer is the only person at the table -- every other seat is
+/// a bot or empty. Watchers are not seated, so this speaks to who is playing.
+fn only_human_seated(table: &Table, viewer_id: Option<uuid::Uuid>) -> bool {
+    !table.seats.iter().any(|seat| {
+        matches!(seat.occupant, crate::table::SeatOccupant::Human { user_id }
+            if Some(user_id) != viewer_id)
+    })
+}
+
 pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
     table_view_with_banks(
         table,
@@ -246,6 +260,7 @@ pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
         None,
         &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
+        false,
     )
 }
 
@@ -256,6 +271,7 @@ pub fn table_view_with_banks(
     bank_balance: Option<Cents>,
     banks: &std::collections::HashMap<usize, Account>,
     names: &std::collections::HashMap<usize, String>,
+    see_bot_cards: bool,
 ) -> TableView {
     // Seat identity is fixed for as long as the viewer is a player in the hand
     // in progress -- runout included. It answers who was dealt in, not who is
@@ -268,6 +284,19 @@ pub fn table_view_with_banks(
         && !dealt_into_live_hand;
     let viewer = viewer.filter(|_| !viewer_eliminated);
     let tournament_result_visible = !terminal_tournament_result_pending(table);
+    // Looking at the bots' cards is a solitaire privilege: the moment anybody
+    // else takes a seat the table goes back to being opaque to everyone.
+    let x_ray: Vec<usize> = if see_bot_cards && only_human_seated(table, viewer_id) {
+        table
+            .seats
+            .iter()
+            .enumerate()
+            .filter(|(_, seat)| seat.occupant.as_bot().is_some())
+            .map(|(index, _)| index)
+            .collect()
+    } else {
+        Vec::new()
+    };
     TableView {
         id: table.id,
         name: table.name.clone(),
@@ -292,7 +321,10 @@ pub fn table_view_with_banks(
                 .iter()
                 .any(|seat| seat.pending_arrival == Some(user))
         }),
-        hand: table.hand.as_ref().map(|hand| hand_view(hand, viewer)),
+        hand: table
+            .hand
+            .as_ref()
+            .map(|hand| hand_view(hand, viewer, &x_ray)),
         last_hand: table.last_hand.clone(),
         next_hand_at: if table.hand.is_none() && table.last_hand.is_some() {
             table.next_action_at
@@ -478,6 +510,100 @@ mod tests {
             reveal_odds: Vec::new(),
         });
         table
+    }
+
+    /// A heads-up table against the house: the viewer sits, a bot sits, and
+    /// the x-ray option is what decides whether the bot's cards are visible.
+    fn solitaire_table(viewer: uuid::Uuid) -> Table {
+        let mut table = Table::new(
+            "practice".into(),
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            10_000,
+        );
+        table.seats[0].occupant = SeatOccupant::Human { user_id: viewer };
+        table.seats[0].stack = 10_000;
+        table.seats[1].occupant =
+            SeatOccupant::bot(crate::table::Bot::new(crate::table::BotKind::Fish, 1));
+        table.seats[1].stack = 10_000;
+        table.hand = Some(crate::holdem::Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            9,
+        ));
+        table
+    }
+
+    fn seat_cards(view: &TableView, seat: usize) -> Option<Vec<crate::cards::Card>> {
+        view.hand
+            .as_ref()
+            .and_then(|hand| hand.seats.iter().find(|value| value.index == seat))
+            .and_then(|value| value.hole_cards.clone())
+    }
+
+    #[test]
+    fn the_bot_x_ray_shows_bot_cards_only_with_the_option_on() {
+        let viewer = uuid::Uuid::new_v4();
+        let table = solitaire_table(viewer);
+        let banks = std::collections::HashMap::new();
+        let names = std::collections::HashMap::new();
+
+        let closed =
+            table_view_with_banks(&table, Some(0), Some(viewer), None, &banks, &names, false);
+        assert_eq!(
+            seat_cards(&closed, 1),
+            None,
+            "the option is off, so the bot keeps its cards"
+        );
+
+        let open = table_view_with_banks(&table, Some(0), Some(viewer), None, &banks, &names, true);
+        assert!(
+            seat_cards(&open, 1).is_some_and(|cards| cards.len() == 2),
+            "the option is on and nobody else is seated, so the bot is face up"
+        );
+        assert!(
+            seat_cards(&open, 0).is_some(),
+            "you still see your own hand"
+        );
+    }
+
+    #[test]
+    fn the_bot_x_ray_closes_as_soon_as_somebody_else_sits() {
+        let viewer = uuid::Uuid::new_v4();
+        let mut table = solitaire_table(viewer);
+        table.max_seats = 3;
+        table.seats.push(crate::table::Seat {
+            occupant: SeatOccupant::Human {
+                user_id: uuid::Uuid::new_v4(),
+            },
+            stack: 10_000,
+            sitting_out: false,
+            pending_departure: false,
+            pending_arrival: None,
+        });
+
+        let view = table_view_with_banks(
+            &table,
+            Some(0),
+            Some(viewer),
+            None,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+            true,
+        );
+        assert_eq!(
+            seat_cards(&view, 1),
+            None,
+            "another person at the table closes the x-ray for everyone"
+        );
     }
 
     /// §V33: the reported regression. A tournament bust-out must not take the

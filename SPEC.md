@@ -213,7 +213,8 @@ and the board) — the same redacted view a human gets (§V3).
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/` | Lobby: bank widget, open tables, tournaments, your seats |
-| GET | `/player` | Signed-in player's account and finance history |
+| GET | `/player` | Signed-in player's account, options and finance history |
+| POST | `/player/settings` | Save your own account options: `{unfunded_tournaments, see_bot_cards}` |
 | GET | `/healthcheck` | Liveness for Fly |
 | POST | `/auth/register/begin`, `/auth/register/finish` | Passkey registration |
 | POST | `/auth/login/begin`, `/auth/login/finish` | Passkey login |
@@ -238,6 +239,8 @@ HTML routes return an escaped error page (`AppError`); JSON routes return
 
 ## 10. Tournaments (single table, sit-and-go)
 
+- Creating one requires the buy-in to be a cash-ladder rung, and to be covered
+  by your balance unless the `unfunded_tournaments` account option is on.
 - Config: buy-in, seat count, starting chips, blind schedule (level = list of
   `{small_blind, big_blind, ante, hands}`), payout percentages.
 - Registering charges the buy-in from the bank (respecting `no_debt` if set) and
@@ -306,7 +309,8 @@ Mark each milestone done here as it lands.
 - **V2** `account.balance == sum(entry.delta)` and each entry's `balance_after`
   matches the running total.
 - **V3** A `TableView` never contains another seat's hole cards before showdown,
-  nor any undealt card; bots consume the same projection.
+  nor any undealt card; bots consume the same projection. Sole exception: the
+  V60 bot x-ray, which no human opponent can be present for.
 - **V4** Pot distribution pays out exactly the pot: the sum of awards equals the
   sum of contributions, for any all-in/side-pot configuration.
 - **V5** Bank accounts never go below zero; user re-up is only allowed below
@@ -507,6 +511,12 @@ Mark each milestone done here as it lands.
   card. Hole cards of every unfolded seat expose the moment betting closes.
   Pots are awarded & the hand settles only once the board is complete ∴ ⊥ result
   exists to embargo, and ⊥ seat is eliminated before the last card is face up.
+- **V60** Account options live in `User.settings` (server-held ∵ server enforces
+  them), edited only by their owner via `POST /player/settings`.
+  `unfunded_tournaments` drops the balance check on *creating* a tournament
+  only — the ladder-rung check & every buy-in charge stand. `see_bot_cards`
+  exposes bot seats' hole cards ⟺ ∄ seated human ≠ viewer; one other person
+  seated ⇒ face down again for everyone.
 
 ## §T Build tasks
 
