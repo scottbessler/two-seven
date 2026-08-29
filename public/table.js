@@ -20,14 +20,12 @@ const URGENT_TURN_MS = 3_000;
 // is still live (SPEC V59). The client renders what is on the table; it no
 // longer replays a decided result against a clock.
 function runoutState(hand) {
+  // A parked runout always has cards still to come -- the river resolves the
+  // hand rather than being held -- so somebody is genuinely ahead.
   if (hand?.awaiting_advance) {
-    // Somebody is only "ahead" while cards are still to come. Once the board is
-    // complete the hand is decided, so the label stands down and the result
-    // speaks for itself a beat later (SPEC V59).
-    const undecided = (hand.board?.length ?? 0) < 5;
-    return { leaders: undecided ? hand.runout_leaders || [] : [], odds: hand.runout_odds || [], live: true };
+    return { leaders: hand.runout_leaders || [], odds: hand.runout_odds || [], live: true };
   }
-  // A settled hand has a winner, not a leader.
+  // A settled hand has a winner, not a leader, so AHEAD stands down (SPEC V59).
   return { leaders: [], odds: [], live: false };
 }
 
@@ -411,7 +409,8 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
 
 // The next card turns itself on the server's deadline, so it counts down the
 // same way the next hand does; pressing only brings it forward (SPEC V59).
-function RunoutAdvance({ remaining, duration, label, seated, refresh }) {
+function RunoutAdvance({ remaining, duration, seated, refresh }) {
+  const label = "Next card";
   const [pending, run] = usePending();
   const seconds = Math.ceil(remaining / 1000);
   const width = `${(remaining / duration) * 100}%`;
@@ -619,7 +618,7 @@ function TableApp() {
     <section class="decision-area">${hand?.legal_actions && turnClock && html`<${TurnClock} ...${turnClock} className="decision-clock" announce=${true} />`}${tournamentComplete
       ? html`<${TournamentComplete} champion=${champion} />`
       : hand?.awaiting_advance
-      ? html`<${RunoutAdvance} remaining=${advanceRemaining} duration=${RUNOUT_STEP_MS} label=${board.length >= 5 ? "Show result" : "Next card"} seated=${state.viewer_seat != null} refresh=${refresh} />`
+      ? html`<${RunoutAdvance} remaining=${advanceRemaining} duration=${RUNOUT_STEP_MS} seated=${state.viewer_seat != null} refresh=${refresh} />`
       : showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions

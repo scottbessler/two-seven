@@ -1938,26 +1938,8 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   await expect(board).toHaveCount(4);
   await expect(result).toHaveText("");
 
-  // The river lands and is held for its own beat: the board is complete, but
-  // nothing has settled and the control now offers the result itself.
-  await mountTable(page, allInRunout({
-    board: ["Ah", "7c", "2s", "7d", "As"],
-    leaders: [1],
-    odds: [
-      { seat: 0, equity_permille: 0, outs: [] },
-      { seat: 1, equity_permille: 1_000, outs: [] },
-    ],
-  }));
-  await expect(board).toHaveCount(5);
-  await expect(result, "the result must not land on top of the river").toHaveText("");
-  await expect(page.locator(".seat.winner")).toHaveCount(0);
-  await expect(mina).toHaveText("$0");
-  await expect(page.locator(".showdown-advance button")).toContainText("Show result");
-  // The hand is decided by the cards now, so nobody is merely "ahead".
-  await expect(page.locator(".seat.leading")).toHaveCount(0);
-
-  // The river settles the hand, so the result and the pot arrive together --
-  // the first moment either of them exists.
+  // The river settles the hand: it and the result it decided are read together
+  // in the familiar post-hand pause, which is the board's moment.
   const settledSeats = structuredClone(showdownState.seats);
   settledSeats[1].stack = 62_400;
   await mountTable(page, {
@@ -1970,7 +1952,7 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   await expect(result).toContainText("Mina wins $400");
   await expect(page.locator(".seat.winner")).toHaveCount(1);
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
-  await expect(page.locator(".showdown-advance button")).toHaveCount(1);
+  await expect(page.locator(".showdown-advance button")).toContainText("OK · ");
   await expect(mina).toHaveText("$624");
   // A settled hand has a winner, not a leader: AHEAD must not sit beside it.
   await expect(page.locator(".seat.leading")).toHaveCount(0);

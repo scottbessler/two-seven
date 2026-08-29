@@ -18,10 +18,6 @@
 //! hidden afterwards, which is what keeps a showdown from being spoiled (§V59).
 
 use super::{Award, Hand, HandEvent, HandEventKind, HandSummary, Street};
-
-/// A complete board. The runout holds once it is out, so the last card is read
-/// before the pot moves.
-const BOARD_CARDS: usize = 5;
 use crate::table::Stakes;
 
 /// The transition the hand machine takes when a betting round completes.
@@ -106,14 +102,6 @@ impl Hand {
         if !self.awaits_runout() {
             return false;
         }
-        // The board is already out. This advance is the one that turns the last
-        // card into a result -- which is the whole reason the river got a beat
-        // of its own instead of being buried under the pot moving (§V59).
-        if self.board.len() >= BOARD_CARDS {
-            self.awaiting_advance = false;
-            self.showdown();
-            return true;
-        }
         let next = match self.street {
             Street::Preflop => Street::Flop,
             Street::Flop => Street::Turn,
@@ -122,14 +110,10 @@ impl Hand {
         };
         self.awaiting_advance = false;
         self.deal_street(next);
-        if self.board.len() >= BOARD_CARDS {
-            // The river is down and nobody has read it yet. Hold here on the
-            // same terms as every other street: a press or the deadline.
-            self.current_player = None;
-            self.awaiting_advance = true;
-        } else {
-            self.enter_betting_round();
-        }
+        // Dealing the river resolves the hand. The result pause that follows is
+        // the board's moment -- the river and what it decided are read together
+        // -- so the runout does not hold a finished board (§V59).
+        self.enter_betting_round();
         true
     }
 
@@ -447,24 +431,13 @@ mod tests {
             assert!(hand.awaits_runout(), "still parked before the river");
             assert!(hand.summary.is_none(), "still no result at {cards} cards");
         }
-
-        // The river lands, and gets a beat of its own before the pot moves:
-        // the result must not land on top of the card nobody has read yet.
+        // The river is the card that resolves the hand: it and the result it
+        // decided are read together, in the result pause that follows.
         assert!(hand.advance_runout());
         assert_eq!(hand.board.len(), 5);
-        assert!(hand.awaits_runout(), "the river is held to be read");
-        assert!(
-            !hand.complete,
-            "nothing settles while the card is being read"
-        );
-        assert!(hand.summary.is_none(), "and no result exists yet");
-
-        // One more advance turns the finished board into a result.
-        assert!(hand.advance_runout());
-        assert!(hand.complete, "the last advance settles the hand");
-        assert!(hand.summary.is_some());
-        assert_eq!(hand.board.len(), 5, "and deals nothing further");
-        assert!(!hand.awaits_runout());
+        assert!(hand.complete, "the river settles the hand");
+        assert!(hand.summary.is_some(), "the result arrives with the river");
+        assert!(!hand.awaits_runout(), "a finished board is never held");
         assert!(
             !hand.advance_runout(),
             "a resolved hand advances no further"
@@ -500,10 +473,7 @@ mod tests {
         hand.apply_action(Action::AllIn).unwrap();
         hand.apply_action(Action::Call).unwrap();
         let advances = std::iter::from_fn(|| hand.advance_runout().then_some(())).count();
-        assert_eq!(
-            advances, 4,
-            "flop, turn and river each take an advance, then the result does"
-        );
+        assert_eq!(advances, 3, "flop, turn and river each take an advance");
         assert!(hand.complete);
         assert_eq!(hand.board.len(), 5);
         assert_eq!(hand.street, Street::Showdown);
