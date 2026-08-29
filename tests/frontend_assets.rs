@@ -234,9 +234,9 @@ fn table_island_has_live_state_and_action_contracts() {
         "ShowdownOdds",
         "showdown-odds",
         "equity_permille",
-        "reveal_leaders",
         // The board runs out live now, so the client renders the hand's own
         // runout state instead of replaying a decided result (SPEC V59).
+        "runout_leaders",
         "runout_odds",
         "awaiting_advance",
         "showdown-advance",

@@ -1804,58 +1804,63 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
   await page.evaluate(() => localStorage.removeItem("table-card-size-percent"));
 });
 
-test("runs an all-in board out one street at a time", async ({ page }) => {
-  const allIn = {
+// The board runs out on the server now, a street per advance, so the reveal is
+// a sequence of states rather than a clock the client winds (SPEC V59).
+const runoutSeats = structuredClone(showdownState.seats);
+runoutSeats[1].stack = 22_400;
+
+function allInRunout({ board, leaders, odds, awaiting = true }) {
+  return {
     ...showdownState,
-    // Seat 1 has already been paid the $400 pot, the way a settled hand leaves it.
-    seats: showdownState.seats.map((seat) => (seat.index === 1 ? { ...seat, stack: 62_400 } : seat)),
-    // What the hand itself left them with, before the pot was pushed.
-    result_pause_seconds: 21,
-    next_hand_at: new Date(Date.now() + 21_000).toISOString(),
-    last_hand: {
-      ...showdownState.last_hand,
-      runout_from: 0,
-      reveal_odds: [
-        { seat: 0, equity_permille: 312, outs: ["Kh", "Qh", "Jh", "Th", "9h", "8h", "6h", "5h", "4h"] },
-        { seat: 1, equity_permille: 688, outs: [] },
+    hand: {
+      ...tableState.hand,
+      street: ["Preflop", "Preflop", "Preflop", "Flop", "Turn", "River"][board.length],
+      board,
+      current_player: null,
+      legal_actions: null,
+      to_call: 0,
+      last_bet: 0,
+      pot: 40_000,
+      summary: null,
+      awaiting_advance: awaiting,
+      runout_leaders: leaders,
+      runout_odds: odds,
+      // Betting is closed, so both hands are face up for the rest of the hand.
+      seats: [
+        { index: 0, hole_cards: ["Kh", "Qh"] },
+        { index: 1, hole_cards: ["Ac", "Ad"] },
       ],
-      runout: [
-        {
-          cards: 3,
-          leaders: [0],
-          odds: [
-            { seat: 0, equity_permille: 712, outs: [] },
-            { seat: 1, equity_permille: 288, outs: ["Ac", "Ad"] },
-          ],
-        },
-        {
-          cards: 4,
-          leaders: [0],
-          odds: [
-            { seat: 0, equity_permille: 844, outs: [] },
-            { seat: 1, equity_permille: 156, outs: ["Ac", "Ad"] },
-          ],
-        },
-        {
-          cards: 5,
-          leaders: [1],
-          odds: [
-            { seat: 0, equity_permille: 0, outs: [] },
-            { seat: 1, equity_permille: 1000, outs: [] },
-          ],
-        },
+      players: [
+        { seat: 0, contribution: 20_000, street_contribution: 0, folded: false, all_in: true, acted: true, stack: 0 },
+        { seat: 1, contribution: 20_000, street_contribution: 0, folded: false, all_in: true, acted: true, stack: 0 },
       ],
-      stacks_before_awards: { 0: 18_800, 1: 22_400 },
-      reveal_leaders: [1],
+      events: [{ street: "Preflop", seat: 0, kind: "AllIn", amount: 20_000 }],
     },
+    last_hand: null,
+    next_hand_at: null,
+    advance_at: new Date(Date.now() + 5_000).toISOString(),
+    seats: runoutSeats,
   };
-  await mountTable(page, allIn);
+}
+
+const preflopShove = allInRunout({
+  board: [],
+  leaders: [1],
+  odds: [
+    { seat: 0, equity_permille: 312, outs: ["Kh", "Qh", "Jh", "Th", "9h", "8h", "6h", "5h", "4h"] },
+    { seat: 1, equity_permille: 688, outs: [] },
+  ],
+});
+
+test("runs an all-in board out one street at a time", async ({ page }) => {
+  await mountTable(page, preflopShove);
   const board = page.locator(".board .playing-card");
   const result = page.locator(".showdown-result");
 
   // Betting closed before the flop, so nothing is out yet -- but the hands are
   // face up, so somebody is already ahead.
   await expect(board).toHaveCount(0);
+  await expect(page.locator(".seat-cards.revealed")).toHaveCount(2);
   await expect(page.locator(".seat.leading")).toHaveCount(1);
   await expect(page.locator(".seat.leading")).toContainText("Mina");
   await expect(page.locator(".showdown-odds")).toContainText("31.2%");
@@ -1891,38 +1896,85 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   expect(revealLayout.boardGap, `V37: center content must keep a visible viewer gap ${JSON.stringify(revealLayout)}`).toBeGreaterThanOrEqual(12);
   await expectLayout(page, "allin-reveal-table", TABLE_LAYOUT);
   await expectImage(page, "allin-reveal-table.png", { fullPage: true });
-  // Nothing may give the ending away while the board is still coming.
+  // Nothing may give the ending away while the board is still coming: there is
+  // no result to leak, because the server has not computed one (SPEC V59).
   await expect(page.locator(".seat.winner")).toHaveCount(0);
   await expect(page.locator(".game-log")).not.toContainText("wins");
-  // The reveal is not optional: there is nothing to press until it finishes.
-  await expect(page.locator(".showdown-advance button")).toHaveCount(0);
-  await expect(page.locator(".showdown-advance.spectator")).toBeVisible();
-  // Nor may a balance settle early; Mina takes $400 only once the river lands.
+  // Nor may a balance settle early. Both players are all in, so every chip is
+  // in the pot and nothing is in front of anybody; Mina takes the $400 only
+  // once the river lands.
   const mina = page.locator(".seat", { hasText: "Mina" }).locator(".seat-stack");
-  await expect(mina).toHaveText("$224");
+  await expect(mina).toHaveText("$0");
+  await expect(page.locator(".table-metrics")).toContainText("$400");
+  // A seated player may turn the next card; the server's deadline turns it
+  // anyway, so it counts down like the next hand does and a press only ever
+  // brings it forward.
+  await expect(page.locator(".showdown-advance button")).toContainText("Next card · 5s");
+  await expect(page.locator(".showdown-advance .showdown-progress")).toBeVisible();
 
-  // Each street lands five seconds apart, and the leader is called out.
-  await page.clock.install();
-  await page.clock.fastForward(5_100);
+  // Each street arrives as its own state, and the leader is called out.
+  await mountTable(page, allInRunout({
+    board: ["Ah", "7c", "2s"],
+    leaders: [0],
+    odds: [
+      { seat: 0, equity_permille: 712, outs: [] },
+      { seat: 1, equity_permille: 288, outs: ["Ac", "Ad"] },
+    ],
+  }));
   await expect(board).toHaveCount(3);
   await expect(page.locator(".seat.leading")).toHaveCount(1);
   await expect(page.locator(".seat.leading .leading-role")).toHaveText("AHEAD");
   await expect(page.locator(".seat.leading")).toHaveCSS("border-top-color", "rgb(127, 212, 168)");
   await expect(result, "the result waits for the last card").toHaveText("");
 
-  await page.clock.fastForward(5_000);
+  await mountTable(page, allInRunout({
+    board: ["Ah", "7c", "2s", "7d"],
+    leaders: [0],
+    odds: [
+      { seat: 0, equity_permille: 844, outs: [] },
+      { seat: 1, equity_permille: 156, outs: ["Ac", "Ad"] },
+    ],
+  }));
   await expect(board).toHaveCount(4);
+  await expect(result).toHaveText("");
 
-  await page.clock.fastForward(5_000);
+  // The river lands and is held for its own beat: the board is complete, but
+  // nothing has settled and the control now offers the result itself.
+  await mountTable(page, allInRunout({
+    board: ["Ah", "7c", "2s", "7d", "As"],
+    leaders: [1],
+    odds: [
+      { seat: 0, equity_permille: 0, outs: [] },
+      { seat: 1, equity_permille: 1_000, outs: [] },
+    ],
+  }));
   await expect(board).toHaveCount(5);
-  // The river changes who is ahead, and only now does the result read out.
-  await expect(page.locator(".seat.leading")).toHaveCount(1);
+  await expect(result, "the result must not land on top of the river").toHaveText("");
+  await expect(page.locator(".seat.winner")).toHaveCount(0);
+  await expect(mina).toHaveText("$0");
+  await expect(page.locator(".showdown-advance button")).toContainText("Show result");
+  // The hand is decided by the cards now, so nobody is merely "ahead".
+  await expect(page.locator(".seat.leading")).toHaveCount(0);
+
+  // The river settles the hand, so the result and the pot arrive together --
+  // the first moment either of them exists.
+  const settledSeats = structuredClone(showdownState.seats);
+  settledSeats[1].stack = 62_400;
+  await mountTable(page, {
+    ...showdownState,
+    seats: settledSeats,
+    result_pause_seconds: 6,
+    next_hand_at: new Date(Date.now() + 6_000).toISOString(),
+  });
+  await expect(board).toHaveCount(5);
   await expect(result).toContainText("Mina wins $400");
   await expect(page.locator(".seat.winner")).toHaveCount(1);
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
-  // Once the last card is down, the acknowledgement and the pot both land.
   await expect(page.locator(".showdown-advance button")).toHaveCount(1);
   await expect(mina).toHaveText("$624");
+  // A settled hand has a winner, not a leader: AHEAD must not sit beside it.
+  await expect(page.locator(".seat.leading")).toHaveCount(0);
+  await expect(page.locator(".leading-role")).toHaveCount(0);
 });
 
 test("uses the short acknowledgement window for a fold result", async ({ page }) => {
