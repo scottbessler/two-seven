@@ -129,15 +129,24 @@ pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], _balance: 
     )
 }
 
+fn classed_option(extra: &str, name: &str, value: &str, title: &str, detail: &str) -> String {
+    format!(
+        r#"<button class="setup-option{extra}" type="button" data-choice="{name}" value="{value}"><b>{title}</b><small>{detail}</small></button>"#
+    )
+}
+
 pub fn table_create(balance: Cents) -> String {
-    game_create(balance)
+    game_create(balance, false)
 }
 
-pub fn tournament_create(balance: Cents) -> String {
-    game_create(balance)
+pub fn tournament_create(balance: Cents, unfunded: bool) -> String {
+    game_create(balance, unfunded)
 }
 
-fn game_create(balance: Cents) -> String {
+/// `unfunded` is the account option that lets you set up a tournament richer
+/// than you are. The rungs above your balance are offered rather than hidden,
+/// and say what they are, so the step stays honest about what you can afford.
+fn game_create(balance: Cents, unfunded: bool) -> String {
     // One question per step; lobby.js walks the steps and assembles the config.
     let step = |name: &str, legend: &str, options: &str| {
         format!(
@@ -145,9 +154,7 @@ fn game_create(balance: Cents) -> String {
         )
     };
     let option = |name: &str, value: &str, title: &str, detail: &str| {
-        format!(
-            r#"<button class="setup-option" type="button" data-choice="{name}" value="{value}"><b>{title}</b><small>{detail}</small></button>"#
-        )
+        classed_option("", name, value, title, detail)
     };
     let players_step = step(
         "players",
@@ -166,7 +173,7 @@ fn game_create(balance: Cents) -> String {
     );
     let buy_ins = crate::cash::TIERS
         .into_iter()
-        .filter(|amount| *amount <= balance)
+        .filter(|amount| unfunded || *amount <= balance)
         .collect::<Vec<_>>();
     let buy_in_step = step(
         "buyIn",
@@ -177,12 +184,22 @@ fn game_create(balance: Cents) -> String {
             buy_ins
                 .iter()
                 .map(|amount| {
-                    option(
-                        "buyIn",
-                        &amount.to_string(),
-                        &format_cents(*amount),
-                        "10,000 chips · blinds climb every few hands",
-                    )
+                    if *amount > balance {
+                        classed_option(
+                            " setup-option-dear",
+                            "buyIn",
+                            &amount.to_string(),
+                            &format_cents(*amount),
+                            "10,000 chips · more than your balance",
+                        )
+                    } else {
+                        option(
+                            "buyIn",
+                            &amount.to_string(),
+                            &format_cents(*amount),
+                            "10,000 chips · blinds climb every few hands",
+                        )
+                    }
                 })
                 .collect::<String>()
         },
