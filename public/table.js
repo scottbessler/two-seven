@@ -578,9 +578,19 @@ function TableApp() {
   const runout = runoutState(hand);
   // Hole cards are face up for the rest of the hand the moment betting closes,
   // and stay up in the settled summary (SPEC V59).
-  const revealedBySeat = new Map(hand?.awaiting_advance
-    ? (hand.seats || []).filter((entry) => entry.hole_cards).map((entry) => [entry.index, entry.hole_cards])
-    : (showdown?.revealed_hole_cards || []));
+  // The server is the only thing that decides whose cards may be seen (SPEC
+  // V3), so any hole cards in the state are meant for this viewer: the runout,
+  // the settled summary, or the bot x-ray during ordinary betting. Once betting
+  // closes every unfolded seat is exposed, the viewer's own included (V59);
+  // before that the viewer's row keeps drawing from `your_hole_cards`, so it
+  // stays subject to paranoid mode.
+  const exposed = Boolean(hand?.awaiting_advance || showdown);
+  const revealedBySeat = new Map([
+    ...(showdown?.revealed_hole_cards || []),
+    ...(hand?.seats || [])
+      .filter((entry) => entry.hole_cards?.length && (exposed || entry.index !== state.viewer_seat))
+      .map((entry) => [entry.index, entry.hole_cards]),
+  ]);
   const board = hand?.board || showdown?.board || [];
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty" && !seat.reserved);
   // Nothing is settled until the hand has left the table, and it cannot leave
