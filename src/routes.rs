@@ -120,7 +120,8 @@ pub async fn player_page(AuthUser(user): AuthUser, State(s): State<AppState>) ->
         .get(user)
         .await
         .map_or_else(|| "Player".to_string(), |user| user.display_name);
-    Html(render_player(&s, user, &name, None).await)
+    let settings = settings_of(&s, user).await;
+    Html(render_player(&s, user, &name, None, Some(&settings)).await)
 }
 
 /// Somebody else's page, reached from a seat or the standings. Your own id
@@ -144,8 +145,20 @@ pub async fn other_player_page(
             your_balance: balance_of(&s, viewer).await,
         })
     };
+    let settings = if gift.is_none() {
+        Some(settings_of(&s, viewer).await)
+    } else {
+        None
+    };
     Ok(Html(
-        render_player(&s, id, &player.display_name, gift.as_ref()).await,
+        render_player(
+            &s,
+            id,
+            &player.display_name,
+            gift.as_ref(),
+            settings.as_ref(),
+        )
+        .await,
     ))
 }
 
@@ -154,6 +167,7 @@ async fn render_player(
     id: Uuid,
     name: &str,
     gift: Option<&render::GiftPanel>,
+    settings: Option<&crate::users::UserSettings>,
 ) -> String {
     let owner = AccountOwner::User(id);
     let account = s
@@ -163,7 +177,31 @@ async fn render_player(
         .expect("account can be created");
     let poker = s.stats.of(&owner).await;
     let blitz = s.blitz.stats(id).await;
-    render::player_page(id, name, &account, poker, &blitz, gift)
+    render::player_page(id, name, &account, poker, &blitz, gift, settings)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SettingsRequest {
+    pub unfunded_tournaments: bool,
+    pub see_bot_cards: bool,
+}
+
+/// Saves your own account options. Nobody edits anybody else's.
+pub async fn save_settings(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(input): Json<SettingsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let settings = crate::users::UserSettings {
+        unfunded_tournaments: input.unfunded_tournaments,
+        see_bot_cards: input.see_bot_cards,
+    };
+    s.users.set_settings(user, settings.clone()).await?;
+    Ok(Json(serde_json::json!({
+        "unfunded_tournaments": settings.unfunded_tournaments,
+        "see_bot_cards": settings.see_bot_cards,
+    })))
 }
 
 #[derive(Deserialize)]
@@ -265,7 +303,15 @@ pub async fn create_tournament(
             "invalid tournament configuration or payouts",
         ));
     }
-    if !crate::cash::TIERS.contains(&input.buy_in) || input.buy_in > balance_of(&s, user).await {
+    if !crate::cash::TIERS.contains(&input.buy_in) {
+        return Err(AppError::bad_request("tournament buy-in is not available"));
+    }
+    // Running a tournament is not the same as playing in it. With the option
+    // on you may set up a buy-in you cannot cover -- registering for it still
+    // costs the same money it always did.
+    if !settings_of(&s, user).await.unfunded_tournaments
+        && input.buy_in > balance_of(&s, user).await
+    {
         return Err(AppError::bad_request("tournament buy-in is not available"));
     }
     let level = input.levels[0].clone();
@@ -667,6 +713,24 @@ async fn balance_of(state: &AppState, user: Uuid) -> crate::money::Cents {
         .map_or(0, |account| account.balance)
 }
 
+/// Account options, defaulted for an account that has none stored yet.
+async fn settings_of(state: &AppState, user: Uuid) -> crate::users::UserSettings {
+    state
+        .users
+        .get(user)
+        .await
+        .map(|user| user.settings)
+        .unwrap_or_default()
+}
+
+/// The same question for a viewer who may not be signed in at all.
+async fn wants_bot_cards(state: &AppState, user: Option<Uuid>) -> bool {
+    match user {
+        Some(id) => settings_of(state, id).await.see_bot_cards,
+        None => false,
+    }
+}
+
 async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
     let mut tables = Vec::new();
     let balance = balance_of(state, user).await;
@@ -733,6 +797,7 @@ pub async fn table_page(
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
     let bank_balance = Some(balance_of(&s, user).await);
+    let see_bot_cards = settings_of(&s, user).await.see_bot_cards;
     let table = table.lock().await;
     let viewer = table.human_seat(user);
     let banks = seat_banks(&s, &table).await;
@@ -744,6 +809,7 @@ pub async fn table_page(
         bank_balance,
         &banks,
         &names,
+        see_bot_cards,
     ))))
 }
 
@@ -959,6 +1025,7 @@ pub async fn table_state(
         Some(uid) => Some(balance_of(&s, uid).await),
         None => None,
     };
+    let see_bot_cards = wants_bot_cards(&s, user).await;
     let table = table.lock().await;
     let viewer = user.and_then(|uid| table.human_seat(uid));
     let banks = seat_banks(&s, &table).await;
@@ -970,6 +1037,7 @@ pub async fn table_state(
         bank_balance,
         &banks,
         &names,
+        see_bot_cards,
     )))
 }
 
@@ -987,6 +1055,7 @@ pub async fn table_events(
         Some(uid) => Some(balance_of(&s, uid).await),
         None => None,
     };
+    let see_bot_cards = wants_bot_cards(&s, user).await;
     let snapshot = {
         let table = table.lock().await;
         let viewer = user.and_then(|uid| table.human_seat(uid));
@@ -999,6 +1068,7 @@ pub async fn table_events(
             bank_balance,
             &banks,
             &names,
+            see_bot_cards,
         ))
         .map_err(AppError::internal)?
     };
@@ -1034,6 +1104,7 @@ pub async fn table_events(
                                 bank_balance,
                                 &banks,
                                 &names,
+                                see_bot_cards,
                             ))
                             .unwrap_or_else(|_| "{}".into());
                             return Some((

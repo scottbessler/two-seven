@@ -19,8 +19,20 @@ pub struct User {
     pub settings: UserSettings,
     pub created_at: DateTime<Utc>,
 }
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct UserSettings {}
+/// Account-level options. They live on the server rather than in the browser
+/// because the server is what enforces them: one relaxes a check on table
+/// creation, the other decides what the table view is allowed to show.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserSettings {
+    /// Let this player run a tournament whose buy-in is more than they hold.
+    /// They still have to afford the seat to register for it.
+    #[serde(default)]
+    pub unfunded_tournaments: bool,
+    /// Show the bots' hole cards, but only while nobody else is seated: it is
+    /// a practice aid, never something another player can be robbed by.
+    #[serde(default)]
+    pub see_bot_cards: bool,
+}
 pub fn normalize_username(x: &str) -> String {
     x.trim().to_lowercase()
 }
@@ -91,6 +103,21 @@ impl UserStore {
         g.by_id.insert(u.id, u);
         Ok(())
     }
+    /// Replaces one account's options. The stored user is the record of
+    /// truth, so the write lands on disk before the index changes.
+    pub async fn set_settings(&self, id: Uuid, settings: UserSettings) -> Result<(), AppError> {
+        let mut g = self.index.lock().await;
+        let mut updated = g
+            .by_id
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("no such player"))?;
+        updated.settings = settings;
+        self.persist(&updated).await?;
+        g.by_id.insert(id, updated);
+        Ok(())
+    }
+
     async fn persist(&self, u: &User) -> Result<(), AppError> {
         let p = self.dir.join(format!("{}.json", u.id));
         let n = SystemTime::now()

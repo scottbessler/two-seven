@@ -302,6 +302,7 @@ pub fn player_page(
     poker: crate::stats::PlayerStats,
     blitz: &crate::blitz::BlitzStats,
     gift: Option<&GiftPanel>,
+    settings: Option<&crate::users::UserSettings>,
 ) -> String {
     let entries = account
         .entries
@@ -339,7 +340,7 @@ pub fn player_page(
         ),
     };
     let body = format!(
-        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
         id,
         escape(name),
         blurb,
@@ -351,18 +352,28 @@ pub fn player_page(
         format_cents(poker.net),
         blitz.accuracy_percent(),
         gift.map_or_else(String::new, gift_panel),
+        settings.map_or_else(String::new, options_panel),
         finance_chart(account),
         ledger
     );
     layout(
         &format!("{name} player"),
         &body,
-        &gift.map_or_else(String::new, |_| {
-            format!(
-                r#"<script type="module" src="{}" defer></script>"#,
-                asset("/public/player.js")
-            )
-        }),
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/player.js")
+        ),
+    )
+}
+
+/// The options that only the server can honour: one lifts a check on what you
+/// may create, the other decides what the table is allowed to show you.
+fn options_panel(settings: &crate::users::UserSettings) -> String {
+    let checked = |on: bool| if on { " checked" } else { "" };
+    format!(
+        r#"<section class="finance-panel options-panel"><h2>Options</h2><label class="option-toggle"><input type="checkbox" name="unfunded-tournaments"{}><span><b>Create tournaments you cannot buy into</b><small>Set up a tournament above your balance. Registering for one still costs the buy-in.</small></span></label><label class="option-toggle"><input type="checkbox" name="see-bot-cards"{}><span><b>See the bots&#39; cards</b><small>Only while every other seat is a bot or empty. Any other player at the table turns it back off.</small></span></label><p class="option-status" role="status"></p></section>"#,
+        checked(settings.unfunded_tournaments),
+        checked(settings.see_bot_cards),
     )
 }
 

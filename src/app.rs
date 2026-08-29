@@ -49,6 +49,10 @@ pub fn router(s: AppState) -> Router {
         .route("/player", get(routes::player_page))
         .route("/player/{id}", get(routes::other_player_page))
         .route(
+            "/player/settings",
+            axum::routing::post(routes::save_settings),
+        )
+        .route(
             "/player/{id}/gift",
             axum::routing::post(routes::gift_player),
         )

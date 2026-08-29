@@ -467,7 +467,7 @@ fn main() {
         while !hand.complete {
             let legal = hand.legal_actions().expect("a player should be to act");
             let seat = legal.seat;
-            let view = hand_view(&hand, Some(seat));
+            let view = hand_view(&hand, Some(seat), &[]);
             let action = lineup[seat].act(&view, &legal, seed ^ (turn << 8) ^ seat as u64);
             if hand.street == Street::Preflop {
                 match action {

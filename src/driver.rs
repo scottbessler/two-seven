@@ -108,7 +108,7 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                         return Ok(());
                     }
                     let kind = bot.kind;
-                    let view = hand_view(hand, Some(seat));
+                    let view = hand_view(hand, Some(seat), &[]);
                     let legal = view
                         .legal_actions
                         .clone()

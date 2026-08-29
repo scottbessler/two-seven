@@ -37,3 +37,19 @@ test("hands another player money in $1,000 chips", async ({ page }) => {
   await expect(page.locator(".ledger-panel")).toContainText("gift from Giver");
   await expect(send).toBeDisabled();
 });
+
+test("account options save to the account and come back on reload", async ({ page }) => {
+  await signIn(page, "Optioneer");
+  await page.goto("/player");
+  const options = page.locator(".options-panel");
+  const botCards = options.locator("[name=see-bot-cards]");
+  await expect(botCards).not.toBeChecked();
+
+  await botCards.check();
+  await expect(options.locator(".option-status")).toHaveText("Saved.");
+
+  // The server is what enforces these, so the reload is the real test.
+  await page.reload();
+  await expect(page.locator("[name=see-bot-cards]")).toBeChecked();
+  await expect(page.locator("[name=unfunded-tournaments]")).not.toBeChecked();
+});

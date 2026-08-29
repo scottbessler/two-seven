@@ -1540,6 +1540,79 @@ async fn tournament_create_requires_affordable_cash_ladder_buy_in() {
     assert_eq!(create(100_000).await.unwrap().status(), StatusCode::OK);
 }
 
+/// The option only lifts the balance gate on *creating* a tournament; a
+/// buy-in still has to be a rung of the cash ladder.
+#[tokio::test]
+async fn the_unfunded_option_lets_you_create_a_tournament_you_cannot_afford() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "dreamer".into(),
+            display_name: "Dreamer".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let create = |buy_in| {
+        t.router.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tournaments")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(
+                    r#"{{"name":"Dream","buy_in":{buy_in},"seat_count":4,"starting_chips":1000000,"levels":[{{"small_blind":10000,"big_blind":20000,"ante":0,"hands":8}}],"payout_percentages":[100]}}"#
+                )))
+                .unwrap(),
+        )
+    };
+    assert_eq!(
+        create(200_000).await.unwrap().status(),
+        StatusCode::BAD_REQUEST,
+        "without the option a buy-in over your balance is refused"
+    );
+
+    let saved = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/player/settings")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    r#"{"unfunded_tournaments":true,"see_bot_cards":false}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(saved.status(), StatusCode::OK);
+    assert!(
+        t.users
+            .get(user)
+            .await
+            .unwrap()
+            .settings
+            .unfunded_tournaments,
+        "the option is stored on the account, not the browser"
+    );
+
+    assert_eq!(create(200_000).await.unwrap().status(), StatusCode::OK);
+    assert_eq!(
+        create(50_000).await.unwrap().status(),
+        StatusCode::BAD_REQUEST,
+        "the buy-in still has to be a rung of the cash ladder"
+    );
+}
+
 #[tokio::test]
 async fn game_entries_enforce_a_one_dollar_floor_and_a_million_dollar_ceiling() {
     let t = appx().await;
