@@ -117,6 +117,10 @@ pub fn router(s: AppState) -> Router {
             axum::routing::post(routes::continue_table),
         )
         .route(
+            "/tables/{id}/advance",
+            axum::routing::post(routes::advance_runout),
+        )
+        .route(
             "/tables/{id}/rebuy",
             axum::routing::post(routes::rebuy_table),
         )

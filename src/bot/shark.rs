@@ -1212,6 +1212,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 0,
             to_call: 0,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         }
     }
 

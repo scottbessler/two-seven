@@ -393,8 +393,11 @@ Mark each milestone done here as it lands.
   blackjack controls and the header balance update without page refresh.
 - **V32** Bots never fold when `Check` is legal; free continuation is chosen over
   surrender for every app bot policy.
-- **V33** Terminal tournament winner state is not exposed to the live table view
-  until the final hand reveal/runout pause has finished.
+- **V33** No field of the live table view exposes a hand's outcome before that
+  outcome exists on the board. While a hand is live — runout included — seat
+  identity is fixed: `viewer_seat` and `viewer_eliminated` answer who was dealt
+  in, not who currently holds chips. Terminal tournament winner state stays
+  embargoed until the settled result pause has finished.
 - **V34** Table preferences persist opt-in 1-second holds for Fold and All In;
   when enabled, Fold and any action committing actor's remaining stack submit
   only after uninterrupted button hold, without changing submitted action kind.
@@ -495,6 +498,15 @@ Mark each milestone done here as it lands.
   already dealt, and takes the seat only after settlement — with exactly the
   table buy-in, while the house player leaves with its settled chips. Backing
   out before the swap returns the buy-in.
+- **V59** Betting closed with ≥2 live players & board incomplete is a real
+  persisted hand state, ⊥ a client animation: `table.hand` stays `Some` and the
+  board grows one street per explicit advance. ∀ street dealt during runout, one
+  `Advance` deals exactly one street — a seated human's press, or the
+  always-armed `RUNOUT_STEP_SECONDS` deadline, whichever lands first; a press
+  before `RUNOUT_FLOOR_MS` is refused so no one can skip the table's look at the
+  card. Hole cards of every unfolded seat expose the moment betting closes.
+  Pots are awarded & the hand settles only once the board is complete ∴ ⊥ result
+  exists to embargo, and ⊥ seat is eliminated before the last card is face up.
 
 ## §T Build tasks
 
@@ -544,6 +556,7 @@ T36|x|close betting when no opponent can answer a raise|V47,V51
 T37|x|add a custom wager slider beside All In|V47,V56
 T38|x|reserve a mid-hand cash seat instead of taking a live one|V1,V12,V57
 T39|x|link player names to their page and let people gift $1,000 chips|V1,V2,V58
+T40|x|run the all-in board out as advanced state, not a faked reveal|V33,V59
 
 ## §B Bug log
 
@@ -685,3 +698,4 @@ B11|2026-08-24|a full-raise shove left must_call clear, so a caller facing an al
 B12|2026-08-25|standalone iOS exposed transparent root canvas + zero bottom inset, blackening status area and clipping lifecycle controls|V54
 B13|2026-08-27|joining a cash table mid-hand swapped the newcomer into a house player's live seat, so they played a hand they never paid into and settlement wrote that seat's hand-final stack over their buy-in, destroying the difference and paying the displaced bot its stale pre-hand stack|V1,V57
 B14|2026-08-28|blackjack sized every card at a fixed 29cqw share of its hand, so a fourth card pushed the row past the hand's width and a long mobile hand ran off screen; the play area also gave its two explicit rows all the height, collapsing split hands three and beyond to nothing|V42
+B15|2026-08-28|all-in runout resolved synchronously at hand end (`enter_betting_round` → `advance_street` recursion), so the whole result existed before the reveal & each spoiler-carrying field needed its own embargo; `viewer_seat`/`viewer_eliminated` had none, so a busted tournament player lost their seat mid-reveal & jumped to the opponent row before the board was out|V33,V59

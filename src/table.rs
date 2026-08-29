@@ -165,10 +165,9 @@ impl FromStr for BotKind {
 #[cfg(test)]
 mod bot_kind_tests {
     use super::{
-        BlindLevel, Bot, BotKind, FOLD_RESULT_PAUSE_SECONDS, RUNOUT_STEP_SECONDS,
-        SHOWDOWN_PAUSE_SECONDS, SeatOccupant, Stakes, TURN_SECONDS, Table, TableMode,
-        TournamentConfig, TournamentState, maybe_start_hand, next_button, result_pause_seconds,
-        run_turn_clock, turn_clock_due,
+        BlindLevel, Bot, BotKind, FOLD_RESULT_PAUSE_SECONDS, SHOWDOWN_PAUSE_SECONDS, SeatOccupant,
+        Stakes, TURN_SECONDS, Table, TableMode, TournamentConfig, TournamentState,
+        maybe_start_hand, next_button, result_pause_seconds, run_turn_clock, turn_clock_due,
     };
     use crate::holdem::{Action, HandSummary};
     use chrono::{Duration, Utc};
@@ -215,6 +214,35 @@ mod bot_kind_tests {
             None
         );
         assert!(table.hand.as_ref().is_some_and(|hand| !hand.complete));
+    }
+
+    /// §V59 meets the turn clock: a parked runout prompts nobody, so there is
+    /// no decision to time. The clock must stand down rather than fold a hand
+    /// whose players have already put everything in.
+    #[test]
+    fn v59_the_turn_clock_stands_down_during_a_runout() {
+        let mut table = dealt_table([a_person(), a_person()]);
+        let now = Utc::now();
+        {
+            let hand = table.hand.as_mut().expect("a hand is dealt");
+            hand.apply_action(Action::AllIn).unwrap();
+            hand.apply_action(Action::Call).unwrap();
+            assert!(hand.awaits_runout(), "both all in: the board must run out");
+        }
+
+        // Long past any deadline, nothing is played for anyone.
+        let due = now + Duration::seconds(TURN_SECONDS * 10);
+        assert!(
+            !turn_clock_due(&table, due),
+            "no decision is pending, so the clock is not due"
+        );
+        assert_eq!(run_turn_clock(&mut table, due), None, "nothing to spend");
+        assert_eq!(table.turn_clock, None);
+
+        let hand = table.hand.as_ref().expect("the hand is still on the table");
+        assert!(hand.awaits_runout(), "still waiting on its next card");
+        assert!(!hand.complete, "the clock did not resolve it");
+        assert!(hand.summary.is_none(), "and produced no result");
     }
 
     #[test]
@@ -411,10 +439,11 @@ mod bot_kind_tests {
             result_pause_seconds(Some(&summary(showdown.clone(), Vec::new()))),
             SHOWDOWN_PAUSE_SECONDS
         );
-        // Every runout street buys the table time to watch it land.
+        // The runout already happened live, a street per advance, so it buys
+        // no extra time here: what is left is time to read the result (§V59).
         assert_eq!(
             result_pause_seconds(Some(&summary(showdown, vec![3, 4, 5]))),
-            SHOWDOWN_PAUSE_SECONDS + 3 * RUNOUT_STEP_SECONDS
+            SHOWDOWN_PAUSE_SECONDS
         );
     }
 
@@ -729,24 +758,18 @@ pub const SHOWDOWN_PAUSE_SECONDS: i64 = 6;
 pub const FOLD_RESULT_PAUSE_SECONDS: i64 = 3;
 /// An all-in board runs out one street at a time so the table can watch it.
 pub const RUNOUT_STEP_SECONDS: i64 = 5;
+/// A press may beat the runout deadline, but not instantly: every street gets
+/// at least this long face up, so nobody can rob the table of the card (§V59).
+pub const RUNOUT_FLOOR_MS: i64 = 1_200;
 
-/// How long the board takes to run out after a hand ends. Nobody may skip it:
-/// the point of the reveal is that the table watches the cards land.
-pub fn runout_seconds(summary: Option<&HandSummary>) -> i64 {
-    summary.map_or(0, |summary| {
-        summary.runout.len() as i64 * RUNOUT_STEP_SECONDS
-    })
-}
-
+/// How long the settled result sits before the next hand. The board itself is
+/// no longer run out here: it ran out live, one advance per street, while the
+/// hand was still on the table (§V59). What is left is time to read the
+/// result, which a seated player may skip.
 pub fn result_pause_seconds(summary: Option<&HandSummary>) -> i64 {
-    let Some(summary) = summary else {
-        return FOLD_RESULT_PAUSE_SECONDS;
-    };
-    let runout = summary.runout.len() as i64 * RUNOUT_STEP_SECONDS;
-    if summary.revealed_hole_cards.len() > 1 {
-        SHOWDOWN_PAUSE_SECONDS + runout
-    } else {
-        FOLD_RESULT_PAUSE_SECONDS + runout
+    match summary {
+        Some(summary) if summary.revealed_hole_cards.len() > 1 => SHOWDOWN_PAUSE_SECONDS,
+        _ => FOLD_RESULT_PAUSE_SECONDS,
     }
 }
 

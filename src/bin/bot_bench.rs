@@ -645,6 +645,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 200,
             to_call: 200,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         let legal = LegalActions {
             seat: 0,
@@ -762,6 +765,9 @@ mod tests {
                 events: Vec::new(),
                 last_bet: 0,
                 to_call: 0,
+                awaiting_advance: false,
+                runout_leaders: Vec::new(),
+                runout_odds: Vec::new(),
             }
         };
         let legal = LegalActions {
@@ -799,6 +805,9 @@ mod tests {
             events: Vec::new(),
             last_bet: 0,
             to_call: 0,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
         };
         let free_only = LegalActions {
             seat: 0,

@@ -549,7 +549,12 @@ mod tests {
         assert_eq!(hand.street, Street::Flop);
         hand.apply_action(Action::AllIn).unwrap();
         hand.apply_action(Action::Call).unwrap();
-        assert!(hand.complete, "all-in showdown runs out the board");
+        // Nobody owes an action, so the hand parks on its runout rather than
+        // prompting anyone; the board is dealt a street at a time (§V59).
+        assert!(hand.awaits_runout(), "all-in showdown parks for its runout");
+        assert!(hand.current_player.is_none());
+        while hand.advance_runout() {}
+        assert!(hand.complete, "the runout resolves the hand");
         assert_eq!(hand.board.len(), 5);
     }
 
@@ -562,9 +567,12 @@ mod tests {
         hand.apply_action(Action::AllIn).unwrap();
         hand.apply_action(Action::Call).unwrap();
         assert!(
-            hand.complete,
+            hand.awaits_runout(),
             "board should run out with no one left to act"
         );
+        assert!(hand.current_player.is_none(), "seat 2 is never prompted");
+        while hand.advance_runout() {}
+        assert!(hand.complete);
         assert_eq!(hand.board.len(), 5);
     }
 

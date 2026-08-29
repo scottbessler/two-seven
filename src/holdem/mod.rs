@@ -207,6 +207,11 @@ pub struct Hand {
     /// Board length at the moment betting closed for good, once it has.
     #[serde(default)]
     pub runout_from: Option<usize>,
+    /// Betting is closed with the board incomplete: the hand is parked here
+    /// until something advances it, so the table watches each street land
+    /// instead of being handed a result to replay (§V59).
+    #[serde(default)]
+    pub awaiting_advance: bool,
 }
 
 impl Hand {
@@ -277,6 +282,7 @@ impl Hand {
             summary: None,
             events: Vec::new(),
             runout_from: None,
+            awaiting_advance: false,
         };
         if ante > 0 {
             let seats = hand
@@ -565,6 +571,44 @@ impl Hand {
         self.complete = true;
         self.current_player = None;
         self.pot = 0;
+    }
+
+    /// Parked mid-runout: betting is done, the board is not.
+    pub fn awaits_runout(&self) -> bool {
+        self.awaiting_advance && !self.complete
+    }
+
+    /// Who is ahead on the board as it stands. Live equivalent of a summary's
+    /// `reveal_leaders`, for a hand that has not been resolved yet.
+    pub fn leaders_now(&self) -> Vec<usize> {
+        if self.runout_from.is_none() {
+            return Vec::new();
+        }
+        // Before a flop there is no five-card hand to rank, so a short board
+        // falls back to hole-card strength -- the same reading a summary's
+        // `reveal_leaders` gives at the moment the cards are turned over.
+        self.leaders_at_reveal(self.board.len())
+    }
+
+    /// Equity on the board as it stands, for the same reason.
+    pub fn odds_now(&self) -> Vec<ShowdownOdds> {
+        if self.runout_from.is_none() {
+            return Vec::new();
+        }
+        self.odds_at(&self.board)
+    }
+
+    /// Hole cards are face up for the rest of the hand once betting is closed:
+    /// that is what makes it a showdown rather than a result.
+    pub fn exposed_hole_cards(&self) -> Vec<(usize, Vec<Card>)> {
+        if self.runout_from.is_none() {
+            return Vec::new();
+        }
+        self.players
+            .iter()
+            .filter(|player| !player.folded)
+            .map(|player| (player.seat, player.hole_cards.clone()))
+            .collect()
     }
 
     /// Who leads at each street of an all-in runout. Only whole streets count:

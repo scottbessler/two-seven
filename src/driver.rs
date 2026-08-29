@@ -61,6 +61,31 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                         }
                         return Ok(());
                     }
+                    // A parked runout has its own clock, always armed so a
+                    // table nobody is watching still finishes the board. A
+                    // press only ever beats this deadline to it (§V59).
+                    if table
+                        .hand
+                        .as_ref()
+                        .is_some_and(crate::holdem::Hand::awaits_runout)
+                    {
+                        if table.next_action_at.is_none() {
+                            table.next_action_at =
+                                Some(now + Duration::seconds(crate::table::RUNOUT_STEP_SECONDS));
+                            return Ok(());
+                        }
+                        if table.next_action_at.is_some_and(|at| at > now) {
+                            return Ok(());
+                        }
+                        if let Some(hand) = table.hand.as_mut() {
+                            hand.advance_runout();
+                        }
+                        table.next_action_at = None;
+                        if table.hand.as_ref().is_some_and(|hand| hand.complete) {
+                            recorded.extend(settle_finished_hand(table));
+                        }
+                        return Ok(());
+                    }
                     let Some(seat) = table.hand.as_ref().and_then(|hand| hand.current_player)
                     else {
                         return Ok(());
@@ -154,6 +179,10 @@ fn driver_update_due(table: &Table, now: DateTime<Utc>) -> bool {
     // to their ten seconds.
     if turn_clock_due(table, now) {
         return true;
+    }
+    // A parked runout is due on its own deadline, bot to act or not.
+    if hand.awaits_runout() {
+        return table.next_action_at.is_none_or(|at| at <= now);
     }
     let Some(seat) = hand.current_player else {
         return false;
