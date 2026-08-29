@@ -27,32 +27,24 @@ fn play_random(mut hand: Hand, seed: u64) -> Hand {
                 "seed {seed}: no result exists before the board is out"
             );
             assert!(
-                hand.board.len() <= 5,
-                "seed {seed}: a runout never deals past a full board"
+                hand.board.len() < 5,
+                "seed {seed}: a finished board is never held"
             );
             let before = hand.board.len();
-            let complete_board = before == 5;
             assert!(
                 hand.advance_runout(),
                 "seed {seed}: a parked runout advances"
             );
-            if complete_board {
-                // The river had its beat; this advance is the result itself.
-                assert_eq!(
-                    hand.board.len(),
-                    before,
-                    "seed {seed}: resolving deals no further cards"
-                );
-                assert!(
-                    hand.complete && hand.summary.is_some(),
-                    "seed {seed}: the advance after a full board resolves it"
-                );
-            } else {
-                assert!(
-                    hand.board.len() > before,
-                    "seed {seed}: an advance deals at least one card"
-                );
-            }
+            assert!(
+                hand.board.len() > before,
+                "seed {seed}: an advance deals at least one card"
+            );
+            // The river is the card that resolves the hand.
+            assert_eq!(
+                hand.board.len() == 5,
+                hand.summary.is_some(),
+                "seed {seed}: a result exists exactly once the board is out"
+            );
             continue;
         }
         let legal = hand.legal_actions().unwrap_or_else(|| {
