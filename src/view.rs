@@ -80,6 +80,10 @@ pub struct TableView {
     /// always armed, so the table can see it coming and a press only brings it
     /// forward (§V59).
     pub advance_at: Option<DateTime<Utc>>,
+    /// How long a card must sit face up before a press can bring the next one
+    /// forward. The floor exists so nobody can rob someone else of the look;
+    /// a lone human has no one else at the table to hold it open for (§V59).
+    pub runout_floor_ms: i64,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub next_hand_at: Option<DateTime<Utc>>,
@@ -243,13 +247,14 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>, x_ray: &[usize]) -> HandVie
     }
 }
 
-/// Whether this viewer is the only person at the table -- every other seat is
-/// a bot or empty. Watchers are not seated, so this speaks to who is playing.
-fn only_human_seated(table: &Table, viewer_id: Option<uuid::Uuid>) -> bool {
-    !table.seats.iter().any(|seat| {
-        matches!(seat.occupant, crate::table::SeatOccupant::Human { user_id }
-            if Some(user_id) != viewer_id)
-    })
+/// Whether every seat is a bot or empty -- nobody, including the viewer, is
+/// playing. A human in any seat, even the viewer's own, is a human at the
+/// table.
+fn no_humans_seated(table: &Table) -> bool {
+    !table
+        .seats
+        .iter()
+        .any(|seat| matches!(seat.occupant, crate::table::SeatOccupant::Human { .. }))
 }
 
 pub fn table_view(table: &Table, viewer: Option<usize>) -> TableView {
@@ -284,9 +289,10 @@ pub fn table_view_with_banks(
         && !dealt_into_live_hand;
     let viewer = viewer.filter(|_| !viewer_eliminated);
     let tournament_result_visible = !terminal_tournament_result_pending(table);
-    // Looking at the bots' cards is a solitaire privilege: the moment anybody
-    // else takes a seat the table goes back to being opaque to everyone.
-    let x_ray: Vec<usize> = if see_bot_cards && only_human_seated(table, viewer_id) {
+    // Looking at the bots' cards is a spectator privilege: the moment anybody
+    // -- including the viewer -- takes a seat, the table goes back to being
+    // opaque to everyone.
+    let x_ray: Vec<usize> = if see_bot_cards && no_humans_seated(table) {
         table
             .seats
             .iter()
@@ -337,6 +343,11 @@ pub fn table_view_with_banks(
             .is_some_and(crate::holdem::Hand::awaits_runout)
             .then_some(table.next_action_at)
             .flatten(),
+        runout_floor_ms: if table.runs_a_turn_clock() {
+            crate::table::RUNOUT_FLOOR_MS
+        } else {
+            0
+        },
         // The client paces the runout against this, so it must not guess it.
         result_pause_seconds: crate::table::result_pause_seconds(table.last_hand.as_ref()),
         turn_deadline: table
@@ -512,9 +523,9 @@ mod tests {
         table
     }
 
-    /// A heads-up table against the house: the viewer sits, a bot sits, and
-    /// the x-ray option is what decides whether the bot's cards are visible.
-    fn solitaire_table(viewer: uuid::Uuid) -> Table {
+    /// A table of nothing but bots: the x-ray option is what decides whether a
+    /// watching spectator sees their cards.
+    fn all_bot_table() -> Table {
         let mut table = Table::new(
             "practice".into(),
             Stakes::NoLimit {
@@ -525,7 +536,8 @@ mod tests {
             2,
             10_000,
         );
-        table.seats[0].occupant = SeatOccupant::Human { user_id: viewer };
+        table.seats[0].occupant =
+            SeatOccupant::bot(crate::table::Bot::new(crate::table::BotKind::Fish, 0));
         table.seats[0].stack = 10_000;
         table.seats[1].occupant =
             SeatOccupant::bot(crate::table::Bot::new(crate::table::BotKind::Fish, 1));
@@ -551,44 +563,55 @@ mod tests {
 
     #[test]
     fn the_bot_x_ray_shows_bot_cards_only_with_the_option_on() {
-        let viewer = uuid::Uuid::new_v4();
-        let table = solitaire_table(viewer);
+        let table = all_bot_table();
+        let watcher = uuid::Uuid::new_v4();
         let banks = std::collections::HashMap::new();
         let names = std::collections::HashMap::new();
 
         let closed =
-            table_view_with_banks(&table, Some(0), Some(viewer), None, &banks, &names, false);
+            table_view_with_banks(&table, None, Some(watcher), None, &banks, &names, false);
         assert_eq!(
-            seat_cards(&closed, 1),
+            seat_cards(&closed, 0),
             None,
-            "the option is off, so the bot keeps its cards"
+            "the option is off, so the bots keep their cards"
         );
 
-        let open = table_view_with_banks(&table, Some(0), Some(viewer), None, &banks, &names, true);
+        let open = table_view_with_banks(&table, None, Some(watcher), None, &banks, &names, true);
         assert!(
-            seat_cards(&open, 1).is_some_and(|cards| cards.len() == 2),
-            "the option is on and nobody else is seated, so the bot is face up"
-        );
-        assert!(
-            seat_cards(&open, 0).is_some(),
-            "you still see your own hand"
+            seat_cards(&open, 0).is_some_and(|cards| cards.len() == 2)
+                && seat_cards(&open, 1).is_some_and(|cards| cards.len() == 2),
+            "the option is on and nobody is seated, so every bot is face up"
         );
     }
 
     #[test]
-    fn the_bot_x_ray_closes_as_soon_as_somebody_else_sits() {
+    fn the_bot_x_ray_closes_as_soon_as_anybody_sits() {
+        let mut table = all_bot_table();
+        table.seats[0].occupant = SeatOccupant::Human {
+            user_id: uuid::Uuid::new_v4(),
+        };
+
+        let view = table_view_with_banks(
+            &table,
+            None,
+            Some(uuid::Uuid::new_v4()),
+            None,
+            &std::collections::HashMap::new(),
+            &std::collections::HashMap::new(),
+            true,
+        );
+        assert_eq!(
+            seat_cards(&view, 1),
+            None,
+            "a human at the table closes the x-ray for everyone watching"
+        );
+    }
+
+    #[test]
+    fn the_bot_x_ray_does_not_apply_to_a_seated_human_playing_alone() {
         let viewer = uuid::Uuid::new_v4();
-        let mut table = solitaire_table(viewer);
-        table.max_seats = 3;
-        table.seats.push(crate::table::Seat {
-            occupant: SeatOccupant::Human {
-                user_id: uuid::Uuid::new_v4(),
-            },
-            stack: 10_000,
-            sitting_out: false,
-            pending_departure: false,
-            pending_arrival: None,
-        });
+        let mut table = all_bot_table();
+        table.seats[0].occupant = SeatOccupant::Human { user_id: viewer };
 
         let view = table_view_with_banks(
             &table,
@@ -602,7 +625,7 @@ mod tests {
         assert_eq!(
             seat_cards(&view, 1),
             None,
-            "another person at the table closes the x-ray for everyone"
+            "x-ray is a spectator privilege -- playing alone against bots is still a human at the table"
         );
     }
 

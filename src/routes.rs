@@ -1479,9 +1479,14 @@ pub async fn advance_runout(
             // already holds the button until the card has had its moment, so
             // anything arriving early is a race, and the deadline will turn the
             // card regardless. Refusing it out loud just reads as a broken
-            // button (§V59).
+            // button (§V59). The floor itself only protects somebody else's
+            // look at the board -- a lone human has nobody to hold it open for.
             let deadline = chrono::Duration::seconds(crate::table::RUNOUT_STEP_SECONDS);
-            let floor = chrono::Duration::milliseconds(crate::table::RUNOUT_FLOOR_MS);
+            let floor = if table.runs_a_turn_clock() {
+                chrono::Duration::milliseconds(crate::table::RUNOUT_FLOOR_MS)
+            } else {
+                chrono::Duration::zero()
+            };
             if table
                 .next_action_at
                 .is_some_and(|at| at - deadline + floor > Utc::now())

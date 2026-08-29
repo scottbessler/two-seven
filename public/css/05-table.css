@@ -97,7 +97,6 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .turn-clock>i{display:block;height:100%;background:var(--accent);transition:width .1s linear}
 .turn-clock.urgent>i{background:var(--danger)}
 .seat .seat-clock{left:.45rem;right:.45rem;bottom:.25rem;height:.2rem;border-radius:var(--radius-chip)}
-.decision-area>.decision-clock{left:0;right:0;top:0;height:.2rem}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-control);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid var(--gold);border-radius:var(--radius-control)}

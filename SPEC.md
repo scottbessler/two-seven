@@ -310,7 +310,8 @@ Mark each milestone done here as it lands.
   matches the running total.
 - **V3** A `TableView` never contains another seat's hole cards before showdown,
   nor any undealt card; bots consume the same projection. Sole exception: the
-  V60 bot x-ray, which no human opponent can be present for.
+  V60 bot x-ray, which no seated human at all — viewer included — can be
+  present for.
 - **V4** Pot distribution pays out exactly the pot: the sum of awards equals the
   sum of contributions, for any all-in/side-pot configuration.
 - **V5** Bank accounts never go below zero; user re-up is only allowed below
@@ -515,8 +516,8 @@ Mark each milestone done here as it lands.
   them), edited only by their owner via `POST /player/settings`.
   `unfunded_tournaments` drops the balance check on *creating* a tournament
   only — the ladder-rung check & every buy-in charge stand. `see_bot_cards`
-  exposes bot seats' hole cards ⟺ ∄ seated human ≠ viewer; one other person
-  seated ⇒ face down again for everyone.
+  exposes bot seats' hole cards ⟺ ∄ seated human, viewer included; any human
+  sitting down ⇒ face down again for everyone.
 
 ## §T Build tasks
 

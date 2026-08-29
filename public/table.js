@@ -100,7 +100,7 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
       : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
     ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
-    ${clock && html`<${TurnClock} ...${clock} className="seat-clock" />`}
+    ${clock && html`<${TurnClock} ...${clock} className="seat-clock" announce=${viewer} />`}
   </article>`;
 }
 
@@ -409,14 +409,15 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
 
 // The next card turns itself on the server's deadline, so it counts down the
 // same way the next hand does; pressing only brings it forward (SPEC V59).
-function RunoutAdvance({ remaining, duration, seated, refresh }) {
+function RunoutAdvance({ remaining, duration, floorMs, seated, refresh }) {
   const label = "Next card";
   const [pending, run] = usePending();
   const seconds = Math.ceil(remaining / 1000);
   const width = `${(remaining / duration) * 100}%`;
   const countdown = Number.isFinite(remaining) ? ` · ${seconds}s` : "";
   // The card has just landed; hold the button rather than let a press bounce.
-  const held = remaining > duration - RUNOUT_FLOOR_MS;
+  // A lone human has nobody else to hold it open for, so the floor is 0.
+  const held = remaining > duration - floorMs;
   if (!seated) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}${countdown}</b></div>`;
   const advance = () => run("advance", async () => {
     const response = await fetch(`/tables/${tableId}/advance`, { method: "POST" });
@@ -625,10 +626,10 @@ function TableApp() {
       ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}
       <${CardSettings} settings=${settings} setSettings=${setSettings} interactive=${true} concealable=${true} trigger=${false} />
     </section>
-    <section class="decision-area">${hand?.legal_actions && turnClock && html`<${TurnClock} ...${turnClock} className="decision-clock" announce=${true} />`}${tournamentComplete
+    <section class="decision-area">${tournamentComplete
       ? html`<${TournamentComplete} champion=${champion} />`
       : hand?.awaiting_advance
-      ? html`<${RunoutAdvance} remaining=${advanceRemaining} duration=${RUNOUT_STEP_MS} seated=${state.viewer_seat != null} refresh=${refresh} />`
+      ? html`<${RunoutAdvance} remaining=${advanceRemaining} duration=${RUNOUT_STEP_MS} floorMs=${state.runout_floor_ms ?? RUNOUT_FLOOR_MS} seated=${state.viewer_seat != null} refresh=${refresh} />`
       : showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions
