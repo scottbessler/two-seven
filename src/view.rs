@@ -76,6 +76,10 @@ pub struct TableView {
     /// The viewer has paid to sit down but the hand already running has to
     /// finish before the seat is theirs.
     pub viewer_joining: bool,
+    /// When the next card of a parked runout turns itself. The deadline is
+    /// always armed, so the table can see it coming and a press only brings it
+    /// forward (§V59).
+    pub advance_at: Option<DateTime<Utc>>,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
     pub next_hand_at: Option<DateTime<Utc>>,
@@ -295,6 +299,12 @@ pub fn table_view_with_banks(
         } else {
             None
         },
+        advance_at: table
+            .hand
+            .as_ref()
+            .is_some_and(crate::holdem::Hand::awaits_runout)
+            .then_some(table.next_action_at)
+            .flatten(),
         // The client paces the runout against this, so it must not guess it.
         result_pause_seconds: crate::table::result_pause_seconds(table.last_hand.as_ref()),
         turn_deadline: table
@@ -544,6 +554,40 @@ mod tests {
             2,
             "both hands are face up once betting is closed"
         );
+    }
+
+    /// §V59: the JSON the client actually reads. Opponent hole cards must be
+    /// on `hand.seats` during the runout -- nothing consumed that field before,
+    /// so a rename or a missed branch would silently leave cards face down.
+    #[test]
+    fn v59_runout_json_carries_every_opponent_hand() {
+        let mut table = terminal_tournament();
+        let mut hand = crate::holdem::Hand::new(
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            &[10_000, 10_000],
+            0,
+            77,
+        );
+        hand.apply_action(crate::holdem::Action::AllIn).unwrap();
+        hand.apply_action(crate::holdem::Action::Call).unwrap();
+        table.hand = Some(hand);
+
+        // Seat 0 is looking: seat 1 is the opponent whose cards must be up.
+        let json = serde_json::to_value(table_view(&table, Some(0))).expect("serializes");
+        let seats = json["hand"]["seats"].as_array().expect("hand.seats");
+        assert_eq!(seats.len(), 2);
+        for seat in seats {
+            let cards = seat["hole_cards"]
+                .as_array()
+                .unwrap_or_else(|| panic!("seat {} has no hole_cards in {seat}", seat["index"]));
+            assert_eq!(cards.len(), 2, "both cards are up for {}", seat["index"]);
+        }
+        assert!(json["advance_at"].is_null() || json["advance_at"].is_string());
+        assert_eq!(json["hand"]["awaiting_advance"], true);
+        assert!(json["hand"]["summary"].is_null(), "no result to leak");
     }
 
     #[test]

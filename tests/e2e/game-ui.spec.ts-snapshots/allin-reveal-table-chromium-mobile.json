@@ -154,9 +154,9 @@
   ],
   ".seat-stack": [
     {
-      "x": 37,
+      "x": 45,
       "y": 127,
-      "width": 32,
+      "width": 16,
       "height": 15,
       "display": "block",
       "position": "static",
@@ -229,9 +229,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 178,
+      "x": 176,
       "y": 453,
-      "width": 32,
+      "width": 16,
       "height": 15,
       "display": "block",
       "position": "static",
@@ -246,9 +246,9 @@
   ],
   ".seat-wager": [
     {
-      "x": 41,
+      "x": 31,
       "y": 201,
-      "width": 25,
+      "width": 45,
       "height": 18,
       "display": "block",
       "position": "static",
@@ -321,9 +321,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 217,
+      "x": 199,
       "y": 452,
-      "width": 25,
+      "width": 45,
       "height": 18,
       "display": "block",
       "position": "static",

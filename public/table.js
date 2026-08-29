@@ -8,17 +8,27 @@ const root = document.getElementById("table-app");
 const tableId = root?.dataset.tableId;
 const SHOWDOWN_PAUSE_MS = 6_000;
 const FOLD_RESULT_PAUSE_MS = 3_000;
+// Matches RUNOUT_STEP_SECONDS: how long a card sits before it turns itself.
+const RUNOUT_STEP_MS = 5_000;
+// Matches RUNOUT_FLOOR_MS: a card keeps the table's attention this long before
+// anyone may skip past it, so the button holds rather than refusing a press.
+const RUNOUT_FLOOR_MS = 1_200;
 // The last stretch of somebody's turn, when the bar turns urgent.
 const URGENT_TURN_MS = 3_000;
 
 // An all-in board runs out on the server, a street per advance, while the hand
 // is still live (SPEC V59). The client renders what is on the table; it no
 // longer replays a decided result against a clock.
-function runoutState(hand, showdown) {
+function runoutState(hand) {
   if (hand?.awaiting_advance) {
-    return { leaders: hand.runout_leaders || [], odds: hand.runout_odds || [], live: true };
+    // Somebody is only "ahead" while cards are still to come. Once the board is
+    // complete the hand is decided, so the label stands down and the result
+    // speaks for itself a beat later (SPEC V59).
+    const undecided = (hand.board?.length ?? 0) < 5;
+    return { leaders: undecided ? hand.runout_leaders || [] : [], odds: hand.runout_odds || [], live: true };
   }
-  return { leaders: showdown?.reveal_leaders || [], odds: [], live: false };
+  // A settled hand has a winner, not a leader.
+  return { leaders: [], odds: [], live: false };
 }
 
 async function fetchState() {
@@ -55,10 +65,9 @@ function TurnClock({ remaining, duration, className, announce }) {
   ><i style=${{ width: `${left * 100}%` }}></i></span>`;
 }
 
-function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, leading, settled, champion, clock }) {
+function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
-  const revealed = showdown?.revealed_hole_cards?.find(([seatIndex]) => seatIndex === seat.index)?.[1];
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
   // While a board is still running out, nobody has won anything yet.
   const awarded = showdown?.awards
@@ -400,20 +409,23 @@ function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
   return html`<div class="showdown-advance"><button class=${busy ? "pending" : ""} type="button" disabled=${busy} aria-busy=${busy} aria-label=${`Continue now. ${label}`} onClick=${advance}><span class="showdown-progress" style=${{ width }}></span><b>OK · ${seconds}s</b></button></div>`;
 }
 
-function RunoutAdvance({ refresh }) {
+// The next card turns itself on the server's deadline, so it counts down the
+// same way the next hand does; pressing only brings it forward (SPEC V59).
+function RunoutAdvance({ remaining, duration, label, seated, refresh }) {
   const [pending, run] = usePending();
+  const seconds = Math.ceil(remaining / 1000);
+  const width = `${(remaining / duration) * 100}%`;
+  const countdown = Number.isFinite(remaining) ? ` · ${seconds}s` : "";
+  // The card has just landed; hold the button rather than let a press bounce.
+  const held = remaining > duration - RUNOUT_FLOOR_MS;
+  if (!seated) return html`<div class="showdown-advance spectator"><span class="showdown-progress" style=${{ width }}></span><b>${label}${countdown}</b></div>`;
   const advance = () => run("advance", async () => {
     const response = await fetch(`/tables/${tableId}/advance`, { method: "POST" });
     if (response.ok) await refresh();
     else document.getElementById("table-error").textContent = await responseError(response);
   });
   const busy = pending != null;
-  return html`<div class="showdown-advance"><button class=${busy ? "pending" : ""} type="button" disabled=${busy} aria-busy=${busy} aria-label="Turn the next card" onClick=${advance}><b>Next card</b></button></div>`;
-}
-
-// Nobody is seated to press it, so say what the table is waiting for.
-function RunoutWaiting() {
-  return html`<div class="showdown-advance spectator"><b>Running out…</b></div>`;
+  return html`<div class="showdown-advance"><button class=${busy ? "pending" : ""} type="button" disabled=${busy || held} aria-busy=${busy} aria-label=${`${label} now. ${label}${countdown}`} onClick=${advance}><span class="showdown-progress" style=${{ width }}></span><b>${label}${countdown}</b></button></div>`;
 }
 
 function tournamentChampion(state) {
@@ -549,6 +561,7 @@ function TableApp() {
   const resultPause = 1000 * (state?.result_pause_seconds
     ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);
   const remaining = useResultClock(Boolean(showdown), state?.next_hand_at, resultPause);
+  const advanceRemaining = useResultClock(Boolean(state?.hand?.awaiting_advance), state?.advance_at, RUNOUT_STEP_MS);
   // A table with more than one person at it puts whoever is to act on a clock;
   // when it runs out the server checks or folds for them.
   const turnDuration = 1000 * (state?.turn_seconds || 10);
@@ -563,7 +576,12 @@ function TableApp() {
   const ordered = [...occupied.slice(viewerOffset), ...occupied.slice(0, viewerOffset)];
   const viewerSeat = ordered.find((seat) => seat.index === state.viewer_seat);
   const otherSeats = ordered.filter((seat) => seat.index !== state.viewer_seat);
-  const runout = runoutState(hand, showdown);
+  const runout = runoutState(hand);
+  // Hole cards are face up for the rest of the hand the moment betting closes,
+  // and stay up in the settled summary (SPEC V59).
+  const revealedBySeat = new Map(hand?.awaiting_advance
+    ? (hand.seats || []).filter((entry) => entry.hole_cards).map((entry) => [entry.index, entry.hole_cards])
+    : (showdown?.revealed_hole_cards || []));
   const board = hand?.board || showdown?.board || [];
   const openSeats = state.seats.filter((seat) => seat.occupant === "empty" && !seat.reserved);
   // Nothing is settled until the hand has left the table, and it cannot leave
@@ -581,7 +599,7 @@ function TableApp() {
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const turnClock = state.turn_deadline ? { remaining: turnRemaining, duration: turnDuration } : null;
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} />`;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
@@ -601,9 +619,7 @@ function TableApp() {
     <section class="decision-area">${hand?.legal_actions && turnClock && html`<${TurnClock} ...${turnClock} className="decision-clock" announce=${true} />`}${tournamentComplete
       ? html`<${TournamentComplete} champion=${champion} />`
       : hand?.awaiting_advance
-      ? state.viewer_seat != null
-        ? html`<${RunoutAdvance} refresh=${refresh} />`
-        : html`<${RunoutWaiting} />`
+      ? html`<${RunoutAdvance} remaining=${advanceRemaining} duration=${RUNOUT_STEP_MS} label=${board.length >= 5 ? "Show result" : "Next card"} seated=${state.viewer_seat != null} refresh=${refresh} />`
       : showdown && !awaitingDeal
       ? html`<${ShowdownAdvance} remaining=${remaining} duration=${resultPause} canContinue=${settled && state.viewer_seat != null} refresh=${refresh} />`
       : hand?.legal_actions
