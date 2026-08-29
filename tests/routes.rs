@@ -1540,6 +1540,71 @@ async fn tournament_create_requires_affordable_cash_ladder_buy_in() {
     assert_eq!(create(100_000).await.unwrap().status(), StatusCode::OK);
 }
 
+/// The setup dialog has to offer what the option allows -- a gate the server
+/// no longer applies must not survive as a missing button.
+#[tokio::test]
+async fn the_unfunded_option_offers_the_whole_buy_in_ladder() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "ladder".into(),
+            display_name: "Ladder".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let page = || {
+        t.router.clone().oneshot(
+            Request::builder()
+                .uri("/tournaments/new")
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+    };
+    let read = |response: axum::response::Response| async {
+        String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+            .into_owned()
+    };
+
+    let closed = read(page().await.unwrap()).await;
+    assert!(closed.contains(r#"data-choice="buyIn" value="100000""#));
+    assert!(
+        !closed.contains(r#"value="200000""#),
+        "without the option the rungs stop at what you hold"
+    );
+
+    t.users
+        .set_settings(
+            user,
+            UserSettings {
+                unfunded_tournaments: true,
+                see_bot_cards: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    let open = read(page().await.unwrap()).await;
+    for rung in ["20000", "100000", "200000", "1000000"] {
+        assert!(
+            open.contains(&format!(r#"data-choice="buyIn" value="{rung}""#)),
+            "the whole ladder is offered: {rung}"
+        );
+    }
+    assert!(
+        open.contains("setup-option-dear"),
+        "and the rungs above your balance say so"
+    );
+    assert!(open.contains("more than your balance"));
+}
+
 /// The option only lifts the balance gate on *creating* a tournament; a
 /// buy-in still has to be a rung of the cash ladder.
 #[tokio::test]
