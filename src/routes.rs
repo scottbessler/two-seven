@@ -261,7 +261,11 @@ pub async fn new_table(AuthUser(user): AuthUser, State(s): State<AppState>) -> H
     Html(render::table_create(balance_of(&s, user).await))
 }
 pub async fn new_tournament(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
-    Html(render::tournament_create(balance_of(&s, user).await))
+    let unfunded = settings_of(&s, user).await.unfunded_tournaments;
+    Html(render::tournament_create(
+        balance_of(&s, user).await,
+        unfunded,
+    ))
 }
 
 #[derive(Deserialize)]
