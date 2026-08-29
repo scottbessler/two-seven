@@ -1400,13 +1400,18 @@ pub async fn advance_runout(
             {
                 return Err(anyhow::anyhow!("no card to turn"));
             }
+            // A press inside the floor is a no-op, not an error: the client
+            // already holds the button until the card has had its moment, so
+            // anything arriving early is a race, and the deadline will turn the
+            // card regardless. Refusing it out loud just reads as a broken
+            // button (§V59).
             let deadline = chrono::Duration::seconds(crate::table::RUNOUT_STEP_SECONDS);
             let floor = chrono::Duration::milliseconds(crate::table::RUNOUT_FLOOR_MS);
             if table
                 .next_action_at
                 .is_some_and(|at| at - deadline + floor > Utc::now())
             {
-                return Err(anyhow::anyhow!("wait for the card"));
+                return Ok(());
             }
             let Some(hand) = table.hand.as_mut() else {
                 return Ok(());
