@@ -36,6 +36,14 @@ test("hands another player money in $1,000 chips", async ({ page }) => {
   await expect(page.locator("#bank-balance")).toHaveText("$0");
   await expect(page.locator(".ledger-panel")).toContainText("gift from Giver");
   await expect(send).toBeDisabled();
+
+  // The chip shows up netted per person, from both sides: the page you are
+  // looking at counts it as money in, your own counts it as money out.
+  await expect(page.locator(".gifts-panel tbody tr")).toContainText(["Giver"]);
+  await expect(page.locator(".gifts-panel .money.positive")).toHaveText("+$1,000.00");
+  await page.goto("/player");
+  await expect(page.locator(".gifts-panel tbody tr")).toContainText(["Taker"]);
+  await expect(page.locator(".gifts-panel .money.negative")).toHaveText("-$1,000.00");
 });
 
 test("account options save to the account and come back on reload", async ({ page }) => {

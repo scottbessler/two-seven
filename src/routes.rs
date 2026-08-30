@@ -177,7 +177,39 @@ async fn render_player(
         .expect("account can be created");
     let poker = s.stats.of(&owner).await;
     let blitz = s.blitz.stats(id).await;
-    render::player_page(id, name, &account, poker, &blitz, gift, settings)
+    let gift_peers = gift_peers(s, &account).await;
+    let panels = render::PlayerPanels {
+        gift,
+        settings,
+        gift_peers: &gift_peers,
+    };
+    render::player_page(id, name, &account, poker, &blitz, &panels)
+}
+
+/// Names the counterparties in the gift ledger. A bot has a name but no page;
+/// a person whose account has since gone keeps their money on the books, so
+/// they are still listed, just without one.
+async fn gift_peers(s: &AppState, account: &crate::bank::Account) -> Vec<render::GiftPeer> {
+    let mut peers = Vec::new();
+    for tally in account.gift_tallies() {
+        let (id, name) = match &tally.peer {
+            AccountOwner::User(id) => (
+                Some(*id),
+                s.users
+                    .get(*id)
+                    .await
+                    .map_or_else(|| "Someone".to_string(), |user| user.display_name),
+            ),
+            AccountOwner::Bot(bot) => (None, bot.name().to_string()),
+        };
+        peers.push(render::GiftPeer {
+            id,
+            name,
+            received: tally.received,
+            sent: tally.sent,
+        });
+    }
+    peers
 }
 
 #[derive(Deserialize)]

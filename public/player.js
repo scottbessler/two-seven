@@ -13,10 +13,14 @@ async function refreshPlayerPanels() {
   const response = await fetch(window.location.href, { headers: { Accept: "text/html" }, cache: "no-store" });
   if (!response.ok) return;
   const page = new DOMParser().parseFromString(await response.text(), "text/html");
-  for (const selector of [".player-summary", ".chart-panel", ".ledger-panel"]) {
+  for (const selector of [".player-summary", ".gifts-panel", ".chart-panel", ".ledger-panel"]) {
     const current = document.querySelector(selector);
     const fresh = page.querySelector(selector);
-    if (current && fresh) current.replaceWith(fresh);
+    if (!fresh) continue;
+    // The first gift is also the first time the gifts panel exists, so it is
+    // placed where the server puts it rather than swapped in.
+    if (current) current.replaceWith(fresh);
+    else document.querySelector(".chart-panel")?.before(fresh);
   }
 }
 

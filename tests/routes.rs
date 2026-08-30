@@ -2956,6 +2956,55 @@ async fn a_players_page_opens_from_the_standings_and_offers_them_money() {
 }
 
 #[tokio::test]
+async fn a_players_page_nets_out_the_gifts_with_each_other_player() {
+    let t = appx().await;
+    let giver = register(&t, "gil", "Gil").await;
+    let taker = register(&t, "tess", "Tess").await;
+    let giver_cookie = cookie(&t.key, giver);
+    let taker_cookie = cookie(&t.key, taker);
+    for id in [giver, taker] {
+        t.bank
+            .append(
+                AccountOwner::User(id),
+                LedgerKind::Adjustment,
+                500_000,
+                "seed".into(),
+            )
+            .await
+            .unwrap();
+    }
+
+    // A page with no gifts on it says nothing about them.
+    let (_, html) = page(&t, "/player", &giver_cookie).await;
+    assert!(!html.contains("gifts-panel"));
+
+    let (status, body) = gift(&t, taker, 300_000, &giver_cookie).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = gift(&t, giver, 100_000, &taker_cookie).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    // Tess is $2,000 up on Gil, and Gil the same amount down on Tess.
+    let (_, html) = page(&t, "/player", &taker_cookie).await;
+    assert!(html.contains("gifts-panel"));
+    assert!(html.contains(&format!(r#"<a href="/player/{giver}">Gil</a>"#)));
+    assert!(
+        html.contains(r#"<td class="money positive">+$2,000.00</td><td class="money">$3,000.00</td><td class="money">$1,000.00</td>"#),
+        "the net, then both directions: {html}"
+    );
+
+    let (_, html) = page(&t, "/player", &giver_cookie).await;
+    assert!(
+        html.contains(r#"<td class="money negative">-$2,000.00</td><td class="money">$1,000.00</td><td class="money">$3,000.00</td>"#),
+        "the other side of the same pair of gifts: {html}"
+    );
+
+    // Somebody else's page shows their gift ledger, not yours.
+    let (_, html) = page(&t, &format!("/player/{taker}"), &giver_cookie).await;
+    assert!(html.contains("What each person has handed Tess"));
+    assert!(html.contains(r#"<td class="money positive">+$2,000.00</td>"#));
+}
+
+#[tokio::test]
 async fn gifts_move_whole_thousands_between_players() {
     let t = appx().await;
     let giver = register(&t, "gil", "Gil").await;
