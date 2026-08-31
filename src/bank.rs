@@ -63,7 +63,8 @@ impl Account {
     pub fn next_loan_repayment_amount(&self) -> Option<Cents> {
         (self.loan_count > 0).then_some(BankStore::RE_UP_AMOUNT)
     }
-    /// Every account this one has traded gifts with, best benefactor first.
+    /// Every account this one has traded gifts with, the person given the
+    /// most to first.
     /// Gifts are the only entries that name a counterparty, so this is the
     /// whole of who owes whom a thank-you.
     pub fn gift_tallies(&self) -> Vec<GiftTally> {
@@ -94,7 +95,8 @@ impl Account {
     }
 }
 /// One counterparty's side of the gift ledger: what they handed over, what
-/// they were handed, and so which way the two accounts stand.
+/// they were handed, and so which way the two accounts stand. Generosity is
+/// the positive direction: the net is what you are out of pocket to them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GiftTally {
     pub peer: AccountOwner,
@@ -103,7 +105,7 @@ pub struct GiftTally {
 }
 impl GiftTally {
     pub fn net(&self) -> Cents {
-        self.received - self.sent
+        self.sent - self.received
     }
 }
 
@@ -1121,7 +1123,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gifts_net_out_per_counterparty_best_benefactor_first() {
+    async fn gifts_net_out_per_counterparty_biggest_giving_first() {
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
         let me = AccountOwner::User(Uuid::new_v4());
         let generous = AccountOwner::User(Uuid::new_v4());
@@ -1146,16 +1148,23 @@ mod tests {
 
         let tallies = bank.account(me.clone()).await.unwrap().gift_tallies();
         assert_eq!(tallies.len(), 2, "one row per person, not per gift");
-        assert_eq!(tallies[0].peer, generous, "the biggest net giver leads");
-        assert_eq!(tallies[0].received, 300_000);
-        assert_eq!(tallies[0].sent, 100_000);
-        assert_eq!(tallies[0].net(), 200_000);
-        assert_eq!(tallies[1].peer, stingy);
-        assert_eq!(tallies[1].net(), -100_000, "V58: the pair cancels out");
+        assert_eq!(
+            tallies[0].peer, stingy,
+            "whoever got the most out of me leads"
+        );
+        assert_eq!(tallies[0].received, 100_000);
+        assert_eq!(tallies[0].sent, 200_000);
+        assert_eq!(
+            tallies[0].net(),
+            100_000,
+            "giving more than you got is positive"
+        );
+        assert_eq!(tallies[1].peer, generous);
+        assert_eq!(tallies[1].net(), -200_000, "V58: the pair cancels out");
 
         let theirs = bank.account(generous).await.unwrap().gift_tallies();
         assert_eq!(theirs[0].peer, me);
-        assert_eq!(theirs[0].net(), -200_000, "each side is the other's mirror");
+        assert_eq!(theirs[0].net(), 200_000, "each side is the other's mirror");
 
         assert!(
             bank.account(AccountOwner::User(Uuid::new_v4()))
