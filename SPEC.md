@@ -568,6 +568,7 @@ T37|x|add a custom wager slider beside All In|V47,V56
 T38|x|reserve a mid-hand cash seat instead of taking a live one|V1,V12,V57
 T39|x|link player names to their page and let people gift $1,000 chips|V1,V2,V58
 T40|x|run the all-in board out as advanced state, not a faked reveal|V33,V59
+T41|x|net out gifts per counterparty on the player page|V58
 
 ## §B Bug log
 

@@ -312,14 +312,36 @@ pub struct GiftPanel {
     pub your_balance: Cents,
 }
 
+/// One counterparty in the gift ledger, named and totalled, ready to draw.
+pub struct GiftPeer {
+    /// Somebody's page to link to; a bot has none.
+    pub id: Option<Uuid>,
+    pub name: String,
+    pub received: Cents,
+    pub sent: Cents,
+}
+impl GiftPeer {
+    fn net(&self) -> Cents {
+        self.received - self.sent
+    }
+}
+
+/// The parts of a player page that depend on who is looking: the way to pay
+/// somebody else, the options only you may change, and who has traded gifts
+/// with the account on show.
+pub struct PlayerPanels<'a> {
+    pub gift: Option<&'a GiftPanel>,
+    pub settings: Option<&'a crate::users::UserSettings>,
+    pub gift_peers: &'a [GiftPeer],
+}
+
 pub fn player_page(
     id: Uuid,
     name: &str,
     account: &crate::bank::Account,
     poker: crate::stats::PlayerStats,
     blitz: &crate::blitz::BlitzStats,
-    gift: Option<&GiftPanel>,
-    settings: Option<&crate::users::UserSettings>,
+    panels: &PlayerPanels<'_>,
 ) -> String {
     let entries = account
         .entries
@@ -346,6 +368,11 @@ pub fn player_page(
     };
     // Your own page reads as yours; somebody else's says whose it is and
     // offers a way back to your own.
+    let PlayerPanels {
+        gift,
+        settings,
+        gift_peers,
+    } = *panels;
     let (blurb, nav) = match gift {
         None => (
             "Your bankroll over time.".to_string(),
@@ -357,7 +384,7 @@ pub fn player_page(
         ),
     };
     let body = format!(
-        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}{}{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
         id,
         escape(name),
         blurb,
@@ -370,6 +397,7 @@ pub fn player_page(
         blitz.accuracy_percent(),
         gift.map_or_else(String::new, gift_panel),
         settings.map_or_else(String::new, options_panel),
+        gifts_panel(gift.is_none(), name, gift_peers),
         finance_chart(account),
         ledger
     );
@@ -412,6 +440,43 @@ fn gift_panel(gift: &GiftPanel) -> String {
         gift.your_balance,
         escape(&gift.player_name),
         format_cents(gift.your_balance),
+    )
+}
+
+/// Who money has passed between, netted per person. Sent and received both
+/// show, because the net alone hides a pair that keeps handing the same chips
+/// back and forth.
+fn gifts_panel(is_own_page: bool, name: &str, peers: &[GiftPeer]) -> String {
+    if peers.is_empty() {
+        return String::new();
+    }
+    let rows = peers
+        .iter()
+        .map(|peer| {
+            let who = match peer.id {
+                Some(id) => format!(r#"<a href="/player/{id}">{}</a>"#, escape(&peer.name)),
+                None => escape(&peer.name),
+            };
+            format!(
+                r#"<tr><td>{who}</td><td class="money {}">{}</td><td class="money">{}</td><td class="money">{}</td></tr>"#,
+                if peer.net() >= 0 { "positive" } else { "negative" },
+                signed_cents(peer.net()),
+                format_cents(peer.received),
+                format_cents(peer.sent),
+            )
+        })
+        .collect::<String>();
+    let blurb = if is_own_page {
+        "What each person has handed you, less what you have handed them.".to_string()
+    } else {
+        format!(
+            "What each person has handed {}, less what {} has handed them.",
+            escape(name),
+            escape(name)
+        )
+    };
+    format!(
+        r#"<section class="finance-panel gifts-panel"><h2>Gifts</h2><p>{blurb}</p><table class="finance-ledger gift-ledger"><thead><tr><th>Player</th><th>Net</th><th>Received</th><th>Sent</th></tr></thead><tbody>{rows}</tbody></table></section>"#
     )
 }
 

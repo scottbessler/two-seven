@@ -63,7 +63,50 @@ impl Account {
     pub fn next_loan_repayment_amount(&self) -> Option<Cents> {
         (self.loan_count > 0).then_some(BankStore::RE_UP_AMOUNT)
     }
+    /// Every account this one has traded gifts with, best benefactor first.
+    /// Gifts are the only entries that name a counterparty, so this is the
+    /// whole of who owes whom a thank-you.
+    pub fn gift_tallies(&self) -> Vec<GiftTally> {
+        let mut tallies: Vec<GiftTally> = Vec::new();
+        for entry in &self.entries {
+            let LedgerKind::Gift { peer } = &entry.kind else {
+                continue;
+            };
+            let tally = match tallies.iter_mut().find(|tally| &tally.peer == peer) {
+                Some(tally) => tally,
+                None => {
+                    tallies.push(GiftTally {
+                        peer: peer.clone(),
+                        received: 0,
+                        sent: 0,
+                    });
+                    tallies.last_mut().expect("just pushed")
+                }
+            };
+            if entry.delta >= 0 {
+                tally.received += entry.delta;
+            } else {
+                tally.sent += -entry.delta;
+            }
+        }
+        tallies.sort_by_key(|tally| std::cmp::Reverse(tally.net()));
+        tallies
+    }
 }
+/// One counterparty's side of the gift ledger: what they handed over, what
+/// they were handed, and so which way the two accounts stand.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GiftTally {
+    pub peer: AccountOwner,
+    pub received: Cents,
+    pub sent: Cents,
+}
+impl GiftTally {
+    pub fn net(&self) -> Cents {
+        self.received - self.sent
+    }
+}
+
 pub fn account_json(account: &Account) -> serde_json::Value {
     let mut value = serde_json::to_value(account).expect("account serializes");
     let object = value.as_object_mut().expect("account is an object");
@@ -1075,6 +1118,53 @@ mod tests {
                 account.balance
             );
         }
+    }
+
+    #[tokio::test]
+    async fn gifts_net_out_per_counterparty_best_benefactor_first() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let me = AccountOwner::User(Uuid::new_v4());
+        let generous = AccountOwner::User(Uuid::new_v4());
+        let stingy = AccountOwner::User(Uuid::new_v4());
+        bank.append(me.clone(), LedgerKind::Adjustment, 500_000, "seed".into())
+            .await
+            .unwrap();
+        for peer in [&generous, &stingy] {
+            bank.append(peer.clone(), LedgerKind::Adjustment, 500_000, "seed".into())
+                .await
+                .unwrap();
+        }
+        let send = async |from: &AccountOwner, to: &AccountOwner, amount| {
+            bank.transfer(from.clone(), to.clone(), amount, "out".into(), "in".into())
+                .await
+                .unwrap();
+        };
+        send(&generous, &me, 300_000).await;
+        send(&me, &generous, 100_000).await;
+        send(&me, &stingy, 200_000).await;
+        send(&stingy, &me, 100_000).await;
+
+        let tallies = bank.account(me.clone()).await.unwrap().gift_tallies();
+        assert_eq!(tallies.len(), 2, "one row per person, not per gift");
+        assert_eq!(tallies[0].peer, generous, "the biggest net giver leads");
+        assert_eq!(tallies[0].received, 300_000);
+        assert_eq!(tallies[0].sent, 100_000);
+        assert_eq!(tallies[0].net(), 200_000);
+        assert_eq!(tallies[1].peer, stingy);
+        assert_eq!(tallies[1].net(), -100_000, "V58: the pair cancels out");
+
+        let theirs = bank.account(generous).await.unwrap().gift_tallies();
+        assert_eq!(theirs[0].peer, me);
+        assert_eq!(theirs[0].net(), -200_000, "each side is the other's mirror");
+
+        assert!(
+            bank.account(AccountOwner::User(Uuid::new_v4()))
+                .await
+                .unwrap()
+                .gift_tallies()
+                .is_empty(),
+            "an account that has never traded gifts has no counterparties"
+        );
     }
 
     #[tokio::test]
