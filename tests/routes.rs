@@ -2983,16 +2983,17 @@ async fn a_players_page_nets_out_the_gifts_with_each_other_player() {
     let (status, body) = gift(&t, giver, 100_000, &taker_cookie).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
-    // Tess is $2,000 up on Gil, and Gil the same amount down on Tess.
-    let (_, html) = page(&t, "/player", &taker_cookie).await;
+    // Gil is $2,000 out of pocket to Tess, which is the positive direction;
+    // Tess, $2,000 to the good off Gil, reads the other way.
+    let (_, html) = page(&t, "/player", &giver_cookie).await;
     assert!(html.contains("gifts-panel"));
-    assert!(html.contains(&format!(r#"<a href="/player/{giver}">Gil</a>"#)));
+    assert!(html.contains(&format!(r#"<a href="/player/{taker}">Tess</a>"#)));
     assert!(
         html.contains(r#"<td class="money positive">+$2,000.00</td><td class="money">$3,000.00</td><td class="money">$1,000.00</td>"#),
-        "the net, then both directions: {html}"
+        "the net, then sent, then received: {html}"
     );
 
-    let (_, html) = page(&t, "/player", &giver_cookie).await;
+    let (_, html) = page(&t, "/player", &taker_cookie).await;
     assert!(
         html.contains(r#"<td class="money negative">-$2,000.00</td><td class="money">$1,000.00</td><td class="money">$3,000.00</td>"#),
         "the other side of the same pair of gifts: {html}"
@@ -3000,8 +3001,8 @@ async fn a_players_page_nets_out_the_gifts_with_each_other_player() {
 
     // Somebody else's page shows their gift ledger, not yours.
     let (_, html) = page(&t, &format!("/player/{taker}"), &giver_cookie).await;
-    assert!(html.contains("What each person has handed Tess"));
-    assert!(html.contains(r#"<td class="money positive">+$2,000.00</td>"#));
+    assert!(html.contains("What Tess has handed each person"));
+    assert!(html.contains(r#"<td class="money negative">-$2,000.00</td>"#));
 }
 
 #[tokio::test]

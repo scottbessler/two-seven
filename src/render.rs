@@ -322,7 +322,7 @@ pub struct GiftPeer {
 }
 impl GiftPeer {
     fn net(&self) -> Cents {
-        self.received - self.sent
+        self.sent - self.received
     }
 }
 
@@ -443,7 +443,8 @@ fn gift_panel(gift: &GiftPanel) -> String {
     )
 }
 
-/// Who money has passed between, netted per person. Sent and received both
+/// Who money has passed between, netted per person. Giving reads as the good
+/// direction, so the net is what you are down to them. Sent and received both
 /// show, because the net alone hides a pair that keeps handing the same chips
 /// back and forth.
 fn gifts_panel(is_own_page: bool, name: &str, peers: &[GiftPeer]) -> String {
@@ -461,22 +462,22 @@ fn gifts_panel(is_own_page: bool, name: &str, peers: &[GiftPeer]) -> String {
                 r#"<tr><td>{who}</td><td class="money {}">{}</td><td class="money">{}</td><td class="money">{}</td></tr>"#,
                 if peer.net() >= 0 { "positive" } else { "negative" },
                 signed_cents(peer.net()),
-                format_cents(peer.received),
                 format_cents(peer.sent),
+                format_cents(peer.received),
             )
         })
         .collect::<String>();
     let blurb = if is_own_page {
-        "What each person has handed you, less what you have handed them.".to_string()
+        "What you have handed each person, less what they have handed you.".to_string()
     } else {
         format!(
-            "What each person has handed {}, less what {} has handed them.",
+            "What {} has handed each person, less what they have handed {}.",
             escape(name),
             escape(name)
         )
     };
     format!(
-        r#"<section class="finance-panel gifts-panel"><h2>Gifts</h2><p>{blurb}</p><table class="finance-ledger gift-ledger"><thead><tr><th>Player</th><th>Net</th><th>Received</th><th>Sent</th></tr></thead><tbody>{rows}</tbody></table></section>"#
+        r#"<section class="finance-panel gifts-panel"><h2>Gifts</h2><p>{blurb}</p><table class="finance-ledger gift-ledger"><thead><tr><th>Player</th><th>Net</th><th>Sent</th><th>Received</th></tr></thead><tbody>{rows}</tbody></table></section>"#
     )
 }
 
