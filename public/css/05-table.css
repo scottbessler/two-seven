@@ -11,7 +11,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .header-info:hover .header-info-tooltip,.header-info:focus .header-info-tooltip{display:block}
 .page:has(.table-shell) .brand{font-size:var(--text-action)}
 .page:has(.table-shell) .bank-widget{margin-left:auto;font-size:var(--text-small)}
-.table-shell{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:1rem;flex:1 1 auto;height:100%;min-height:0;overflow:hidden;--viewer-card-w-fit:var(--viewer-card-w);--viewer-card-h-fit:var(--viewer-card-h);--viewer-panel-pad-y:.875rem;--viewer-panel-pad-x:1.125rem;--viewer-panel-gap:1.75rem;--viewer-panel-rows:.1875rem;--viewer-card-gap:.375rem}
+.table-shell{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:1rem;flex:1 1 auto;height:100%;min-height:0;overflow:hidden;--viewer-card-w-fit:var(--viewer-card-w);--viewer-card-h-fit:var(--viewer-card-h);--viewer-panel-chrome:calc(2 * var(--viewer-panel-pad-y) + 2px);--viewer-panel-pad-y:.875rem;--viewer-panel-pad-x:1.125rem;--viewer-panel-gap:1.75rem;--viewer-panel-rows:.1875rem;--viewer-card-gap:.375rem}
 .table-shell>.table-stage{grid-row:1}
 .table-shell>.decision-area{grid-row:2}
 .table-shell>.game-log{grid-row:3}
@@ -75,7 +75,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
    left, and who you are, what you hold and what you have put in stacked down
    the right of them. Centring all of it left the widest box on the screen
    mostly empty and buried the stack in the middle of a line. */
-.seat.viewer{grid-template-columns:auto minmax(0,1fr);align-content:end;align-items:center;justify-items:start;gap:var(--viewer-panel-rows) var(--viewer-panel-gap);padding:var(--viewer-panel-pad-y) var(--viewer-panel-pad-x);border-color:var(--gold);border-radius:var(--radius-surface);background:var(--surface-raised);text-align:left}
+.seat.viewer{grid-template-columns:auto minmax(0,auto);align-content:center;justify-content:center;align-items:center;justify-items:start;gap:var(--viewer-panel-rows) var(--viewer-panel-gap);padding:var(--viewer-panel-pad-y) var(--viewer-panel-pad-x);border-color:var(--gold);border-radius:var(--radius-surface);background:var(--surface-raised);text-align:left}
 /* The hand fans out rather than overlapping here: at this size the cards are
    read, not counted, and the back card's rank should not sit under the front.
    The dialog's preview fans the same way, or it stops being a preview.
@@ -92,7 +92,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat.viewer .viewer-summary>*{justify-self:start;margin-inline:0}
 /* The seat that held cards under three stacked text rows now holds them beside
    one column of text, so it is as tall as the cards plus its own padding. */
-.table-stage .viewer-seats .seat{height:calc(var(--viewer-card-h-fit) + 1.2rem);grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto}
+.table-stage .viewer-seats .seat{height:calc(var(--viewer-card-h-fit) + var(--viewer-panel-chrome));grid-template-columns:auto minmax(0,auto);grid-template-rows:auto}
 /* Hover keeps a hand up while the cursor is on it; a finger has no hover and
    iOS would leave the zoom stuck after the tap, so touch zooms on hold. */
 @media (hover:hover){
@@ -262,7 +262,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:4rem;--seat-card-share:62cqw;--card-w:min(calc(54cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   /* The panel is as tall as the cards plus its own padding now: the 3rem that
      allowed for name, stack and wager stacked under them is spent sideways. */
-  .table-stage :is(.viewer-seats .seat,.card-config-preview){--viewer-panel-chrome:calc(2 * var(--viewer-panel-pad-y) + 2px);height:min(calc(18cqh * var(--card-size-scale,1) + var(--viewer-panel-chrome)),calc(5.8rem * var(--card-aspect) * var(--card-size-scale,1) + var(--viewer-panel-chrome)),22rem)}
+  .table-stage :is(.viewer-seats .seat,.card-config-preview){height:min(calc(18cqh * var(--card-size-scale,1) + var(--viewer-panel-chrome)),calc(5.8rem * var(--card-aspect) * var(--card-size-scale,1) + var(--viewer-panel-chrome)),22rem)}
   /* The dialog previews the card the table is about to show, so it has to be
      that card's size. Give the preview a box the panel's height and read both
      from the same expression, instead of a second formula tuned to agree at
@@ -315,7 +315,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats{grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.25rem}
   .table-stage .seats .seat{height:auto;grid-template-rows:auto auto minmax(2.65rem,auto) auto auto;gap:.08rem;min-width:0;min-height:4.5rem;overflow:visible;padding:.25rem .2rem;font-size:var(--text-label)}
   .table-stage .seats.viewer-seats{margin-top:.15rem}
-  .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;display:grid;height:auto;min-height:calc(var(--viewer-card-h-fit-mobile) + 2 * var(--viewer-panel-pad-y));grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto;align-items:center;justify-items:start;gap:var(--viewer-panel-rows) var(--viewer-panel-gap);padding:var(--viewer-panel-pad-y) var(--viewer-panel-pad-x)}
+  .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;display:grid;height:auto;min-height:calc(var(--viewer-card-h-fit-mobile) + var(--viewer-panel-chrome));grid-template-columns:auto minmax(0,auto);grid-template-rows:auto;align-content:center;justify-content:center;align-items:center;justify-items:start;gap:var(--viewer-panel-rows) var(--viewer-panel-gap);padding:var(--viewer-panel-pad-y) var(--viewer-panel-pad-x)}
   .seat-corner-badges{position:absolute;right:.1rem;top:.1rem;z-index:6;width:auto;min-height:0;max-width:calc(100% - .2rem);overflow:hidden;justify-content:flex-end}
   .seat .seat-role{padding:.05rem .1rem;letter-spacing:.02em}
   .seat-corner-badges{gap:.1rem}
