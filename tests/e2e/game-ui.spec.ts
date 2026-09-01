@@ -460,8 +460,10 @@ test("shows live hand cues and event log", async ({ page }) => {
   const viewerWager = await page.locator(".seat.viewer .seat-wager").boundingBox();
   const viewerCards = await page.locator(".seat.viewer .seat-cards").boundingBox();
   const viewerName = await page.locator(".seat.viewer .player-info").boundingBox();
-  expect(viewerName.y + viewerName.height, "viewer name must sit above viewer cards").toBeLessThan(viewerCards.y);
-  expect(viewerWager.y + viewerWager.height, "viewer wager must sit above viewer cards").toBeLessThan(viewerCards.y);
+  // Name, stack and wager read down the right of your own hand, so they sit
+  // beside the cards rather than above them -- but never underneath them.
+  expect(viewerName.x, "viewer name must sit beside viewer cards").toBeGreaterThanOrEqual(viewerCards.x + viewerCards.width);
+  expect(viewerWager.x, "viewer wager must sit beside viewer cards").toBeGreaterThanOrEqual(viewerCards.x + viewerCards.width);
   const wagerBehindCards = viewerWager.x < viewerCards.x + viewerCards.width
     && viewerWager.x + viewerWager.width > viewerCards.x
     && viewerWager.y < viewerCards.y + viewerCards.height
@@ -1757,8 +1759,9 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
         stageScrolls: stage.scrollHeight > stage.clientHeight,
         viewerEscapesStage: viewer.top < stageBox.top - 1 || viewer.bottom > stageBox.bottom + 1,
         viewerOverlapsBoard: board.some((node) => overlaps(viewer, node)),
-        viewerSummaryCenterSpread: Math.max(...viewerSummary.map((node) => node.top + node.height / 2))
-          - Math.min(...viewerSummary.map((node) => node.top + node.height / 2)),
+        viewerSummaryLeftSpread: Math.max(...viewerSummary.map((node) => node.left))
+          - Math.min(...viewerSummary.map((node) => node.left)),
+        viewerSummaryStacked: viewerSummary.every((node, index) => index === 0 || node.top >= viewerSummary[index - 1].bottom - 1),
         metricsStacked: metricRows.length < 2 || metricRows[1].top >= metricRows[0].bottom,
         metricsLeftOfBoard: metrics.right <= sharedCards.left,
         controlsBottomGap: document.documentElement.clientHeight - controls.bottom,
@@ -1772,7 +1775,8 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
     expect(layout.stageScrolls, `V42: portrait poker must not scroll inside the table stage at ${JSON.stringify(viewport)}`).toBe(false);
     expect(layout.viewerEscapesStage, `V42: portrait viewer seat must stay inside the stage at ${JSON.stringify(viewport)}`).toBe(false);
     expect(layout.viewerOverlapsBoard, `V42: portrait viewer seat must not collide with center cards at ${JSON.stringify(viewport)}`).toBe(false);
-    expect(layout.viewerSummaryCenterSpread, `V48: viewer name, stack, and wager must share one row at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(1);
+    expect(layout.viewerSummaryLeftSpread, `V48: viewer name, stack, and wager must share one left edge at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(1);
+    expect(layout.viewerSummaryStacked, `V48: viewer name, stack, and wager must read down one column at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.metricsStacked, `V48: pot and current bet must stack at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.metricsLeftOfBoard, `V48: metrics must sit left of shared cards at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.controlsBottomGap - layout.safeBottom, `V54: table controls must clear the home indicator at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(4);

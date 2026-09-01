@@ -11,7 +11,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .header-info:hover .header-info-tooltip,.header-info:focus .header-info-tooltip{display:block}
 .page:has(.table-shell) .brand{font-size:var(--text-action)}
 .page:has(.table-shell) .bank-widget{margin-left:auto;font-size:var(--text-small)}
-.table-shell{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:1rem;flex:1 1 auto;height:100%;min-height:0;overflow:hidden;--viewer-card-w-fit:var(--viewer-card-w);--viewer-card-h-fit:var(--viewer-card-h)}
+.table-shell{display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:1rem;flex:1 1 auto;height:100%;min-height:0;overflow:hidden;--viewer-card-w-fit:var(--viewer-card-w);--viewer-card-h-fit:var(--viewer-card-h);--viewer-panel-chrome:calc(2 * var(--viewer-panel-pad-y) + 2px);--viewer-panel-pad-y:.875rem;--viewer-panel-pad-x:1.125rem;--viewer-panel-gap:1.75rem;--viewer-panel-rows:.1875rem;--viewer-card-gap:.375rem}
 .table-shell>.table-stage{grid-row:1}
 .table-shell>.decision-area{grid-row:2}
 .table-shell>.game-log{grid-row:3}
@@ -70,6 +70,29 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat.viewer .seat-cards{grid-column:1;grid-row:4;align-self:start}
 .seat.viewer .seat-cards,.seat.viewer .seat-cards .playing-card{transform-origin:center bottom}
 .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit);--card-h:var(--viewer-card-h-fit);--corner-gap:.15rem}
+/* Your own hand is the one thing on the table you never stop looking at, so it
+   gets a panel of its own rather than a seat like everyone else's: cards on the
+   left, and who you are, what you hold and what you have put in stacked down
+   the right of them. Centring all of it left the widest box on the screen
+   mostly empty and buried the stack in the middle of a line. */
+.seat.viewer{grid-template-columns:auto minmax(0,auto);align-content:center;justify-content:center;align-items:center;justify-items:start;gap:var(--viewer-panel-rows) var(--viewer-panel-gap);padding:var(--viewer-panel-pad-y) var(--viewer-panel-pad-x);border-color:var(--gold);border-radius:var(--radius-surface);background:var(--surface-raised);text-align:left}
+/* The hand fans out rather than overlapping here: at this size the cards are
+   read, not counted, and the back card's rank should not sit under the front.
+   The dialog's preview fans the same way, or it stops being a preview.
+   Note the column gap is set wider than the space it buys: the outer card is
+   rotated 3deg, so its corner leans about 4px into whatever follows it, and
+   paying that back is what makes the measured space match the audit's. */
+:is(.seat.viewer .seat-cards,.card-config-preview) .playing-card + .playing-card{margin-left:var(--viewer-card-gap)}
+.seat.viewer .seat-cards{grid-column:1;grid-row:1;align-self:center;justify-content:flex-start;margin:0}
+.seat.viewer .viewer-summary{grid-column:2;grid-row:1;display:grid;justify-items:start;gap:var(--viewer-panel-rows);min-width:0;max-width:100%;text-align:left}
+.seat.viewer .viewer-summary .player-info{max-width:100%;color:var(--muted);font-size:var(--text-label);font-weight:var(--weight-label);letter-spacing:.06em;text-transform:uppercase}
+.seat.viewer .viewer-summary .player-info strong{color:inherit}
+.seat.viewer .seat-stack{color:var(--ink);font-size:var(--text-title)}
+.seat.viewer .seat-wager{margin:0}
+.seat.viewer .viewer-summary>*{justify-self:start;margin-inline:0}
+/* The seat that held cards under three stacked text rows now holds them beside
+   one column of text, so it is as tall as the cards plus its own padding. */
+.table-stage .viewer-seats .seat{height:calc(var(--viewer-card-h-fit) + var(--viewer-panel-chrome));grid-template-columns:auto minmax(0,auto);grid-template-rows:auto}
 /* Hover keeps a hand up while the cursor is on it; a finger has no hover and
    iOS would leave the zoom stuck after the tap, so touch zooms on hold. */
 @media (hover:hover){
@@ -237,13 +260,22 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(12cqh / var(--card-aspect) * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5),calc(6rem * var(--card-size-scale,1)))}
   .table-stage .seat-cards .playing-card{--seat-card-cap:3.25rem;--seat-card-share:45cqw;--card-w:min(calc(48cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:4rem;--seat-card-share:62cqw;--card-w:min(calc(54cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
-  .table-stage .viewer-seats .seat{height:min(calc(18cqh * var(--card-size-scale,1) + 3rem),22rem)}
-  .table-stage .seat.viewer .seat-cards .playing-card{--card-w:min(calc(62cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
-  .table-stage .card-config-preview .playing-card{--card-w:min(calc(16cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
+  /* The panel is as tall as the cards plus its own padding now: the 3rem that
+     allowed for name, stack and wager stacked under them is spent sideways. */
+  .table-stage :is(.viewer-seats .seat,.card-config-preview){height:min(calc(18cqh * var(--card-size-scale,1) + var(--viewer-panel-chrome)),calc(5.8rem * var(--card-aspect) * var(--card-size-scale,1) + var(--viewer-panel-chrome)),22rem)}
+  /* The dialog previews the card the table is about to show, so it has to be
+     that card's size. Give the preview a box the panel's height and read both
+     from the same expression, instead of a second formula tuned to agree at
+     the sizes where the cap happens to bind. */
+  .table-stage .card-config-preview{container-type:size;box-sizing:border-box;min-height:0;padding:var(--viewer-panel-pad-y) 0;border-block:1px solid transparent}
+  .table-stage :is(.seat.viewer .seat-cards,.card-config-preview) .playing-card{--card-w:min(calc(62cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
 }
 @media (max-width:640px),(max-height:520px){
   html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
+  /* The audit's phone panel: 10px 12px inside, 12px between the hand and the
+     figures beside it, 4px between the two cards. */
+  .table-shell{--viewer-panel-pad-y:.625rem;--viewer-panel-pad-x:.75rem;--viewer-panel-gap:1rem;--viewer-panel-rows:.125rem;--viewer-card-gap:.25rem}
   .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 39.625rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);--gutter-left:calc(.45rem + var(--safe-left));--gutter-right:calc(.45rem + var(--safe-right));display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) 0 calc(.25rem + var(--safe-bottom))}
   .page:has(.table-shell) .site-header{flex:0 0 auto;height:2.55rem;margin-bottom:0;padding-top:0}
   .page:has(.table-shell) .brand{font-size:var(--text-body)}
@@ -283,7 +315,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats{grid-template-columns:repeat(auto-fit,minmax(5.4rem,1fr));gap:.25rem}
   .table-stage .seats .seat{height:auto;grid-template-rows:auto auto minmax(2.65rem,auto) auto auto;gap:.08rem;min-width:0;min-height:4.5rem;overflow:visible;padding:.25rem .2rem;font-size:var(--text-label)}
   .table-stage .seats.viewer-seats{margin-top:.15rem}
-  .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;display:grid;height:auto;min-height:calc(var(--viewer-card-h-fit-mobile) + 2rem);grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);justify-items:center;padding:.3rem}
+  .table-stage .seats .seat.viewer{order:1;grid-column:1/-1;display:grid;height:auto;min-height:calc(var(--viewer-card-h-fit-mobile) + var(--viewer-panel-chrome));grid-template-columns:auto minmax(0,auto);grid-template-rows:auto;align-content:center;justify-content:center;align-items:center;justify-items:start;gap:var(--viewer-panel-rows) var(--viewer-panel-gap);padding:var(--viewer-panel-pad-y) var(--viewer-panel-pad-x)}
   .seat-corner-badges{position:absolute;right:.1rem;top:.1rem;z-index:6;width:auto;min-height:0;max-width:calc(100% - .2rem);overflow:hidden;justify-content:flex-end}
   .seat .seat-role{padding:.05rem .1rem;letter-spacing:.02em}
   .seat-corner-badges{gap:.1rem}
@@ -297,11 +329,12 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .player-info>strong{max-width:100%}
   .seat-outcome-badges{top:auto}
   .seat .player-tooltip{top:.3rem;transform:translateX(-50%)}
-  .seat.viewer .viewer-summary{grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:center;gap:.45rem;min-width:0;max-width:100%}
+  .seat.viewer .viewer-summary{grid-column:2;grid-row:1;display:grid;justify-items:start;gap:var(--viewer-panel-rows);min-width:0;max-width:100%}
   .seat.viewer .viewer-summary .player-info,.seat.viewer .viewer-summary .seat-stack,.seat.viewer .viewer-summary .seat-wager{margin:0;white-space:nowrap}
-  .seat .seat-wager,.seat.viewer .seat-wager{position:static;min-width:0;margin:0 auto;padding:.1rem .3rem;font-size:var(--text-label);transform:none}
+  .seat .seat-wager{position:static;min-width:0;margin:0 auto;padding:.1rem .3rem;font-size:var(--text-label);transform:none}
+  .seat.viewer .seat-wager{position:static;min-width:0;margin:0;padding:.1rem .3rem;font-size:var(--text-label);transform:none}
   .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;justify-content:center;transform:none}
-  .seat.viewer .seat-cards{grid-column:1;grid-row:2;margin-top:.1rem}
+  .seat.viewer .seat-cards{grid-column:1;grid-row:1;margin:0}
 
   .seat.viewer .seat-cards .playing-card{--card-w:var(--viewer-card-w-fit-mobile);--card-h:var(--viewer-card-h-fit-mobile);--corner-gap:.1rem}
   .card-config-preview{min-height:calc(var(--viewer-card-h-fit-mobile) + .5rem)}
