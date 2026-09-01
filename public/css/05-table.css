@@ -255,9 +255,13 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:4rem;--seat-card-share:62cqw;--card-w:min(calc(54cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   /* The panel is as tall as the cards plus its own padding now: the 3rem that
      allowed for name, stack and wager stacked under them is spent sideways. */
-  .table-stage .viewer-seats .seat{height:min(calc(18cqh * var(--card-size-scale,1) + 1.5rem),calc(5.8rem * var(--card-aspect) * var(--card-size-scale,1) + 1.5rem),22rem)}
-  .table-stage .seat.viewer .seat-cards .playing-card{--card-w:min(calc(62cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
-  .table-stage .card-config-preview .playing-card{--card-w:min(calc(16cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
+  .table-stage :is(.viewer-seats .seat,.card-config-preview){height:min(calc(18cqh * var(--card-size-scale,1) + 1.5rem),calc(5.8rem * var(--card-aspect) * var(--card-size-scale,1) + 1.5rem),22rem)}
+  /* The dialog previews the card the table is about to show, so it has to be
+     that card's size. Give the preview a box the panel's height and read both
+     from the same expression, instead of a second formula tuned to agree at
+     the sizes where the cap happens to bind. */
+  .table-stage .card-config-preview{container-type:size;box-sizing:border-box;min-height:0;padding:.5rem 0;border-block:1px solid transparent}
+  .table-stage :is(.seat.viewer .seat-cards,.card-config-preview) .playing-card{--card-w:min(calc(62cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
 }
 @media (max-width:640px),(max-height:520px){
   html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden;overscroll-behavior:none}
