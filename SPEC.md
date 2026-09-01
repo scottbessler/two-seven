@@ -352,7 +352,8 @@ Mark each milestone done here as it lands.
   viewer cards at viewer seat, board unobscured, actions before unified log,
   one-line header, whole-dollar labels, and integrated showdown winners/cards.
 - **V15** Viewer cards retain face saturation inside seat, expose persisted
-  50–200% relative size control, magnify on hover/focus, and sit on compact rounded-rect felt.
+  50–200% relative size control, magnify as a whole hand on hover/focus where a
+  pointer hovers and on hold where none does, and sit on compact rounded-rect felt.
 - **V16** Viewer street wager renders centered above viewer hole cards at desktop
   and mobile widths.
 - **V17** Card display config persists 50–200% relative viewer size/rank
@@ -712,3 +713,4 @@ B13|2026-08-27|joining a cash table mid-hand swapped the newcomer into a house p
 B14|2026-08-28|blackjack sized every card at a fixed 29cqw share of its hand, so a fourth card pushed the row past the hand's width and a long mobile hand ran off screen; the play area also gave its two explicit rows all the height, collapsing split hands three and beyond to nothing|V42
 B15|2026-08-28|all-in runout resolved synchronously at hand end (`enter_betting_round` → `advance_street` recursion), so the whole result existed before the reveal & each spoiler-carrying field needed its own embargo; `viewer_seat`/`viewer_eliminated` had none, so a busted tournament player lost their seat mid-reveal & jumped to the opponent row before the board was out|V33,V59
 B16|2026-08-31|the one-card zoom rule matched the viewer's own hole cards as well as the board, so hovering one card grew it 1.35x on top of the hand's own scale and left its partner behind, against V17's "either viewer card magnifies both"|V15,V17
+B17|2026-08-31|card zoom hung on :hover, which iOS leaves stuck on the last thing tapped, so a magnified hand outlived the tap and covered the action row the next press was aimed at|V15
