@@ -2855,6 +2855,108 @@ async fn v57_cancelling_a_waiting_seat_refunds_the_buy_in() {
     );
 }
 
+/// Folding does not disqualify a player from leaving: a folded seat still has
+/// live opponents playing out the pot, so leaving must defer into
+/// `pending_departure` exactly like an unfolded mid-hand leave, not 500.
+#[tokio::test]
+async fn leaving_after_folding_defers_instead_of_erroring() {
+    use two_seven::table::{Bot, BotKind, SeatOccupant};
+    let t = appx().await;
+    let user = register(&t, "folder", "Folder").await;
+    let cookie_value = cookie(&t.key, user);
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let buy_in = BankStore::RE_UP_AMOUNT;
+    let id = seat_table(&t, "Fold then leave", 3, buy_in, false).await;
+
+    let join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join.status(), StatusCode::OK);
+
+    let mut human_seat = 0;
+    t.tables
+        .update(id, |table| {
+            for (index, seat) in table.seats.iter_mut().enumerate() {
+                if matches!(seat.occupant, SeatOccupant::Empty) {
+                    seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Fish, index as u8));
+                    seat.stack = buy_in;
+                }
+            }
+            table.bot_hands_requested = 1;
+            two_seven::table::maybe_start_hand(table);
+            human_seat = table
+                .seats
+                .iter()
+                .position(
+                    |seat| matches!(seat.occupant, SeatOccupant::Human { user_id } if user_id == user),
+                )
+                .expect("the human is seated");
+            if let Some(hand) = table.hand.as_mut() {
+                hand.fold_seat(human_seat).map_err(|e| anyhow::anyhow!(e))?;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    {
+        let table = t.tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        let hand = table.hand.as_ref().expect("the two bots are still playing");
+        assert!(!hand.complete, "the hand must still be live");
+        assert!(
+            hand.players
+                .iter()
+                .find(|player| player.seat == human_seat)
+                .is_some_and(|player| player.folded),
+            "the human should already have folded"
+        );
+    }
+
+    let leave = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/leave"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        leave.status(),
+        StatusCode::OK,
+        "a folded player must still be able to enter the leaving state"
+    );
+    let leave: serde_json::Value =
+        serde_json::from_slice(&to_bytes(leave.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(leave["pending"], true);
+
+    let table = t.tables.get(id).await.unwrap();
+    let table = table.lock().await;
+    let seat = &table.seats[human_seat];
+    assert!(seat.pending_departure, "the leave must be recorded");
+    assert!(seat.sitting_out, "a departing folded seat sits out");
+    assert!(
+        table.hand.is_some(),
+        "the still-live bots must be left to finish the hand"
+    );
+}
+
 /// Registers a player and returns their id, for the tests that need two people.
 async fn register(t: &T, username: &str, display_name: &str) -> Uuid {
     let id = Uuid::new_v4();

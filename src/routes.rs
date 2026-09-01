@@ -1324,7 +1324,16 @@ pub async fn leave_table(
         s.tables
             .update(id, |t| {
                 if let Some(hand) = t.hand.as_mut() {
-                    hand.fold_seat(seat).map_err(|e| anyhow::anyhow!(e))?;
+                    // Already folded (or never dealt in) needs no further
+                    // fold: leaving after folding is a normal path, not an error.
+                    let already_folded = hand
+                        .players
+                        .iter()
+                        .find(|player| player.seat == seat)
+                        .is_none_or(|player| player.folded);
+                    if !already_folded {
+                        hand.fold_seat(seat).map_err(|e| anyhow::anyhow!(e))?;
+                    }
                 }
                 if t.hand.as_ref().is_some_and(|hand| hand.complete) {
                     recorded.extend(settle_finished_hand(t));
