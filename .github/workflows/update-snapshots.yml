@@ -4,10 +4,11 @@ name: Update snapshots
 # way to update baselines: no contributor needs a local Docker daemon, and a
 # baseline can never be produced by a host whose fonts differ from CI's.
 #
-# Two ways in, because `workflow_dispatch` only resolves once the file is on the
-# default branch — which would make this unusable on the very branch that
+# Three ways in, because `workflow_dispatch` only resolves once the file is on
+# the default branch — which would make this unusable on the very branch that
 # changes rendering, before it merges:
-#   * Actions -> Update snapshots -> Run workflow (pick the branch), or
+#   * Actions -> Update snapshots -> Run workflow (pick the branch),
+#   * comment `/update-snapshots` on the pull request, or
 #   * push a commit whose message contains [update-snapshots].
 on:
   workflow_dispatch:
@@ -20,16 +21,83 @@ on:
         description: Optional Playwright --grep filter (empty updates all)
         required: false
         type: string
+  issue_comment:
+    types: [created]
   push:
     branches-ignore: [main]
 jobs:
+  target:
+    # One cheap job decides whether this event asked for a regeneration and
+    # which branch it meant, so the two expensive jobs cannot disagree about it
+    # — and so the answer is visible in the log when nothing runs.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    outputs:
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          REF_NAME: ${{ github.ref_name }}
+          # A push delivers a batch of commits, and the marker belongs to the
+          # one that changed rendering — which is rarely the last one to land,
+          # because review notes and spec edits pile on top of it afterwards.
+          # `head_commit` alone silently skipped those branches.
+          PUSH_MESSAGES: ${{ join(github.event.commits.*.message, '  ') }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ROLE: ${{ github.event.comment.author_association }}
+          ON_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -Eeuo pipefail
+          case "$EVENT" in
+            workflow_dispatch)
+              echo "Dispatched for $INPUT_BRANCH."
+              echo "branch=$INPUT_BRANCH" >> "$GITHUB_OUTPUT"
+              ;;
+            push)
+              if [[ "$PUSH_MESSAGES" == *"[update-snapshots]"* ]]; then
+                echo "Marker found in this push; regenerating on $REF_NAME."
+                echo "branch=$REF_NAME" >> "$GITHUB_OUTPUT"
+              else
+                echo "No [update-snapshots] marker in this push; nothing to do."
+              fi
+              ;;
+            issue_comment)
+              if [[ "$ON_PULL_REQUEST" != "true" ]]; then
+                echo "Comment is on an issue, not a pull request; nothing to do."
+              elif [[ "$COMMENT_BODY" != *"/update-snapshots"* ]]; then
+                echo "Comment does not ask for a regeneration; nothing to do."
+              elif [[ "$COMMENT_ROLE" != "OWNER" && "$COMMENT_ROLE" != "MEMBER" && "$COMMENT_ROLE" != "COLLABORATOR" ]]; then
+                # The job pushes a commit to the branch, so only people who
+                # could push it themselves get to ask for one.
+                echo "::warning::$COMMENT_ROLE cannot write to this repository; ignoring."
+              else
+                branch=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
+                echo "Asked for on PR #$PR_NUMBER; regenerating on $branch."
+                echo "branch=$branch" >> "$GITHUB_OUTPUT"
+                # Say out loud that the comment landed: the run itself takes
+                # minutes, and a slash command with no answer reads as broken.
+                gh api "repos/$GITHUB_REPOSITORY/issues/comments/$COMMENT_ID/reactions" \
+                  -f content=eyes --silent || true
+              fi
+              ;;
+          esac
   server:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[update-snapshots]')
+    needs: target
+    if: needs.target.outputs.branch != ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch || github.ref_name }}
+          ref: ${{ needs.target.outputs.branch }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.90.0
@@ -40,7 +108,7 @@ jobs:
           path: target/debug/two-seven
           retention-days: 1
   update:
-    needs: server
+    needs: [target, server]
     runs-on: ubuntu-24.04
     container: mcr.microsoft.com/playwright:v1.54.1-noble
     permissions:
@@ -48,7 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch || github.ref_name }}
+          ref: ${{ needs.target.outputs.branch }}
       # The Playwright image ships no unzip, which setup-bun needs to unpack
       # the release it downloads.
       - run: apt-get update && apt-get install -y --no-install-recommends unzip
@@ -81,4 +149,4 @@ jobs:
           fi
           git add tests/e2e
           git commit -m "Regenerate Playwright baselines in the pinned container"
-          git push origin "HEAD:${{ inputs.branch || github.ref_name }}"
+          git push origin "HEAD:${{ needs.target.outputs.branch }}"
