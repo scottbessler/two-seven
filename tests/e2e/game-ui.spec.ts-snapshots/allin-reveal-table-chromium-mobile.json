@@ -18,7 +18,7 @@
     "x": 7,
     "y": 108,
     "width": 379,
-    "height": 457,
+    "height": 463,
     "display": "flex",
     "position": "static",
     "fontSize": "16px",
@@ -140,7 +140,7 @@
       "x": 7,
       "y": 464,
       "width": 379,
-      "height": 101,
+      "height": 107,
       "display": "grid",
       "position": "relative",
       "fontSize": "11px",
@@ -148,7 +148,7 @@
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "rgb(23, 54, 46)",
       "borderRadius": "16px",
-      "gridTemplateColumns": "119px 228px",
+      "gridTemplateColumns": "125px 212px",
       "flexDirection": "row"
     }
   ],
@@ -229,8 +229,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 148,
-      "y": 501,
+      "x": 161,
+      "y": 503,
       "width": 24,
       "height": 24,
       "display": "block",
@@ -321,8 +321,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 148,
-      "y": 527,
+      "x": 161,
+      "y": 529,
       "width": 45,
       "height": 18,
       "display": "block",
@@ -372,7 +372,7 @@
     "x": 7,
     "y": 464,
     "width": 379,
-    "height": 101,
+    "height": 107,
     "display": "grid",
     "position": "relative",
     "fontSize": "11px",
@@ -380,13 +380,13 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgb(23, 54, 46)",
     "borderRadius": "16px",
-    "gridTemplateColumns": "119px 228px",
+    "gridTemplateColumns": "125px 212px",
     "flexDirection": "row"
   },
   ".seat.viewer .seat-cards .playing-card": [
     {
-      "x": 12,
-      "y": 472,
+      "x": 16,
+      "y": 474,
       "width": 65,
       "height": 88,
       "display": "grid",
@@ -400,8 +400,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 74,
-      "y": 472,
+      "x": 85,
+      "y": 474,
       "width": 65,
       "height": 88,
       "display": "grid",
@@ -417,7 +417,7 @@
   ],
   ".decision-area": {
     "x": 0,
-    "y": 570,
+    "y": 576,
     "width": 393,
     "height": 57,
     "display": "grid",
@@ -433,9 +433,9 @@
   ".actions button": "absent",
   ".game-log": {
     "x": 7,
-    "y": 632,
+    "y": 638,
     "width": 379,
-    "height": 133,
+    "height": 127,
     "display": "grid",
     "position": "static",
     "fontSize": "16px",

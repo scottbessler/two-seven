@@ -18,7 +18,7 @@
     "x": 7,
     "y": 108,
     "width": 379,
-    "height": 460,
+    "height": 466,
     "display": "flex",
     "position": "static",
     "fontSize": "16px",
@@ -186,7 +186,7 @@
       "x": 7,
       "y": 427,
       "width": 379,
-      "height": 141,
+      "height": 147,
       "display": "grid",
       "position": "relative",
       "fontSize": "11px",
@@ -194,7 +194,7 @@
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "rgb(23, 54, 46)",
       "borderRadius": "16px",
-      "gridTemplateColumns": "176px 171px",
+      "gridTemplateColumns": "182px 155px",
       "flexDirection": "row"
     }
   ],
@@ -275,8 +275,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 205,
-      "y": 484,
+      "x": 218,
+      "y": 486,
       "width": 49,
       "height": 24,
       "display": "block",
@@ -367,8 +367,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 205,
-      "y": 510,
+      "x": 218,
+      "y": 512,
       "width": 32,
       "height": 18,
       "display": "block",
@@ -448,7 +448,7 @@
     "x": 7,
     "y": 427,
     "width": 379,
-    "height": 141,
+    "height": 147,
     "display": "grid",
     "position": "relative",
     "fontSize": "11px",
@@ -456,13 +456,13 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgb(23, 54, 46)",
     "borderRadius": "16px",
-    "gridTemplateColumns": "176px 171px",
+    "gridTemplateColumns": "182px 155px",
     "flexDirection": "row"
   },
   ".seat.viewer .seat-cards .playing-card": [
     {
-      "x": 10,
-      "y": 434,
+      "x": 14,
+      "y": 436,
       "width": 95,
       "height": 129,
       "display": "grid",
@@ -476,8 +476,8 @@
       "flexDirection": "row"
     },
     {
-      "x": 103,
-      "y": 434,
+      "x": 113,
+      "y": 436,
       "width": 95,
       "height": 129,
       "display": "grid",
@@ -493,7 +493,7 @@
   ],
   ".decision-area": {
     "x": 0,
-    "y": 573,
+    "y": 579,
     "width": 393,
     "height": 57,
     "display": "grid",
@@ -509,7 +509,7 @@
   ".actions button": [
     {
       "x": 10,
-      "y": 579,
+      "y": 585,
       "width": 44,
       "height": 44,
       "display": "grid",
@@ -524,7 +524,7 @@
     },
     {
       "x": 57,
-      "y": 579,
+      "y": 585,
       "width": 37,
       "height": 44,
       "display": "grid",
@@ -539,7 +539,7 @@
     },
     {
       "x": 98,
-      "y": 579,
+      "y": 585,
       "width": 37,
       "height": 44,
       "display": "grid",
@@ -554,7 +554,7 @@
     },
     {
       "x": 138,
-      "y": 579,
+      "y": 585,
       "width": 37,
       "height": 44,
       "display": "grid",
@@ -569,7 +569,7 @@
     },
     {
       "x": 179,
-      "y": 579,
+      "y": 585,
       "width": 37,
       "height": 44,
       "display": "grid",
@@ -584,7 +584,7 @@
     },
     {
       "x": 220,
-      "y": 579,
+      "y": 585,
       "width": 37,
       "height": 44,
       "display": "grid",
@@ -599,7 +599,7 @@
     },
     {
       "x": 260,
-      "y": 579,
+      "y": 585,
       "width": 60,
       "height": 44,
       "display": "grid",
@@ -614,7 +614,7 @@
     },
     {
       "x": 323,
-      "y": 579,
+      "y": 585,
       "width": 60,
       "height": 44,
       "display": "grid",
@@ -630,9 +630,9 @@
   ],
   ".game-log": {
     "x": 7,
-    "y": 635,
+    "y": 641,
     "width": 379,
-    "height": 130,
+    "height": 124,
     "display": "grid",
     "position": "static",
     "fontSize": "16px",
