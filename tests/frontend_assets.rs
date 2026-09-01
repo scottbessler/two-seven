@@ -295,6 +295,8 @@ fn table_css_is_mobile_poker_layout() {
         ".card-config-preview",
         ".table-config-button",
         "--viewer-card-w",
+        "@media (hover:hover){",
+        "@media (hover:none){",
         ".table-stage .board .card-zoom-target:not(.empty-card):hover",
         ".seat-cards:is(:hover,:focus-within) .playing-card",
         ".table-stage",

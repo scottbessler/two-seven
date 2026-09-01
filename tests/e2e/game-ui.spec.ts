@@ -390,7 +390,14 @@ test("shows live hand cues and event log", async ({ page }) => {
   const handBeforeMagnify = await page.locator(".seat.viewer .seat-cards").boundingBox();
   const firstBeforeMagnify = await viewerCard.boundingBox();
   const secondBeforeMagnify = await secondViewerCard.boundingBox();
-  await viewerCard.hover();
+  // A finger has no hover, and iOS leaves :hover stuck on the last thing
+  // tapped, so touch magnifies on hold instead. Hold the hand the same way.
+  const hoverable = await page.evaluate(() => matchMedia("(hover: hover)").matches);
+  if (hoverable) await viewerCard.hover();
+  else {
+    await page.mouse.move(firstBeforeMagnify.x + firstBeforeMagnify.width / 2, firstBeforeMagnify.y + firstBeforeMagnify.height / 2);
+    await page.mouse.down();
+  }
   await page.waitForTimeout(250);
   const handMagnified = await page.locator(".seat.viewer .seat-cards").boundingBox();
   const firstMagnified = await viewerCard.boundingBox();
@@ -405,8 +412,13 @@ test("shows live hand cues and event log", async ({ page }) => {
     Math.abs(firstMagnified.width / firstBeforeMagnify.width - secondMagnified.width / secondBeforeMagnify.width),
     "both hole cards should zoom by the same factor",
   ).toBeLessThan(0.02);
-  await page.locator(".brand").hover();
+  if (hoverable) await page.locator(".brand").hover();
+  else await page.mouse.up();
   await page.waitForTimeout(250);
+  // Letting go puts the hand back exactly where it was: a magnified hand left
+  // hanging over the buttons is how a tap lands on the wrong control.
+  const handReleased = await page.locator(".seat.viewer .seat-cards").boundingBox();
+  expect(handReleased, "the hand must not stay magnified after the touch ends").toEqual(handBeforeMagnify);
   await expect(page.locator(".empty-seat")).toHaveCount(0);
   await expect(page.locator(".board .empty-card")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
