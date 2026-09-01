@@ -399,6 +399,12 @@ test("shows live hand cues and event log", async ({ page }) => {
   expect(Math.abs((handMagnified.y + handMagnified.height) - (handBeforeMagnify.y + handBeforeMagnify.height)), "viewer card zoom should keep its bottom anchored").toBeLessThanOrEqual(2);
   expect(firstMagnified.width).toBeGreaterThan(firstBeforeMagnify.width * 1.1);
   expect(secondMagnified.width).toBeGreaterThan(secondBeforeMagnify.width * 1.1);
+  // Reaching for one card lifts the hand, not that card: hovering a single
+  // card must not grow it past its partner.
+  expect(
+    Math.abs(firstMagnified.width / firstBeforeMagnify.width - secondMagnified.width / secondBeforeMagnify.width),
+    "both hole cards should zoom by the same factor",
+  ).toBeLessThan(0.02);
   await page.locator(".brand").hover();
   await page.waitForTimeout(250);
   await expect(page.locator(".empty-seat")).toHaveCount(0);
