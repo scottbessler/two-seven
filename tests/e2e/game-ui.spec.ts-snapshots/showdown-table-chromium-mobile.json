@@ -224,7 +224,7 @@
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "rgb(23, 54, 46)",
       "borderRadius": "16px",
-      "gridTemplateColumns": "125px 212px",
+      "gridTemplateColumns": "125px 49px",
       "flexDirection": "row"
     }
   ],
@@ -305,7 +305,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 161,
+      "x": 242,
       "y": 479,
       "width": 49,
       "height": 24,
@@ -397,7 +397,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 161,
+      "x": 242,
       "y": 505,
       "width": 25,
       "height": 18,
@@ -456,12 +456,12 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgb(23, 54, 46)",
     "borderRadius": "16px",
-    "gridTemplateColumns": "125px 212px",
+    "gridTemplateColumns": "125px 49px",
     "flexDirection": "row"
   },
   ".seat.viewer .seat-cards .playing-card": [
     {
-      "x": 16,
+      "x": 97,
       "y": 450,
       "width": 65,
       "height": 88,
@@ -476,7 +476,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 85,
+      "x": 166,
       "y": 450,
       "width": 65,
       "height": 88,
