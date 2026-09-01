@@ -95,9 +95,12 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
   return html`<article class=${classes}>
     <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
     ${viewer ? html`<span class="viewer-summary">${playerInfo}${stackLabel}${wager}</span>` : html`${playerInfo}${stackLabel}`}
-    ${player?.folded && !viewer
-      ? html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`
-      : cards.length > 0 && html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`}
+    ${cards.length > 0
+      ? html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`
+      // A seat between hands still holds the space its cards had, or the whole
+      // table shrinks the moment a hand ends and the controls below slide up
+      // under whatever finger was on its way to them.
+      : html`<span class="seat-cards vacant"><span class="playing-card slot-card" aria-hidden="true"></span>${player?.folded && !viewer && html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`}</span>`}
     ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     ${clock && html`<${TurnClock} ...${clock} className="seat-clock" announce=${viewer} />`}

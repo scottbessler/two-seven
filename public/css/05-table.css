@@ -48,7 +48,11 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat .seat-stack{color:var(--accent);font-size:var(--text-small);font-weight:700;font-variant-numeric:tabular-nums}
 .seat-corner-badges,.seat-outcome-badges,.seat-card-state{display:flex;min-height:.85rem;align-items:center;justify-content:center;gap:.2rem}
 .seat-corner-badges{position:absolute;right:.2rem;top:.2rem;z-index:6;min-height:0;max-width:calc(100% - .4rem);overflow:hidden;justify-content:flex-end}
-.seat-card-state{align-self:center;min-height:0}
+/* The empty slot keeps a seat the height its cards gave it; the state badge
+   sits inside that slot rather than replacing it. */
+.seat-cards.vacant{position:relative;pointer-events:none}
+.seat-cards .slot-card{visibility:hidden;box-shadow:none}
+.seat-cards.vacant .seat-card-state{position:absolute;inset:0;min-height:0}
 .seat-outcome-badges{position:absolute;right:.35rem;top:100%;z-index:8;min-height:0;justify-content:flex-end;pointer-events:none}
 .seat .button-role{border-color:var(--gold);background:var(--gold);color:var(--ink-on-gold)}
 .seat .leading-role{border-color:var(--mint);background:var(--mint);color:var(--ink-on-mint)}
@@ -98,7 +102,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat.leading{border-color:var(--mint);box-shadow:0 0 0 2px var(--mint),0 0 10px 1px var(--mint-44),inset 0 0 18px var(--mint-13)}
 .seat.winner{border-color:var(--gold-hi);box-shadow:0 0 0 2px var(--gold-hi),0 0 12px 2px var(--gold-hi-50),inset 0 0 18px var(--gold-hi-14)}
 .seat.champion{border-color:var(--gold-hi);background:linear-gradient(135deg,var(--surface-champion) 0%,var(--felt-800) 58%,var(--surface-champion-gold) 100%);box-shadow:0 0 0 2px var(--gold-hi),0 0 16px 3px var(--gold-hi-60),inset 0 0 24px var(--gold-hi-19)}
-.seat.folded>:not(.seat-card-state){opacity:.58;filter:saturate(.35)}
+.seat.folded>:not(.seat-cards){opacity:.58;filter:saturate(.35)}
 /* The clock on the player to act. It is drawn over its box rather than in it,
    so a turn starting or ending never moves anything. */
 .turn-clock{position:absolute;z-index:7;display:block;overflow:hidden;background:var(--line-1);pointer-events:none}
