@@ -354,8 +354,9 @@ Mark each milestone done here as it lands.
 - **V15** Viewer cards retain face saturation inside seat, expose persisted
   50–200% relative size control, magnify as a whole hand on hover/focus where a
   pointer hovers and on hold where none does, and sit on compact rounded-rect felt.
-- **V16** Viewer street wager renders centered above viewer hole cards at desktop
-  and mobile widths.
+- **V16** Viewer name, stack and street wager read down one left-aligned column
+  beside the viewer's hole cards at desktop and mobile widths, never underneath
+  them.
 - **V17** Card display config persists 50–200% relative viewer size/rank
   size/weight controls; 100% equals former maxima (180%/150%/900), either viewer
   card magnifies both, and default geometry clears board/status.
@@ -457,7 +458,7 @@ Mark each milestone done here as it lands.
   keeps its own `Call <amount>` label and submits without a hold, since the
   caller still has chips behind; Fold keeps its narrow slot and a dead zone
   separates the two.
-- **V48** Portrait poker: viewer name + stack + wager share 1 row; Pot + Current
+- **V48** Portrait poker: viewer name + stack + wager share 1 column; Pot + Current
   Bet stack left of shared cards; stage clips ⊥; log absorbs spare height;
   History/Leave stay at viewport bottom.
 - **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
@@ -571,6 +572,7 @@ T38|x|reserve a mid-hand cash seat instead of taking a live one|V1,V12,V57
 T39|x|link player names to their page and let people gift $1,000 chips|V1,V2,V58
 T40|x|run the all-in board out as advanced state, not a faked reveal|V33,V59
 T41|x|net out gifts per counterparty on the player page|V58
+T42|x|give the viewer's own hand a panel: cards left, name/stack/wager beside them|V15,V16,V48
 
 ## §B Bug log
 
