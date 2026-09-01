@@ -41,13 +41,16 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   unless `CI` or `E2E_IMAGES` is set, because a comparison against another
   host's fonts reports failures that mean nothing. Treat a green local run as
   saying nothing about pixels.
-- To regenerate baselines, either run the **Update snapshots** workflow
-  (Actions → Update snapshots → Run workflow, pick the branch) or push a commit
-  whose message contains `[update-snapshots]`. Either way it renders them in the
-  pinned image and commits them back to the branch, so no local Docker daemon is
-  needed. (The message marker exists because `workflow_dispatch` only resolves
+- To regenerate baselines, do any one of: comment `/update-snapshots` on the
+  pull request, run the **Update snapshots** workflow (Actions → Update
+  snapshots → Run workflow, pick the branch), or push a commit whose message
+  contains `[update-snapshots]`. All three render them in the pinned image and
+  commit them back to the branch, so no local Docker daemon is needed. (The
+  comment and the message marker exist because `workflow_dispatch` only resolves
   once a workflow is on the default branch, which would leave a branch that
-  changes rendering unable to update its own baselines.)
+  changes rendering unable to update its own baselines. The marker counts
+  anywhere in the push, not just on its last commit — a rendering change usually
+  picks up review fixes on top of it before it goes up.)
   `bun run test:e2e:docker -- --update-snapshots` still works if you have one.
   The regeneration commit is pushed with `GITHUB_TOKEN`, and GitHub does not
   start workflows for those pushes — re-run CI by hand (Actions → CI → Run
