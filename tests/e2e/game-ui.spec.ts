@@ -2042,3 +2042,22 @@ test("picks any legal raise from the custom wager slider", async ({ page }) => {
   expect(posts, "the slider submits the chips the raise adds, not the street total").toEqual([{ kind: "raise", amount: 15_400 }]);
 });
 
+
+// A hand ending is when the buttons under the table change, so it is exactly
+// when the table must not move: the seats hold the space their cards had.
+test("keeps the seats the same height once the cards are gone", async ({ page }) => {
+  const read = async () => page.locator(".table-shell").evaluate((shell) => {
+    const box = (selector) => shell.querySelector(selector).getBoundingClientRect();
+    return {
+      decisionTop: box(".decision-area").top,
+      stageHeight: box(".table-stage").height,
+      opponentHeight: box(".seat:not(.viewer)").height,
+      viewerHeight: box(".seat.viewer").height,
+    };
+  });
+  await mountTable(page, tableState);
+  const live = await read();
+  await mountTable(page, foldResultState);
+  const between = await read();
+  expect(between, `V53: the table must not shrink when a hand ends ${JSON.stringify({ live, between })}`).toEqual(live);
+});

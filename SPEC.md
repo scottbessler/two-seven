@@ -472,8 +472,9 @@ Mark each milestone done here as it lands.
 - **V52** Eliminated tournament seats remain for payout attribution but render
   as spectators after reload: lobby active-seat state + table viewer state ⊥.
 - **V53** Narrow poker metrics anchor left. Result-state action bar keeps its
-  vertical position; protected controls suppress native selection. Bot raises
-  ≤3 per betting street.
+  vertical position, and a seat reserves its card slot between hands so the end
+  of a hand moves nothing; protected controls suppress native selection. Bot
+  raises ≤3 per betting street.
 - **V54** Mobile e2e emulation matches the shipped target: an iPhone with a
   Dynamic Island running the installed PWA (393x793 portrait, 852x393 landscape,
   375x647 short portrait), with safe-area insets pinned rather than left at
@@ -714,3 +715,4 @@ B14|2026-08-28|blackjack sized every card at a fixed 29cqw share of its hand, so
 B15|2026-08-28|all-in runout resolved synchronously at hand end (`enter_betting_round` → `advance_street` recursion), so the whole result existed before the reveal & each spoiler-carrying field needed its own embargo; `viewer_seat`/`viewer_eliminated` had none, so a busted tournament player lost their seat mid-reveal & jumped to the opponent row before the board was out|V33,V59
 B16|2026-08-31|the one-card zoom rule matched the viewer's own hole cards as well as the board, so hovering one card grew it 1.35x on top of the hand's own scale and left its partner behind, against V17's "either viewer card magnifies both"|V15,V17
 B17|2026-08-31|card zoom hung on :hover, which iOS leaves stuck on the last thing tapped, so a magnified hand outlived the tap and covered the action row the next press was aimed at|V15
+B18|2026-08-31|a seat rendered no card element between hands, so every seat lost a grid row when a hand ended and the mobile decision area jumped 37px up into the finger already travelling toward the action row|V53
