@@ -1903,7 +1903,7 @@ test("shows the bots' cards mid-hand when the server sends them", async ({ page 
 
 test("runs an all-in board out one street at a time", async ({ page }) => {
   await mountTable(page, preflopShove());
-  const board = page.locator(".board .playing-card");
+  const board = page.locator(".board .playing-card:not(.slot-card)");
   const result = page.locator(".showdown-result");
 
   // Betting closed before the flop, so nothing is out yet -- but the hands are
@@ -2064,4 +2064,47 @@ test("keeps the seats the same height once the cards are gone", async ({ page })
   await mountTable(page, foldResultState);
   const between = await read();
   expect(between, `V53: the table must not shrink when a hand ends ${JSON.stringify({ live, between })}`).toEqual(live);
+});
+
+/**
+ * The three shapes the panel takes in one session: a live hand, the gap between
+ * hands, and a result that pays you. Every one of them used to move it — the
+ * empty hand narrowed the card column, a longer stack widened the figures
+ * beside it, and both re-centred the panel; the metrics leaving the felt and a
+ * showdown's bigger opponent cards moved it up and down the screen as well.
+ */
+test("keeps your own hand in one place as cards and winnings come and go", async ({ page }) => {
+  const betweenHands = { ...tableState, hand: null, next_hand_at: "2099-01-01T00:00:00Z" };
+  const paidOut = {
+    ...betweenHands,
+    seats: tableState.seats.map((seat) => (seat.index === 2 ? { ...seat, stack: 106_600 } : seat)),
+    last_hand: {
+      board: ["Ah", "7c", "2s", "7d", "As"],
+      results: [{ seat: 2, hand: { label: "Two pair, aces and sevens" } }, { seat: 1, hand: { label: "Pair of aces" } }],
+      awards: [{ seat: 2, amount: 90_000 }],
+      contributions: { 1: 45_000, 2: 45_000 },
+      revealed_hole_cards: [[1, ["Kh", "Qh"]], [2, ["5c", "6c"]]],
+      events: [{ street: "Complete", seat: 2, kind: "Award", amount: 90_000 }],
+    },
+  };
+  const read = async () => page.locator(".table-shell").evaluate((shell) => {
+    const box = (selector) => {
+      const rect = shell.querySelector(selector).getBoundingClientRect();
+      return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+    };
+    return {
+      panel: box(".seat.viewer"),
+      hand: box(".seat.viewer .seat-cards"),
+      summary: box(".seat.viewer .viewer-summary"),
+      decisionTop: Math.round(box(".decision-area").y),
+    };
+  });
+  await mountTable(page, tableState);
+  const live = await read();
+  await mountTable(page, betweenHands);
+  const between = await read();
+  await mountTable(page, paidOut);
+  const won = await read();
+  expect(between, `V53: an empty hand must not move your own panel ${JSON.stringify({ live, between })}`).toEqual(live);
+  expect(won, `V53: a result that pays you must not move your own panel ${JSON.stringify({ live, won })}`).toEqual(live);
 });

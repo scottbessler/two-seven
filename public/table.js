@@ -99,8 +99,11 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
       ? html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`
       // A seat between hands still holds the space its cards had, or the whole
       // table shrinks the moment a hand ends and the controls below slide up
-      // under whatever finger was on its way to them.
-      : html`<span class="seat-cards vacant"><span class="playing-card slot-card" aria-hidden="true"></span>${player?.folded && !viewer && html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`}</span>`}
+      // under whatever finger was on its way to them. Your own panel lays its
+      // hand out sideways, so it has to hold both cards' width, not one card's:
+      // a single slot would let the panel narrow and slide the hand across the
+      // moment a hand ended.
+      : html`<span class="seat-cards vacant">${Array.from({ length: viewer ? 2 : 1 }, () => html`<span class="playing-card slot-card" aria-hidden="true"></span>`)}${player?.folded && !viewer && html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`}</span>`}
     ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     ${clock && html`<${TurnClock} ...${clock} className="seat-clock" announce=${viewer} />`}
@@ -618,12 +621,19 @@ function TableApp() {
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
       <div class="felt">
         <div class="table-center">
-          ${(hand || showdown) && html`<div class="table-metrics"><span><small>Pot</small><b>${money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0)}</b></span><span class=${hand ? "" : "metric-placeholder"}><small>Current bet</small><b>${hand ? money(hand.last_bet) : "\u00A0"}</b></span></div>`}
-          <div class="board">${board.map((card) => html`<${Card} card=${card} interactive=${true} />`)}</div>
-          ${(hand || showdown) && html`<div class="table-rail">
+          ${/* The metrics keep their box between hands rather than leaving with
+                the hand: dropping them shortened the felt, and everything below
+                it — your own hand most of all — jumped up the screen. */ ""}
+          <div class="table-metrics"><span class=${hand || showdown ? "" : "metric-placeholder"}><small>Pot</small><b>${hand || showdown ? money(hand?.pot || showdown?.awards?.reduce((sum, award) => sum + award.amount, 0) || 0) : "\u00A0"}</b></span><span class=${hand ? "" : "metric-placeholder"}><small>Current bet</small><b>${hand ? money(hand.last_bet) : "\u00A0"}</b></span></div>
+          ${/* An empty board still holds a card's height, so the felt does not
+                shorten between hands and lift everything under it. */ ""}
+          <div class="board">${board.length > 0
+            ? board.map((card) => html`<${Card} card=${card} interactive=${true} />`)
+            : html`<span class="playing-card slot-card" aria-hidden="true"></span>`}</div>
+          <div class="table-rail">
             ${runout.live && html`<${ShowdownOdds} odds=${runout.odds} seats=${state.seats} leaders=${runout.leaders} />`}
             <p class="showdown-result">${showdown ? result : ""}</p>
-          </div>`}
+          </div>
         </div>
       </div>
       ${viewerSeat && html`<div class="seats viewer-seats" data-seat-total="1">${renderSeat(viewerSeat)}</div>`}
