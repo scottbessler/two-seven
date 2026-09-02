@@ -231,7 +231,7 @@
   ".seat-stack": [
     {
       "x": 37,
-      "y": 131,
+      "y": 128,
       "width": 32,
       "height": 15,
       "display": "block",
