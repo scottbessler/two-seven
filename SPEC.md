@@ -524,6 +524,10 @@ Mark each milestone done here as it lands.
   only — the ladder-rung check & every buy-in charge stand. `see_bot_cards`
   exposes bot seats' hole cards ⟺ ∄ seated human, viewer included; any human
   sitting down ⇒ face down again for everyone.
+- **V61** Other-player seats → compact dark tiles across desktop/tablet/portrait/
+  landscape; stable identity+role, stack, cards/state, wager rows; existing
+  acting/leading/winner/champion/folded/all-in semantics remain distinct;
+  content ⊥ clip/overlap; viewer seat unchanged.
 
 ## §T Build tasks
 
@@ -577,6 +581,7 @@ T40|x|run the all-in board out as advanced state, not a faked reveal|V33,V59
 T41|x|net out gifts per counterparty on the player page|V58
 T42|x|give the viewer's own hand a panel: cards left, name/stack/wager beside them|V15,V16,V48
 T43|x|hold the table's shape as cards, metrics and results come and go|V48,V53
+T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,V53,V54,V61
 
 ## §B Bug log
 
@@ -722,4 +727,5 @@ B15|2026-08-28|all-in runout resolved synchronously at hand end (`enter_betting_
 B16|2026-08-31|the one-card zoom rule matched the viewer's own hole cards as well as the board, so hovering one card grew it 1.35x on top of the hand's own scale and left its partner behind, against V17's "either viewer card magnifies both"|V15,V17
 B17|2026-08-31|card zoom hung on :hover, which iOS leaves stuck on the last thing tapped, so a magnified hand outlived the tap and covered the action row the next press was aimed at|V15
 B18|2026-08-31|a seat rendered no card element between hands, so every seat lost a grid row when a hand ended and the mobile decision area jumped 37px up into the finger already travelling toward the action row|V53
-B19|2026-09-02|the viewer's panel was centred and hugged its contents, so a hand ending narrowed its card column and a longer stack widened the figures beside it, sliding the hand ~30px sideways; and the metrics left the felt between hands, shortening it and lifting the same panel up the screen. Portrait showdowns still move it: reserving the bigger revealed cards a phone deals costs ~29px a seat row, and the stage has no such room|V48,V53
+B19|2026-09-02|the viewer's panel was centred and hugged its contents, so a hand ending narrowed its card column and a longer stack widened the figures beside it, sliding the hand ~30px sideways; and the metrics left the felt between hands, shortening it and lifting the same panel up the screen|V48,V53
+B20|2026-09-02|opponent redesign changed card + tile height on reveal, moving table geometry|V53,V61
