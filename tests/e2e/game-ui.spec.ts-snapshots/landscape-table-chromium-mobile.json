@@ -194,14 +194,14 @@
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "rgb(23, 54, 46)",
       "borderRadius": "16px",
-      "gridTemplateColumns": "98px 49px",
+      "gridTemplateColumns": "98px 104px",
       "flexDirection": "row"
     }
   ],
   ".seat-stack": [
     {
       "x": 129,
-      "y": 165,
+      "y": 163,
       "width": 16,
       "height": 15,
       "display": "block",
@@ -216,7 +216,7 @@
     },
     {
       "x": 265,
-      "y": 165,
+      "y": 163,
       "width": 32,
       "height": 15,
       "display": "block",
@@ -231,7 +231,7 @@
     },
     {
       "x": 410,
-      "y": 166,
+      "y": 164,
       "width": 32,
       "height": 15,
       "display": "block",
@@ -246,7 +246,7 @@
     },
     {
       "x": 555,
-      "y": 166,
+      "y": 164,
       "width": 32,
       "height": 15,
       "display": "block",
@@ -261,7 +261,7 @@
     },
     {
       "x": 700,
-      "y": 165,
+      "y": 163,
       "width": 32,
       "height": 15,
       "display": "block",
@@ -275,7 +275,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 459,
+      "x": 431,
       "y": 527,
       "width": 49,
       "height": 24,
@@ -293,7 +293,7 @@
   ".seat-wager": [
     {
       "x": 114,
-      "y": 215,
+      "y": 218,
       "width": 45,
       "height": 18,
       "display": "block",
@@ -308,7 +308,7 @@
     },
     {
       "x": 269,
-      "y": 215,
+      "y": 218,
       "width": 25,
       "height": 18,
       "display": "block",
@@ -323,7 +323,7 @@
     },
     {
       "x": 414,
-      "y": 215,
+      "y": 218,
       "width": 25,
       "height": 18,
       "display": "block",
@@ -338,7 +338,7 @@
     },
     {
       "x": 558,
-      "y": 215,
+      "y": 218,
       "width": 25,
       "height": 18,
       "display": "block",
@@ -353,7 +353,7 @@
     },
     {
       "x": 700,
-      "y": 215,
+      "y": 218,
       "width": 32,
       "height": 18,
       "display": "block",
@@ -367,7 +367,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 459,
+      "x": 431,
       "y": 553,
       "width": 32,
       "height": 18,
@@ -385,7 +385,7 @@
   ".seat-role": [
     {
       "x": 257,
-      "y": 195,
+      "y": 193,
       "width": 49,
       "height": 15,
       "display": "block",
@@ -456,12 +456,12 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgb(23, 54, 46)",
     "borderRadius": "16px",
-    "gridTemplateColumns": "98px 49px",
+    "gridTemplateColumns": "98px 104px",
     "flexDirection": "row"
   },
   ".seat.viewer .seat-cards .playing-card": [
     {
-      "x": 341,
+      "x": 313,
       "y": 508,
       "width": 51,
       "height": 69,
@@ -476,7 +476,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 395,
+      "x": 368,
       "y": 508,
       "width": 51,
       "height": 69,
