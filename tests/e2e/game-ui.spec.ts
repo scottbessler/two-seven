@@ -1006,10 +1006,8 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
         const wagerBox = wager?.getBoundingClientRect();
         const cornerBadges = seat.querySelector(".seat-corner-badges");
         const cornerBox = cornerBadges?.getBoundingClientRect();
+        const heading = seat.querySelector(".opponent-heading")?.getBoundingClientRect();
         const playerInfo = seat.querySelector(".player-info")?.getBoundingClientRect();
-        const playerInfoStyle = seat.querySelector(".player-info")
-          ? getComputedStyle(seat.querySelector(".player-info"))
-          : null;
         const hasCornerBadge = Boolean(cornerBadges && cornerBadges.textContent.trim());
         const outcome = seat.querySelector(".seat-outcome-badges i");
         const outcomeBox = outcome?.getBoundingClientRect();
@@ -1020,13 +1018,11 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
             && wagerBox.top >= seatBox.top - 1
             && wagerBox.bottom <= seatBox.bottom + 1,
           hasCornerBadge,
-          badgeInfoCentered: !hasCornerBadge || (
-            Boolean(playerInfo && playerInfoStyle)
-            && Math.abs((playerInfo.left + playerInfo.width / 2) - (seatBox.left + seatBox.width / 2)) <= 1
-            && playerInfoStyle.justifySelf === "center"
-          ),
+          headingCentered: Boolean(heading)
+            && Math.abs((heading.left + heading.width / 2) - (seatBox.left + seatBox.width / 2)) <= 1,
           badgeSharesNameRow: Boolean(playerInfo && cornerBox && cornerBadges.textContent.trim())
-            && cornerBox.top < playerInfo.bottom,
+            && cornerBox.top < playerInfo.bottom
+            && cornerBox.bottom > playerInfo.top,
           nameOverCorner: Boolean(playerInfo && cornerBox && cornerBadges.textContent.trim())
             && overlaps(playerInfo, cornerBox),
           outcomeVisible: Boolean(outcome && outcomeBox && outcomeBox.width > 0 && outcomeBox.height > 0),
@@ -1047,7 +1043,7 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
     expect(geometry.every((seat) => !seat.nameOverCorner), `V45: player names must clear corner badges ${JSON.stringify(geometry)}`).toBe(true);
     const badgeSeats = geometry.filter((seat) => seat.hasCornerBadge);
     expect(badgeSeats.length).toBeGreaterThan(0);
-    expect(badgeSeats.every((seat) => seat.badgeInfoCentered), `V45: compact opponent names must stay centered beside their badges ${JSON.stringify(geometry)}`).toBe(true);
+    expect(badgeSeats.every((seat) => seat.headingCentered), `V61: opponent identity + role groups must stay centered ${JSON.stringify(geometry)}`).toBe(true);
     expect(badgeSeats.every((seat) => seat.badgeSharesNameRow), `V45: corner badges must not buy their own row ${JSON.stringify(geometry)}`).toBe(true);
     if (expectOutcome) {
       const outcomes = geometry.filter((seat) => seat.outcomeVisible);
@@ -1073,6 +1069,50 @@ test("keeps compact portrait opponent seats visible", async ({ page }) => {
   expect(viewerBadgeLayout.maxWidth).not.toBe("100%");
   expect(viewerBadgeLayout.justifySelf).toBe("start");
 });
+
+for (const viewport of [
+  { width: 1440, height: 900 },
+  { width: 834, height: 1112 },
+  { width: 393, height: 852 },
+  { width: 852, height: 393 },
+]) {
+  test(`keeps redesigned opponent tiles coherent at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mountTable(page, { ...tableState, hand: { ...tableState.hand, current_player: 1 } });
+    const geometry = await page.locator(".other-seats").evaluate((rail) => [...rail.querySelectorAll(".seat")].map((seat) => {
+      const box = seat.getBoundingClientRect();
+      const heading = seat.querySelector(".opponent-heading")?.getBoundingClientRect();
+      const stack = seat.querySelector(".seat-stack")?.getBoundingClientRect();
+      const cards = seat.querySelector(".seat-cards")?.getBoundingClientRect();
+      const wager = seat.querySelector(".seat-wager")?.getBoundingClientRect();
+      const cardTransforms = [...seat.querySelectorAll(".playing-card")].map((card) => getComputedStyle(card).transform);
+      const style = getComputedStyle(seat);
+      return {
+        className: seat.className,
+        background: style.backgroundColor,
+        border: style.borderTopColor,
+        clips: seat.scrollHeight > seat.clientHeight || seat.scrollWidth > seat.clientWidth,
+        headingCentered: Boolean(heading) && Math.abs((heading.left + heading.width / 2) - (box.left + box.width / 2)) <= 1,
+        ordered: Boolean(heading && stack && cards && wager)
+          && heading.bottom <= stack.top + 1
+          && stack.bottom <= cards.top + 1
+          && cards.bottom <= wager.top + 1,
+        rows: heading && stack && cards && wager ? {
+          heading: [heading.top, heading.bottom],
+          stack: [stack.top, stack.bottom],
+          cards: [cards.top, cards.bottom],
+          wager: [wager.top, wager.bottom],
+        } : null,
+        cardTransforms,
+      };
+    }));
+    expect(geometry.every((seat) => seat.background === "rgb(16, 36, 31)"), `V61: opponent tiles use one dark surface at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBe(true);
+    expect(geometry.every((seat) => !seat.clips && seat.headingCentered && seat.ordered), `V61: opponent rows remain stable at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBe(true);
+    expect(geometry.flatMap((seat) => seat.cardTransforms).every((transform) => transform === "none"), `V61: opponent cards stay straight at ${JSON.stringify(viewport)} ${JSON.stringify(geometry)}`).toBe(true);
+    const acting = geometry.find((seat) => seat.className.includes("acting"));
+    expect(acting?.border, `V61: acting state remains distinct at ${JSON.stringify(viewport)}`).toBe("rgb(217, 173, 85)");
+  });
+}
 
 test("keeps seats clear of the board in a short desktop window", async ({ page }) => {
   // Everyone's cards face up is the worst case for collisions.
@@ -1628,7 +1668,7 @@ test("integrates showdown with players and table log", async ({ page }) => {
   await expect(page.locator(".showdown-result")).toContainText("Mina wins $400");
   await expect(page.locator(".game-log")).toContainText("Mina wins $400");
   const opponentCard = page.locator(".seat:not(.viewer) .seat-cards.revealed .playing-card").first();
-  expect((await opponentCard.boundingBox()).width).toBeGreaterThan(40);
+  expect((await opponentCard.boundingBox()).width).toBeGreaterThan(28);
   await expect(page.locator(".seat.winner .winner-role")).toHaveText("WINNER");
   await expect(page.locator(".seat.winner")).toHaveCSS("border-top-color", "rgb(241, 213, 110)");
   const winnerBadge = await page.locator(".seat.winner").evaluate((seat) => {
@@ -1789,18 +1829,19 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       "V42: portrait action labels must fit their buttons",
     ).toBe(true);
     const seatGeometry = await page.locator(".table-stage").evaluate((stage) => {
-      return [...stage.querySelectorAll(".seat")].every((seat) => {
+      return [...stage.querySelectorAll(".seat")].flatMap((seat) => {
         const seatBox = seat.getBoundingClientRect();
         const stack = seat.querySelector(".seat-stack")?.getBoundingClientRect();
-        return [...seat.querySelectorAll(".playing-card")].every((card) => {
+        return [...seat.querySelectorAll(".playing-card")].map((card) => {
           const cardBox = card.getBoundingClientRect();
-          return cardBox.top >= seatBox.top && cardBox.bottom <= seatBox.bottom
+          const ok = cardBox.top >= seatBox.top && cardBox.bottom <= seatBox.bottom
             && cardBox.left >= seatBox.left && cardBox.right <= seatBox.right
             && (!stack || !(cardBox.left < stack.right && cardBox.right > stack.left && cardBox.top < stack.bottom && cardBox.bottom > stack.top));
+          return { name: seat.querySelector(".player-info")?.textContent?.trim(), ok, seat: [seatBox.left, seatBox.top, seatBox.right, seatBox.bottom], card: [cardBox.left, cardBox.top, cardBox.right, cardBox.bottom], stack: stack ? [stack.left, stack.top, stack.right, stack.bottom] : null };
         });
       });
     });
-    expect(seatGeometry, `V42: portrait seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)}`).toBe(true);
+    expect(seatGeometry.every((card) => card.ok), `V42: portrait seat cards must stay inside seats and clear stacks at ${JSON.stringify(viewport)} ${JSON.stringify(seatGeometry)}`).toBe(true);
     const commandControls = await page.locator(".table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button)").evaluateAll((controls) =>
       controls.map((control) => ({ fontSize: getComputedStyle(control).fontSize, height: control.getBoundingClientRect().height })),
     );

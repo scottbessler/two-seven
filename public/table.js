@@ -92,9 +92,11 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
   const stackLabel = html`<span class="seat-stack">${money(stack)}</span>`;
   const checked = Boolean(player && street && events.some((event) => event.seat === seat.index && event.street === street && event.kind === "Check"));
   const wager = html`<span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in || checked ? "" : "no-wager"} ${checked ? "checked-wager" : ""}`}>${player?.all_in ? "ALL IN" : checked ? "CHECKED" : money(player?.street_contribution || 0)}</span>`;
+  const positionBadges = html`<span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>`;
   return html`<article class=${classes}>
-    <span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>
-    ${viewer ? html`<span class="viewer-summary">${playerInfo}${stackLabel}${wager}</span>` : html`${playerInfo}${stackLabel}`}
+    ${viewer
+      ? html`${positionBadges}<span class="viewer-summary">${playerInfo}${stackLabel}${wager}</span>`
+      : html`<span class="opponent-heading">${playerInfo}${positionBadges}</span>${stackLabel}`}
     ${cards.length > 0
       ? html`<span class=${`seat-cards ${revealed ? "revealed" : viewer ? "owned" : "hidden"}`}>${cards.map((card) => html`<${Card} card=${card} hidden=${card == null} interactive=${viewer} />`)}</span>`
       // A seat between hands still holds the space its cards had, or the whole
