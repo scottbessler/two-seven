@@ -31,9 +31,9 @@
   },
   ".felt": {
     "x": 16,
-    "y": 595,
+    "y": 566,
     "width": 1040,
-    "height": 168,
+    "height": 227,
     "display": "block",
     "position": "static",
     "fontSize": "16px",
@@ -46,9 +46,9 @@
   },
   ".table-center": {
     "x": 16,
-    "y": 595,
+    "y": 566,
     "width": 1040,
-    "height": 168,
+    "height": 227,
     "display": "grid",
     "position": "static",
     "fontSize": "16px",
@@ -59,7 +59,21 @@
     "gridTemplateColumns": "1040px",
     "flexDirection": "row"
   },
-  ".board .playing-card": "absent",
+  ".board .playing-card": {
+    "x": 488,
+    "y": 610,
+    "width": 96,
+    "height": 133,
+    "display": "grid",
+    "position": "relative",
+    "fontSize": "16px",
+    "fontWeight": "700",
+    "color": "rgb(17, 17, 17)",
+    "backgroundColor": "rgb(250, 249, 242)",
+    "borderRadius": "8px",
+    "gridTemplateColumns": "none",
+    "flexDirection": "row"
+  },
   ".seat": [
     {
       "x": 16,
@@ -148,7 +162,7 @@
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "rgb(23, 54, 46)",
       "borderRadius": "16px",
-      "gridTemplateColumns": "121px 45px",
+      "gridTemplateColumns": "121px 104px",
       "flexDirection": "row"
     }
   ],
@@ -229,7 +243,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 588,
+      "x": 559,
       "y": 1207,
       "width": 24,
       "height": 24,
@@ -321,7 +335,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 588,
+      "x": 559,
       "y": 1234,
       "width": 45,
       "height": 18,
@@ -380,12 +394,12 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgb(23, 54, 46)",
     "borderRadius": "16px",
-    "gridTemplateColumns": "121px 45px",
+    "gridTemplateColumns": "121px 104px",
     "flexDirection": "row"
   },
   ".seat.viewer .seat-cards .playing-card": [
     {
-      "x": 435,
+      "x": 405,
       "y": 1179,
       "width": 62,
       "height": 83,
@@ -400,7 +414,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 503,
+      "x": 473,
       "y": 1179,
       "width": 62,
       "height": 83,

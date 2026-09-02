@@ -59,7 +59,21 @@
     "gridTemplateColumns": "77px 206px 90px",
     "flexDirection": "row"
   },
-  ".board .playing-card": "absent",
+  ".board .playing-card": {
+    "x": 167,
+    "y": 365,
+    "width": 46,
+    "height": 64,
+    "display": "grid",
+    "position": "relative",
+    "fontSize": "16px",
+    "fontWeight": "700",
+    "color": "rgb(17, 17, 17)",
+    "backgroundColor": "rgb(250, 249, 242)",
+    "borderRadius": "4px",
+    "gridTemplateColumns": "none",
+    "flexDirection": "row"
+  },
   ".seat": [
     {
       "x": 7,
@@ -148,7 +162,7 @@
       "color": "rgb(244, 239, 228)",
       "backgroundColor": "rgb(23, 54, 46)",
       "borderRadius": "16px",
-      "gridTemplateColumns": "125px 45px",
+      "gridTemplateColumns": "125px 104px",
       "flexDirection": "row"
     }
   ],
@@ -229,7 +243,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 244,
+      "x": 215,
       "y": 503,
       "width": 24,
       "height": 24,
@@ -321,7 +335,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 244,
+      "x": 215,
       "y": 529,
       "width": 45,
       "height": 18,
@@ -380,12 +394,12 @@
     "color": "rgb(244, 239, 228)",
     "backgroundColor": "rgb(23, 54, 46)",
     "borderRadius": "16px",
-    "gridTemplateColumns": "125px 45px",
+    "gridTemplateColumns": "125px 104px",
     "flexDirection": "row"
   },
   ".seat.viewer .seat-cards .playing-card": [
     {
-      "x": 99,
+      "x": 70,
       "y": 474,
       "width": 65,
       "height": 88,
@@ -400,7 +414,7 @@
       "flexDirection": "row"
     },
     {
-      "x": 168,
+      "x": 139,
       "y": 474,
       "width": 65,
       "height": 88,
