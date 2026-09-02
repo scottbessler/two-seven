@@ -322,12 +322,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .table-center>.board .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),calc((100cqw - 3 * var(--table-board-gap))/4));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04);border-radius:var(--radius-card)}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(2.9rem * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5))}
   .table-stage .seat-cards .playing-card{--seat-card-cap:1.9rem;--seat-card-share:37cqw}
-  /* A phone seat is only as tall as its cards, so dealing the showdown bigger
-     ones pushed the felt, your own panel and the buttons down the screen mid
-     result — and the portrait height budget has nothing spare to hold the
-     taller size in reserve all hand. An opponent's hand keeps one size from
-     deal to reveal here; holding it still zooms it for a closer read. */
-  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:1.9rem;--seat-card-share:37cqw}
+  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:2.55rem;--seat-card-share:60cqw}
   .table-center>.table-rail{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:.12rem;grid-column:3;grid-row:1;min-width:0;overflow:hidden}
   .table-stage .board{gap:.25rem;min-height:4rem}
   .table-center:has(.showdown-odds){gap:.18rem}
@@ -425,7 +420,7 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .seats{margin-top:auto}
   .showdown-result:empty{display:none}
   .table-stage .seat-cards .playing-card{--seat-card-cap:1.5rem;--seat-card-share:18cqw}
-  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:1.5rem;--seat-card-share:18cqw}
+  .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:1.9rem;--seat-card-share:23cqw}
   .table-stage .other-seats .seat-wager{bottom:0}
   .seat.viewer .seat-cards .playing-card{--card-w:calc(var(--viewer-card-w-mobile)*.78);--card-h:calc(var(--viewer-card-h-mobile)*.78)}
   .game-log{display:none}

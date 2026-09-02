@@ -476,11 +476,9 @@ Mark each milestone done here as it lands.
   empty board and a seat between hands both reserve a card's space, the viewer's
   own panel reserving both of its cards and a fixed column for name/stack/wager,
   so its box and the hand inside it hold one position whatever the state — live
-  hand, no hand, or a result that pays the viewer. Portrait opponents' cards keep
-  one size from deal to reveal, since the height to hold the larger one in
-  reserve does not exist there. Result-state action bar keeps its vertical
-  position; protected controls suppress native selection. Bot raises ≤3 per
-  betting street.
+  hand, no hand, or a result that pays the viewer. Result-state action bar keeps
+  its vertical position; protected controls suppress native selection. Bot
+  raises ≤3 per betting street.
 - **V54** Mobile e2e emulation matches the shipped target: an iPhone with a
   Dynamic Island running the installed PWA (393x793 portrait, 852x393 landscape,
   375x647 short portrait), with safe-area insets pinned rather than left at
@@ -729,5 +727,5 @@ B15|2026-08-28|all-in runout resolved synchronously at hand end (`enter_betting_
 B16|2026-08-31|the one-card zoom rule matched the viewer's own hole cards as well as the board, so hovering one card grew it 1.35x on top of the hand's own scale and left its partner behind, against V17's "either viewer card magnifies both"|V15,V17
 B17|2026-08-31|card zoom hung on :hover, which iOS leaves stuck on the last thing tapped, so a magnified hand outlived the tap and covered the action row the next press was aimed at|V15
 B18|2026-08-31|a seat rendered no card element between hands, so every seat lost a grid row when a hand ended and the mobile decision area jumped 37px up into the finger already travelling toward the action row|V53
-B19|2026-09-02|the viewer's panel was centred and hugged its contents, so a hand ending narrowed its card column and a longer stack widened the figures beside it, sliding the hand ~30px sideways; the metrics left the felt between hands and the phone's showdown dealt bigger opponent cards, moving the same panel up and down the screen|V48,V53
+B19|2026-09-02|the viewer's panel was centred and hugged its contents, so a hand ending narrowed its card column and a longer stack widened the figures beside it, sliding the hand ~30px sideways; and the metrics left the felt between hands, shortening it and lifting the same panel up the screen|V48,V53
 B20|2026-09-02|opponent redesign changed card + tile height on reveal, moving table geometry|V53,V61
