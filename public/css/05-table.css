@@ -356,6 +356,10 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .seat.viewer .viewer-summary{grid-column:2;grid-row:1;display:grid;justify-items:start;gap:var(--viewer-panel-rows);width:var(--viewer-summary-w);min-width:0;max-width:100%}
   .seat.viewer .viewer-summary .player-info,.seat.viewer .viewer-summary .seat-stack,.seat.viewer .viewer-summary .seat-wager{margin:0;white-space:nowrap}
   .seat .seat-wager{position:static;min-width:0;margin:0 auto;padding:.1rem .3rem;font-size:var(--text-label);transform:none}
+  /* A compact seat's bottom strip holds one chip. The outcome badge lives
+     there too, so while a seat is AHEAD or the WINNER it takes the strip and
+     the wager yields: a runout leader is all in (its $0 stack says so). */
+  .table-stage .other-seats .seat:is(.leading,.winner) .seat-wager{visibility:hidden}
   .seat.viewer .seat-wager{position:static;min-width:0;margin:0;padding:.1rem .3rem;font-size:var(--text-label);transform:none}
   .seat-cards,.seat.viewer .seat-cards{position:static;top:auto;bottom:auto;justify-content:center;transform:none}
   .seat.viewer .seat-cards{grid-column:1;grid-row:1;margin:0}
