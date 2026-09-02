@@ -521,6 +521,10 @@ Mark each milestone done here as it lands.
   only — the ladder-rung check & every buy-in charge stand. `see_bot_cards`
   exposes bot seats' hole cards ⟺ ∄ seated human, viewer included; any human
   sitting down ⇒ face down again for everyone.
+- **V61** Other-player seats → compact dark tiles across desktop/tablet/portrait/
+  landscape; stable identity+role, stack, cards/state, wager rows; existing
+  acting/leading/winner/champion/folded/all-in semantics remain distinct;
+  content ⊥ clip/overlap; viewer seat unchanged.
 
 ## §T Build tasks
 
@@ -573,6 +577,7 @@ T39|x|link player names to their page and let people gift $1,000 chips|V1,V2,V58
 T40|x|run the all-in board out as advanced state, not a faked reveal|V33,V59
 T41|x|net out gifts per counterparty on the player page|V58
 T42|x|give the viewer's own hand a panel: cards left, name/stack/wager beside them|V15,V16,V48
+T43|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,V53,V54,V61
 
 ## §B Bug log
 
