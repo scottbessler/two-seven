@@ -52,6 +52,7 @@ const tableState = {
   ],
   hand: {
     street: "Flop",
+    big_blind: 200,
     board: ["Ah", "7c", "2s"],
     your_hole_cards: ["5c", "6c"],
     seats: [],
@@ -436,8 +437,14 @@ test("shows live hand cues and event log", async ({ page }) => {
   await expect(page.locator(".empty-seat")).toHaveCount(0);
   await expect(page.locator(".board .empty-card")).toHaveCount(0);
   await expect(page.locator(".actions input")).toHaveCount(0);
-  // Wager buttons name the street total they raise to, so they never read the same as the call.
-  await expect(page.locator(".actions button")).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "Raise…", "All In"]);
+  // Wager buttons name the street total they raise to, so they never read the same
+  // as the call. The compact layout shares the middle column with Call, so it shows
+  // two presets where the desktop shows three.
+  await expect(page.locator(".actions button")).toHaveText(
+    test.info().project.name === "chromium-mobile"
+      ? ["Fold", "Call $12", "$68", "$112", "Raise…", "All In"]
+      : ["Fold", "Call $12", "$68", "$90", "$112", "Raise…", "All In"],
+  );
   await page.locator(".seat.viewer .player-info").hover();
   await expect(page.locator(".seat.viewer .player-tooltip")).toContainText("Lifetime balance");
   const topSeatIndex = await page.locator(".seat").evaluateAll((seats) => seats
@@ -628,7 +635,7 @@ test("keeps desktop action buttons in one row at narrow widths", async ({ page }
   await mountTable(page, tableState);
 
   const buttons = page.locator(".actions button");
-  await expect(buttons).toHaveText(["Fold", "Call $12", "Raise $36", "Raise $48", "Raise $50", "Raise $88", "Raise…", "All In"]);
+  await expect(buttons).toHaveText(["Fold", "Call $12", "$68", "$90", "$112", "Raise…", "All In"]);
   const layout = await buttons.evaluateAll((nodes) => {
     const area = nodes[0].closest(".decision-area")?.getBoundingClientRect();
     const bar = nodes[0].closest(".actions")?.getBoundingClientRect();
