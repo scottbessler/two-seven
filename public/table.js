@@ -112,28 +112,84 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
   </article>`;
 }
 
-function wagerOptions(hand) {
+// The compact layout, matching the breakpoint 05-table.css switches on. The
+// action bar's middle column carries Check or Call beside the presets, so a
+// phone has room for two of them where a desktop has room for three.
+const COMPACT_LAYOUT = "(max-width:640px),(max-height:520px)";
+
+function useCompactLayout() {
+  const query = useRef(null);
+  query.current ||= window.matchMedia(COMPACT_LAYOUT);
+  const [compact, setCompact] = useState(query.current.matches);
+  useEffect(() => {
+    const media = query.current;
+    const sync = () => setCompact(media.matches);
+    media.addEventListener("change", sync);
+    sync();
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  return compact;
+}
+
+// Preset wagers are named by the street total they raise to. The ladder is
+// priority-ordered -- the sizes worth a button when only two fit come first --
+// and the situation picks it: preflop opens and three-bets are sized in blinds
+// and in multiples of the outstanding bet, because pot fractions preflop all
+// land under the minimum and collapse onto it. Postflop sizes are fractions of
+// the pot the raise would leave behind, so calling first is part of the price.
+function wagerLadder(hand, blind, toCall, contribution) {
+  const preflop = hand.street === "Preflop";
+  const potAfterCall = hand.pot + toCall;
+  const raiseTo = (candidates) => candidates.map(([total, reason]) => ({ amount: total - contribution, reason }));
+  if (preflop && hand.last_bet <= blind) {
+    // An unopened pot is opened in blinds, plus one for every limper to talk
+    // through.
+    const limpers = hand.players.filter((player) => player.street_contribution === blind).length - 1;
+    const open = (multiple) => (multiple + Math.max(0, limpers)) * blind;
+    return raiseTo([[open(3), "3x"], [open(4), "4x"], [open(5), "5x"]]);
+  }
+  if (preflop) {
+    return raiseTo([[3 * hand.last_bet, "3x"], [2.5 * hand.last_bet, "2.5x"], [4 * hand.last_bet, "4x"]]);
+  }
+  if (toCall === 0) {
+    return [[0.5, "Half pot"], [1, "Pot"], [1 / 3, "Third pot"], [0.75, "Three-quarter pot"]]
+      .map(([fraction, reason]) => ({ amount: fraction * hand.pot, reason }));
+  }
+  return [[0.5, "Half pot"], [1, "Pot"], [0.75, "Three-quarter pot"]]
+    .map(([fraction, reason]) => ({ amount: toCall + fraction * potAfterCall, reason }));
+}
+
+function wagerOptions(hand, limit) {
   const wager = hand?.legal_actions?.wager;
   if (!wager) return [];
   const player = hand.players.find((candidate) => candidate.seat === hand.legal_actions.seat);
   const contribution = player?.street_contribution || 0;
+  const toCall = hand.legal_actions.to_call || 0;
+  const blind = hand.big_blind || 1;
+  // A fixed-limit street offers the one legal size and nothing to choose from.
   const candidates = wager.fixed != null
     ? [{ amount: wager.fixed, reason: "Fixed wager" }]
-    : [
-        { amount: wager.min, reason: "Minimum" },
-        { amount: hand.last_bet * 2 - contribution, reason: "Double current bet" },
-        { amount: hand.pot / 2, reason: "Half pot" },
-        { amount: hand.pot, reason: "Pot" },
-      ];
-  const unique = new Map();
+    // The minimum trails the ladder rather than leading it: it earns a button
+    // only when no real size survives, so a short stack still has one to press.
+    : [...wagerLadder(hand, blind, toCall, contribution), { amount: wager.min, reason: "Minimum" }];
+  const kept = [];
   for (const candidate of candidates) {
-    const rounded = Math.round(candidate.amount / 100) * 100;
+    if (kept.length >= limit) break;
+    const rounded = Math.round(candidate.amount / blind) * blind;
     const amount = Math.max(wager.min, Math.min(wager.max, rounded));
+    if (amount <= 0) continue;
+    // All In already sits at the end of the bar, so a preset that all but
+    // shoves is a second button for the same decision.
+    if (wager.fixed == null && wager.max - amount < Math.max(blind, wager.max * 0.1)) continue;
+    // Two sizes a blind apart -- or within 15% of each other -- are one choice
+    // wearing two buttons. Exact-match dedupe let those twins through.
+    const twin = kept.some((other) => Math.abs(other.amount - amount) < Math.max(blind, 0.15 * Math.min(other.amount, amount)));
+    if (twin) continue;
     // `amount` is the chips this action adds; the button shows the street
     // total it raises to, so it never reads the same as the call beside it.
-    if (amount > 0 && !unique.has(amount)) unique.set(amount, { amount, total: contribution + amount, reason: candidate.reason });
+    kept.push({ amount, total: contribution + amount, reason: candidate.reason });
   }
-  return [...unique.values()].toSorted((left, right) => left.amount - right.amount);
+  return kept.toSorted((left, right) => left.amount - right.amount);
 }
 
 function HoldAction({ label, class: className, disabled, hold, submit, ariaLabel, ...rest }) {
@@ -247,6 +303,7 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
     disabled: pending != null,
     "aria-busy": pending === key,
   });
+  const compact = useCompactLayout();
   const wagerKind = actions.has("Bet") ? "bet" : "raise";
   const wagerLabel = wagerKind === "bet" ? "Bet" : "Raise";
   const actor = seats.find((seat) => seat.index === hand.legal_actions.seat);
@@ -257,7 +314,7 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
   const cappedCall = Boolean(
     actions.has("Call") && !callIsAllIn && !actions.has("Bet") && !actions.has("Raise") && !actions.has("AllIn"),
   );
-  const wagers = wagerOptions(hand).filter((option) => !actor || option.amount < actor.stack);
+  const wagers = wagerOptions(hand, compact ? 2 : 3);
   const wagerBounds = hand.legal_actions.wager;
   // Only worth opening when there is a range to pick from: a fixed limit wager
   // or a stack with exactly one legal raise left has nothing to slide over.
@@ -272,7 +329,7 @@ function Actions({ hand, seats, tableId: actionTableId, settings, refresh }) {
     <span class="action-middle" style=${`--middle-action-count:${Math.max(1, middleCount)}`}>
       ${actions.has("Check") && html`<button ...${busy("check:", "primary-action")} onClick=${() => submit("check")}><span>Check</span></button>`}
       ${actions.has("Call") && !callIsAllIn && !cappedCall && html`<button ...${busy("call:", "primary-action")} aria-label=${`Call ${money(hand.legal_actions.to_call)}`} onClick=${() => submit("call")}><span class="action-prefix">Call </span><span class="action-amount">${money(hand.legal_actions.to_call)}</span></button>`}
-      ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button ...${busy(`${wagerKind}:${option.amount}`, "wager-action")} aria-label=${`${wagerLabel} ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-prefix">${wagerLabel} </span><span class="action-amount">${money(option.total)}</span></button>`)}
+      ${(actions.has("Bet") || actions.has("Raise")) && wagers.map((option) => html`<button ...${busy(`${wagerKind}:${option.amount}`, "wager-action")} aria-label=${`${wagerLabel} to ${money(option.total)}`} title=${`${wagerLabel} to ${money(option.total)} · ${option.reason}`} onClick=${() => submit(wagerKind, option.amount)}><span class="action-amount">${money(option.total)}</span></button>`)}
     </span>
     <span class="action-edge action-edge-right">${showCustomWager && html`<${CustomWager}
       label=${wagerLabel}

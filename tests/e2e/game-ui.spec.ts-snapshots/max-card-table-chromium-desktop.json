@@ -525,7 +525,7 @@
     {
       "x": 183,
       "y": 1328,
-      "width": 179,
+      "width": 225,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -538,9 +538,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 368,
+      "x": 415,
       "y": 1328,
-      "width": 179,
+      "width": 225,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -553,9 +553,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 554,
+      "x": 646,
       "y": 1328,
-      "width": 179,
+      "width": 225,
       "height": 44,
       "display": "block",
       "position": "static",
@@ -568,24 +568,9 @@
       "flexDirection": "row"
     },
     {
-      "x": 739,
+      "x": 878,
       "y": 1328,
-      "width": 179,
-      "height": 44,
-      "display": "block",
-      "position": "static",
-      "fontSize": "17px",
-      "fontWeight": "600",
-      "color": "rgb(244, 239, 228)",
-      "backgroundColor": "rgb(36, 90, 73)",
-      "borderRadius": "12px",
-      "gridTemplateColumns": "none",
-      "flexDirection": "row"
-    },
-    {
-      "x": 925,
-      "y": 1328,
-      "width": 179,
+      "width": 225,
       "height": 44,
       "display": "block",
       "position": "static",
