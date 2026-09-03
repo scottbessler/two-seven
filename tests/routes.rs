@@ -788,7 +788,8 @@ async fn the_lobby_counts_humans_and_lists_tables_by_affordability() {
             hands: 12,
         }],
         payout_percentages: vec![65, 35],
-        no_debt: false,
+        // Cash-up-front, so it is the one table this balance cannot reach.
+        no_debt: true,
     };
     t.tables
         .insert(two_seven::table::Table::new(
@@ -836,8 +837,9 @@ async fn the_lobby_counts_humans_and_lists_tables_by_affordability() {
     // Cash tables and tournaments are listed apart.
     assert!(html.contains("<h2>Cash tables</h2>"));
     assert!(html.contains("<h2>Tournaments</h2>"));
+    // Cash tables lend for the shortfall, so none of them is out of reach.
     assert!(
-        html.contains(
+        !html.contains(
             r#"<details class="out-of-reach"><summary>Cash tables to spectate</summary>"#
         )
     );
@@ -2293,7 +2295,7 @@ async fn cash_bot_buy_in_auto_re_ups_without_debt() {
 }
 
 #[tokio::test]
-async fn cash_join_requires_available_balance() {
+async fn cash_join_takes_a_loan_unless_the_table_wants_cash_up_front() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -2325,26 +2327,11 @@ async fn cash_join_requires_available_balance() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
+    // A table that allows debt seats a broke player and lends the shortfall.
     let open_id = seat_table(&t, "Open debt", 9, 10_000, false).await;
     let response = t
         .router
         .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/tables/{open_id}/join"))
-                .header(header::COOKIE, &cookie_value)
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from("{}"))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
-    let response = t
-        .router
         .oneshot(
             Request::builder()
                 .method("POST")
@@ -2357,10 +2344,13 @@ async fn cash_join_requires_available_balance() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(account.loan_count, 1);
+    assert_eq!(account.balance, BankStore::RE_UP_AMOUNT - 10_000);
 }
 
 #[tokio::test]
-async fn cash_rebuy_requires_available_balance() {
+async fn cash_rebuy_takes_a_loan_when_the_table_allows_debt() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -2409,6 +2399,7 @@ async fn cash_rebuy_requires_available_balance() {
         .await
         .unwrap();
 
+    // The whole balance went in on the first buy-in, so the rebuy is a loan.
     let rebuy = t
         .router
         .clone()
@@ -2423,15 +2414,27 @@ async fn cash_rebuy_requires_available_balance() {
         )
         .await
         .unwrap();
-    assert_eq!(rebuy.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(rebuy.status(), StatusCode::OK);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(account.loan_count, 2);
+    assert_eq!(account.balance, 0);
 
-    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    // A cash-up-front table still refuses the rebuy.
+    let strict = seat_table(&t, "Rebuy strict", 9, BankStore::RE_UP_AMOUNT, true).await;
+    t.tables
+        .update(strict, |table| {
+            table.seats[0].occupant = two_seven::table::SeatOccupant::Human { user_id: user };
+            table.seats[0].stack = 0;
+            Ok(())
+        })
+        .await
+        .unwrap();
     let rebuy = t
         .router
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/tables/{id}/rebuy"))
+                .uri(format!("/tables/{strict}/rebuy"))
                 .header(header::COOKIE, cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from("{}"))
@@ -2439,7 +2442,7 @@ async fn cash_rebuy_requires_available_balance() {
         )
         .await
         .unwrap();
-    assert_eq!(rebuy.status(), StatusCode::OK);
+    assert_eq!(rebuy.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
