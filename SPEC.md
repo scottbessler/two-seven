@@ -82,7 +82,12 @@ Rules
   shortfalls append `ReUp` entries and increment `loan_count` normally.
 - Each loan is exactly $1,000, so debt is `loan_count * $1,000`. The coin menu
   can repay one loan when the balance covers $1,000; repayment appends a
-  `LoanRepayment` entry and reduces `loan_count` by one.
+  `LoanRepayment` entry and reduces `loan_count` by one. The player page can
+  clear every loan the balance covers in one press, as a single
+  `LoanRepayment` entry.
+- A person only borrows their way into a seat costing $1,000 or less; above
+  that the buy-in must be covered by the balance. Bots are staked at every rung
+  so the whole ladder stays fillable.
 - A user's poker cash-out with winnings charges 1% of those winnings per loan,
   capped at 10 loans; the rounded-down fee is a separate `LoanInterest` entry.
   Bot cash-outs do not pay loan interest.
@@ -110,7 +115,9 @@ and house players affected.
 UI: the header shows the signed-in user's balance next to their username, with a
 coin icon; hovering/tapping it opens a small panel with the current balance,
 outstanding debt, net balance, loan count badge, re-up action, repayment action
-for the newest loan when affordable, and the most recent ledger deltas. The
+for the newest loan when affordable, and the most recent ledger deltas. Your own
+player page carries a loans panel: what you owe, and one action that pays off
+every loan the balance covers. The
 panel closes when clicking or tapping outside it or pressing Escape, returning
 focus to the coin-menu summary. Seat labels at a table show the seat owner's
 bank balance the same way (bots included).
@@ -233,6 +240,7 @@ and the board) — the same redacted view a human gets (§V3).
 | POST | `/tournaments/{id}/register` | Buy in to the first open seat: `{}` |
 | GET | `/api/bank` | Balance, derived debt/net/next repayment + recent ledger entries |
 | POST | `/api/bank/repay` | Repay the newest outstanding loan principal |
+| POST | `/api/bank/repay-all` | Repay every loan the balance covers: `{}` |
 
 HTML routes return an escaped error page (`AppError`); JSON routes return
 `{"error": "..."}` with 400/401/404/409/422.
@@ -328,10 +336,15 @@ Mark each milestone done here as it lands.
 - **V9** ∀ positive configured stake, blind, ante, buy-in, entry fee, or wager ≥ 100 cents.
 - **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 1,000,000 cents;
   a buy-in auto-loan adds one `loan_count` per required $1,000 loan, except
-  the first shortfall-funded bot buy-in uses `HouseStake` instead.
+  the first shortfall-funded bot buy-in uses `HouseStake` instead. A person's
+  buy-in only auto-loans at a seat costing ≤ $1,000; above that an uncovered
+  buy-in is refused, and a table is only offered as affordable when the balance
+  covers it or it lends. Bot buy-ins auto-loan at every buy-in.
 - **V16** Every loan is exactly $1,000; debt equals `loan_count * $1,000`,
   repayment costs $1,000, decrements `loan_count` by one, and cannot make an
-  account balance negative.
+  account balance negative. Paying off every affordable loan at once costs
+  $1,000 per loan cleared, clears `min(loan_count, balance / $1,000)` of them,
+  and is one ledger entry.
 - **V17** A user's poker cash-out charges at most 10% of positive table winnings
   for loan interest, rounded down and recorded separately; no fee is charged
   without winnings or loans, and bots never pay this fee.
@@ -730,3 +743,4 @@ B18|2026-08-31|a seat rendered no card element between hands, so every seat lost
 B19|2026-09-02|the viewer's panel was centred and hugged its contents, so a hand ending narrowed its card column and a longer stack widened the figures beside it, sliding the hand ~30px sideways; and the metrics left the felt between hands, shortening it and lifting the same panel up the screen|V48,V53
 B20|2026-09-02|opponent redesign changed card + tile height on reveal, moving table geometry|V53,V61
 B21|2026-09-03|a person's cash-table buy-in and rebuy both passed `no_debt: true` regardless of the table's own mode, so V10's buy-in auto-loan never fired for a human: a balance under the buy-in was refused outright and the lobby filed the $500/$1,000 rungs under "out of reach" instead of lending the shortfall|V5,V10
+B22|2026-09-03|the fix for B21 lent at every rung, so a broke player could borrow their way into the deepest table on the ladder and owe a hundred loans for one buy-in; lending now stops at the $1,000 seat for people, while the house stays staked everywhere|V10,V16

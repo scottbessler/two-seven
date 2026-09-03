@@ -63,6 +63,11 @@ impl Account {
     pub fn next_loan_repayment_amount(&self) -> Option<Cents> {
         (self.loan_count > 0).then_some(BankStore::RE_UP_AMOUNT)
     }
+    /// How many whole loans the balance could pay off right now.
+    pub fn repayable_loans(&self) -> u64 {
+        self.loan_count
+            .min((self.balance / BankStore::RE_UP_AMOUNT).max(0) as u64)
+    }
     /// Every account this one has traded gifts with, the person given the
     /// most to first.
     /// Gifts are the only entries that name a counterparty, so this is the
@@ -122,6 +127,7 @@ pub fn account_json(account: &Account) -> serde_json::Value {
         "next_repayment_amount".into(),
         account.next_loan_repayment_amount().into(),
     );
+    object.insert("repayable_loans".into(), account.repayable_loans().into());
     value
 }
 /// A gift is a positive, whole number of $1,000 chips, bounded by the largest
@@ -141,6 +147,11 @@ pub struct BankStore {
 impl BankStore {
     pub const RE_UP_AMOUNT: Cents = 100_000;
     pub const RE_UP_THRESHOLD: Cents = Self::RE_UP_AMOUNT;
+    /// The dearest seat a person may borrow their way into. Lending covers the
+    /// bottom of the ladder, where a broke player would otherwise have nothing
+    /// to play; the deeper games are for money you already have. The house is
+    /// not held to it: its regulars are staked at every rung (§V10).
+    pub const LOAN_BUY_IN_LIMIT: Cents = Self::RE_UP_AMOUNT;
     /// Money changes hands between people in whole $1,000 chips, the same unit
     /// a loan comes in, capped at one gift per the largest game entry.
     pub const GIFT_INCREMENT: Cents = 100_000;
@@ -299,7 +310,9 @@ impl BankStore {
         }
         let mut guard = self.inner.lock().await;
         Self::ensure_account_locked(&mut guard.accounts, &owner);
-        if matches!(owner, AccountOwner::Bot(_)) || !no_debt {
+        let lends = matches!(owner, AccountOwner::Bot(_))
+            || (!no_debt && amount <= Self::LOAN_BUY_IN_LIMIT);
+        if lends {
             let balance = guard.accounts[&owner].balance;
             if balance < amount {
                 let shortfall = amount - balance;
@@ -377,6 +390,36 @@ impl BankStore {
             LedgerKind::LoanRepayment,
             -Self::RE_UP_AMOUNT,
             "loan repayment".into(),
+            0,
+        );
+        let result = account.clone();
+        self.persist(&result).await?;
+        Ok(result)
+    }
+    /// Clear as much debt as the balance covers, in one go. Repaying loan by
+    /// loan is the same money; this is the button for someone who has just had
+    /// a good night and wants to be square.
+    pub async fn repay_all_loans(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
+        let mut guard = self.inner.lock().await;
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
+        let account = guard.accounts.get_mut(&owner).expect("account");
+        if account.loan_count == 0 {
+            return Err(anyhow::anyhow!("no outstanding loans"));
+        }
+        let loans = account.repayable_loans();
+        if loans == 0 {
+            return Err(anyhow::anyhow!("not enough to pay back that loan"));
+        }
+        account.loan_count -= loans;
+        Self::append_locked(
+            account,
+            LedgerKind::LoanRepayment,
+            -(loans as Cents * Self::RE_UP_AMOUNT),
+            if loans == 1 {
+                "loan repayment".into()
+            } else {
+                format!("loan repayment ({loans} loans)")
+            },
             0,
         );
         let result = account.clone();
@@ -774,16 +817,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_large_buy_in_uses_one_entry_and_repaid_loans_one_at_a_time() {
+    async fn a_large_stake_uses_one_entry_and_repays_loans_one_at_a_time() {
+        // The lending limit is a rule about people; the house is staked at
+        // every rung of the ladder, however deep.
         let bank = BankStore::load(tempfile_dir()).await.unwrap();
-        let owner = AccountOwner::User(Uuid::new_v4());
+        let owner = AccountOwner::Bot(crate::table::Bot::new(crate::table::BotKind::Shark, 0));
         let table = Uuid::new_v4();
+        // The first shortfall is the house's own stake, not a loan.
+        bank.buy_in(owner.clone(), table, 100_000_000, false)
+            .await
+            .unwrap();
         let account = bank
             .buy_in(owner.clone(), table, 100_000_000, false)
             .await
             .unwrap();
         assert_eq!(account.loan_count, 1_000);
         assert_eq!(account.loan_debt(), 100_000_000);
+        assert_eq!(
+            account
+                .entries
+                .iter()
+                .filter(|entry| matches!(entry.kind, LedgerKind::ReUp))
+                .count(),
+            1,
+            "one entry covers the whole loan"
+        );
         let account = bank
             .append(
                 owner.clone(),
@@ -798,6 +856,101 @@ mod tests {
         assert_eq!(account.balance, 99_900_000);
         assert_eq!(account.loan_debt(), 99_900_000);
         assert_eq!(account.loan_count, 999);
+    }
+
+    #[tokio::test]
+    async fn a_person_only_borrows_their_way_into_the_cheap_seats() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        let table = Uuid::new_v4();
+        // One rung above the limit is money you have to bring yourself.
+        assert_eq!(
+            bank.buy_in(
+                owner.clone(),
+                table,
+                BankStore::LOAN_BUY_IN_LIMIT + 100_000,
+                false
+            )
+            .await
+            .unwrap_err()
+            .to_string(),
+            "insufficient funds"
+        );
+        let account = bank.account(owner.clone()).await.unwrap();
+        assert_eq!(account.loan_count, 0);
+        assert_eq!(account.balance, 0);
+        // At the limit it lends.
+        let account = bank
+            .buy_in(owner, table, BankStore::LOAN_BUY_IN_LIMIT, false)
+            .await
+            .unwrap();
+        assert_eq!(account.loan_count, 1);
+        assert_eq!(account.balance, 0);
+    }
+
+    #[tokio::test]
+    async fn paying_off_every_loan_clears_what_the_balance_covers() {
+        let bank = BankStore::load(tempfile_dir()).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        for _ in 0..3 {
+            bank.re_up(owner.clone()).await.unwrap();
+            bank.append(
+                owner.clone(),
+                LedgerKind::Adjustment,
+                -BankStore::RE_UP_AMOUNT,
+                "spent it".into(),
+            )
+            .await
+            .unwrap();
+        }
+        // Three loans owed, enough on hand for two of them.
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            2 * BankStore::RE_UP_AMOUNT + 500,
+            "winnings".into(),
+        )
+        .await
+        .unwrap();
+        let account = bank.repay_all_loans(owner.clone()).await.unwrap();
+        assert_eq!(account.loan_count, 1);
+        assert_eq!(account.balance, 500);
+        assert_eq!(
+            account.entries.last().expect("entry").memo,
+            "loan repayment (2 loans)"
+        );
+        assert_eq!(
+            account.entries.last().expect("entry").delta,
+            -2 * BankStore::RE_UP_AMOUNT
+        );
+        // Short of a whole loan it does nothing, and with none owed there is
+        // nothing to do either.
+        assert_eq!(
+            bank.repay_all_loans(owner.clone())
+                .await
+                .unwrap_err()
+                .to_string(),
+            "not enough to pay back that loan"
+        );
+        bank.append(
+            owner.clone(),
+            LedgerKind::Adjustment,
+            BankStore::RE_UP_AMOUNT,
+            "winnings".into(),
+        )
+        .await
+        .unwrap();
+        let account = bank.repay_all_loans(owner.clone()).await.unwrap();
+        assert_eq!(account.loan_count, 0);
+        assert_eq!(account.balance, 500);
+        assert_eq!(
+            account.entries.last().expect("entry").memo,
+            "loan repayment"
+        );
+        assert_eq!(
+            bank.repay_all_loans(owner).await.unwrap_err().to_string(),
+            "no outstanding loans"
+        );
     }
 
     #[tokio::test]

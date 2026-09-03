@@ -384,7 +384,7 @@ pub fn player_page(
         ),
     };
     let body = format!(
-        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}{}{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
+        r#"<section class="player-page" data-player-id="{}"><header class="history-top"><div><h1>{}</h1><p>{}</p></div><nav>{}</nav></header><section class="player-summary"><span><small>Balance</small><b>{}</b></span><span><small>Debt</small><b>{}</b></span><span><small>Net</small><b>{}</b></span><span><small>Loans</small><b>{}</b></span><span><small>Poker net</small><b>{}</b></span><span><small>Blitz accuracy</small><b>{}%</b></span></section>{}{}{}{}<section class="finance-panel chart-panel"><h2>Finances</h2>{}</section><section class="finance-panel ledger-panel"><h2>Recent ledger</h2>{}</section></section>"#,
         id,
         escape(name),
         blurb,
@@ -395,6 +395,11 @@ pub fn player_page(
         account.loan_count,
         format_cents(poker.net),
         blitz.accuracy_percent(),
+        if settings.is_some() {
+            loans_panel(account)
+        } else {
+            String::new()
+        },
         gift.map_or_else(String::new, gift_panel),
         settings.map_or_else(String::new, options_panel),
         gifts_panel(gift.is_none(), name, gift_peers),
@@ -408,6 +413,54 @@ pub fn player_page(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/player.js")
         ),
+    )
+}
+
+/// Your own debt, and the one button that clears as much of it as the balance
+/// covers. Paying loans off one at a time is the same money; nobody wants to
+/// press it eleven times (§V16).
+fn loans_panel(account: &crate::bank::Account) -> String {
+    let unit = crate::bank::BankStore::RE_UP_AMOUNT;
+    let loans = account.loan_count;
+    let repayable = account.repayable_loans();
+    let action = if loans == 0 {
+        r#"<p class="loans-status" role="status">Nothing outstanding.</p>"#.to_string()
+    } else {
+        format!(
+            r#"<button class="bank-action loans-repay-all" type="button"{}>{}</button><p class="loans-status" role="status">{}</p>"#,
+            if repayable == 0 { " disabled" } else { "" },
+            if repayable <= 1 {
+                format!("Pay off one loan ({})", format_cents(unit))
+            } else {
+                format!(
+                    "Pay off {repayable} loans ({})",
+                    format_cents(repayable as Cents * unit)
+                )
+            },
+            if repayable == 0 {
+                format!(
+                    "You need {} in the bank to clear a loan.",
+                    format_cents(unit)
+                )
+            } else if repayable < loans {
+                format!(
+                    "That leaves {} still owed.",
+                    format_cents((loans - repayable) as Cents * unit)
+                )
+            } else {
+                "That clears the lot.".to_string()
+            },
+        )
+    };
+    format!(
+        r#"<section class="finance-panel loans-panel" data-loans="{loans}" data-repayable="{repayable}"><h2>Loans</h2><p>You owe <b class="loans-debt">{}</b>{}. Every loan is {} to pay back.</p>{action}</section>"#,
+        format_cents(account.loan_debt()),
+        match loans {
+            0 => String::new(),
+            1 => " on one loan".to_string(),
+            _ => format!(" across {loans} loans"),
+        },
+        format_cents(unit),
     )
 }
 

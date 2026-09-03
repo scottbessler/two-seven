@@ -68,9 +68,9 @@ pub struct TableView {
     pub stakes: crate::table::Stakes,
     pub buy_in: Cents,
     pub bank_balance: Option<Cents>,
-    /// This table wants the money up front: no automatic loan covers a
-    /// shortfall, so the buy-in is only offered to a balance that covers it.
-    pub no_debt: bool,
+    /// This table will cover a shortfall in the buy-in with a loan, so the
+    /// seat is offered whatever the balance is (§V10).
+    pub lends_buy_in: bool,
     pub seats: Vec<SeatView>,
     pub button: usize,
     pub viewer_seat: Option<usize>,
@@ -253,6 +253,12 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>, x_ray: &[usize]) -> HandVie
 /// Whether every seat is a bot or empty -- nobody, including the viewer, is
 /// playing. A human in any seat, even the viewer's own, is a human at the
 /// table.
+/// Whether buying in here can be funded with a loan: the table has to allow
+/// debt, and its seat has to be one of the cheap ones. Above the limit the
+/// buy-in is yours to cover (§V10).
+pub fn table_lends_buy_in(no_debt: bool, buy_in: Cents) -> bool {
+    !no_debt && buy_in <= crate::bank::BankStore::LOAN_BUY_IN_LIMIT
+}
 fn no_humans_seated(table: &Table) -> bool {
     !table
         .seats
@@ -312,10 +318,13 @@ pub fn table_view_with_banks(
         stakes: table.stakes,
         buy_in: table.buy_in,
         bank_balance,
-        no_debt: match &table.mode {
-            crate::table::TableMode::Cash { no_debt } => *no_debt,
-            crate::table::TableMode::Tournament(state) => state.config.no_debt,
-        },
+        lends_buy_in: table_lends_buy_in(
+            match &table.mode {
+                crate::table::TableMode::Cash { no_debt } => *no_debt,
+                crate::table::TableMode::Tournament(state) => state.config.no_debt,
+            },
+            table.buy_in,
+        ),
         seats: table
             .seats
             .iter()

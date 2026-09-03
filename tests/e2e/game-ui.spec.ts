@@ -35,7 +35,7 @@ const tableState = {
   viewer_leaving: false,
   bank_balance: 25_000,
   buy_in: 20_000,
-  no_debt: false,
+  lends_buy_in: true,
   tournament: null,
   last_hand: null,
   seats: [
@@ -258,8 +258,8 @@ test("cash table commands notice a same-page re-up", async ({ page }) => {
     ...tableState,
     viewer_seat: null,
     bank_balance: 0,
-    // Cash up front: this table lends nothing, so the seat waits on the re-up.
-    no_debt: true,
+    // Nothing is lent for this seat, so it waits on the re-up.
+    lends_buy_in: false,
     hand: null,
     seats: tableState.seats.map((seat) => seat.index === 2
       ? { ...seat, occupant: "empty", display_name: null, stack: 0 }
@@ -278,10 +278,12 @@ test("re-ups from the lobby without a manual refresh", async ({ page }) => {
   await page.evaluate(() => document.documentElement.setAttribute("data-still-loaded", "yes"));
   await expect(page.locator("#bank-balance")).toHaveText("$0");
   const cheapest = page.locator("li", { hasText: "$1.00/$2.00 No-Limit" });
-  // Cash tables lend the shortfall, so a broke player is not shut out of any
-  // of them and nothing is filed away as out of reach.
-  await expect(page.locator(".out-of-reach")).toHaveCount(0);
+  // The cheap rungs lend the shortfall, so a broke player is not shut out of
+  // them; the deeper games are still filed under out of reach.
+  await expect(page.locator(".out-of-reach").locator(cheapest)).toHaveCount(0);
   await expect(cheapest).toHaveCount(1);
+  const dear = page.locator("li", { hasText: "$10.00/$20.00 No-Limit" });
+  await expect(page.locator(".out-of-reach").locator(dear)).toHaveCount(1);
   // Mark the sections that are on the page now, so a re-render is visible even
   // when the lists it produces read the same.
   await page.evaluate(() => {
@@ -297,6 +299,7 @@ test("re-ups from the lobby without a manual refresh", async ({ page }) => {
   await expect(page.locator(".table-list[data-stale]")).toHaveCount(0);
   await expect(page.locator(".table-list")).not.toHaveCount(0);
   await expect(cheapest).toHaveCount(1);
+  await expect(page.locator(".out-of-reach").locator(dear)).toHaveCount(1);
   // ...and did so without navigating: a reload would have made all of the above
   // true whether or not the re-up updated anything, and would have dropped the
   // marker with the old document.
@@ -1356,11 +1359,11 @@ test("offers a seat at a table the house has filled", async ({ page }) => {
   // A full table of house players is still a table you can join.
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Buy In $200"]);
   await expect(page.locator(".table-controls .table-command")).toBeEnabled();
-  // Short of the buy-in the table lends the difference, so the seat is still
-  // offered; only a cash-up-front table refuses it.
+  // Short of the buy-in a lending table covers the difference, so the seat is
+  // still offered; a table that lends nothing refuses it.
   await mountTable(page, { ...houseTable, bank_balance: 19_999 });
   await expect(page.locator(".table-controls .table-command")).toBeEnabled();
-  await mountTable(page, { ...houseTable, bank_balance: 19_999, no_debt: true });
+  await mountTable(page, { ...houseTable, bank_balance: 19_999, lends_buy_in: false });
   await expect(page.locator(".table-controls .table-command")).toBeDisabled();
   await mountTable(page, houseTable);
   // And it waits to be asked before it plays.
@@ -1572,10 +1575,10 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
   // only way out of a seat.
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200", "Leave"]);
   await expect(page.locator(".table-controls .table-command").first()).toBeEnabled();
-  // The rebuy borrows what the balance is short, unless the table wants cash.
+  // The rebuy borrows what the balance is short, unless this table lends none.
   await mountTable(page, { ...busted, bank_balance: 19_999 });
   await expect(page.locator(".table-controls .table-command").first()).toBeEnabled();
-  await mountTable(page, { ...busted, bank_balance: 19_999, no_debt: true });
+  await mountTable(page, { ...busted, bank_balance: 19_999, lends_buy_in: false });
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Re-Buy In $200", "Leave"]);
   await expect(page.locator(".table-controls .table-command").first()).toBeDisabled();
   await mountTable(page, busted);
