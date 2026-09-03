@@ -68,6 +68,9 @@ pub struct TableView {
     pub stakes: crate::table::Stakes,
     pub buy_in: Cents,
     pub bank_balance: Option<Cents>,
+    /// This table wants the money up front: no automatic loan covers a
+    /// shortfall, so the buy-in is only offered to a balance that covers it.
+    pub no_debt: bool,
     pub seats: Vec<SeatView>,
     pub button: usize,
     pub viewer_seat: Option<usize>,
@@ -309,6 +312,10 @@ pub fn table_view_with_banks(
         stakes: table.stakes,
         buy_in: table.buy_in,
         bank_balance,
+        no_debt: match &table.mode {
+            crate::table::TableMode::Cash { no_debt } => *no_debt,
+            crate::table::TableMode::Tournament(state) => state.config.no_debt,
+        },
         seats: table
             .seats
             .iter()

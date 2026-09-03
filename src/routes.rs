@@ -807,7 +807,7 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
                     .count(),
                 max_seats: table.max_seats,
                 no_debt,
-                affordable: your_seat.is_some() || balance >= table.buy_in,
+                affordable: your_seat.is_some() || !no_debt || balance >= table.buy_in,
                 tournament,
                 your_seat,
             });
@@ -1173,9 +1173,13 @@ pub async fn join_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (buy_in, tournament) = {
+    let (buy_in, tournament, no_debt) = {
         let t = table_arc.lock().await;
-        (t.buy_in, matches!(t.mode, TableMode::Tournament(_)))
+        (
+            t.buy_in,
+            matches!(t.mode, TableMode::Tournament(_)),
+            matches!(t.mode, TableMode::Cash { no_debt: true }),
+        )
     };
     if tournament {
         return Err(AppError::bad_request(
@@ -1192,7 +1196,7 @@ pub async fn join_table(
         }
     }
     s.bank
-        .buy_in(AccountOwner::User(user), id, buy_in, true)
+        .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let mut displaced = None;
@@ -1585,9 +1589,13 @@ pub async fn rebuy_table(
         .get(id)
         .await
         .ok_or_else(|| AppError::not_found("table not found"))?;
-    let (buy_in, tournament) = {
+    let (buy_in, tournament, no_debt) = {
         let table = table.lock().await;
-        (table.buy_in, matches!(table.mode, TableMode::Tournament(_)))
+        (
+            table.buy_in,
+            matches!(table.mode, TableMode::Tournament(_)),
+            matches!(table.mode, TableMode::Cash { no_debt: true }),
+        )
     };
     if tournament {
         return Err(AppError::bad_request("tournament chips cannot be rebought"));
@@ -1601,7 +1609,7 @@ pub async fn rebuy_table(
         }
     }
     s.bank
-        .buy_in(AccountOwner::User(user), id, buy_in, true)
+        .buy_in(AccountOwner::User(user), id, buy_in, no_debt)
         .await
         .map_err(|_| AppError::bad_request("insufficient funds"))?;
     let result = s
