@@ -13,7 +13,7 @@ async function refreshPlayerPanels() {
   const response = await fetch(window.location.href, { headers: { Accept: "text/html" }, cache: "no-store" });
   if (!response.ok) return;
   const page = new DOMParser().parseFromString(await response.text(), "text/html");
-  for (const selector of [".player-summary", ".gifts-panel", ".chart-panel", ".ledger-panel"]) {
+  for (const selector of [".player-summary", ".loans-panel", ".gifts-panel", ".chart-panel", ".ledger-panel"]) {
     const current = document.querySelector(selector);
     const fresh = page.querySelector(selector);
     if (!fresh) continue;
@@ -23,6 +23,34 @@ async function refreshPlayerPanels() {
     else document.querySelector(".chart-panel")?.before(fresh);
   }
 }
+
+// One press clears every loan the balance covers. The panel is server-rendered
+// against your debt, so the page is re-read afterwards rather than patched --
+// the button, the summary and the ledger all move together.
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest(".loans-repay-all");
+  if (!button || button.disabled) return;
+  const status = button.parentElement?.querySelector(".loans-status");
+  button.disabled = true;
+  button.ariaBusy = "true";
+  try {
+    const response = await fetch("/api/bank/repay-all", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (response.ok) {
+      announceBank(await response.json());
+      await refreshPlayerPanels();
+      return;
+    }
+    if (status) status.textContent = await responseError(response);
+  } catch {
+    if (status) status.textContent = "That did not go through. Try again.";
+  }
+  button.disabled = false;
+  button.ariaBusy = "false";
+});
 
 if (panel && controls) {
   const increment = Number(panel.dataset.increment) || 100_000;

@@ -807,7 +807,9 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
                     .count(),
                 max_seats: table.max_seats,
                 no_debt,
-                affordable: your_seat.is_some() || !no_debt || balance >= table.buy_in,
+                affordable: your_seat.is_some()
+                    || balance >= table.buy_in
+                    || crate::view::table_lends_buy_in(no_debt, table.buy_in),
                 tournament,
                 your_seat,
             });
@@ -1821,6 +1823,17 @@ pub async fn bank_re_up(
         .await
         .map(|account| Json(crate::bank::account_json(&account)))
         .map_err(|_| AppError::bad_request("re-up is only available below $1,000"))
+}
+pub async fn bank_repay_all(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(_input): Json<EmptyRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    s.bank
+        .repay_all_loans(AccountOwner::User(user))
+        .await
+        .map(|account| Json(crate::bank::account_json(&account)))
+        .map_err(|error| AppError::bad_request(error.to_string()))
 }
 pub async fn bank_repay(
     AuthUser(user): AuthUser,

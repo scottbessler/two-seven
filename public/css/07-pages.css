@@ -48,6 +48,8 @@
 .gift-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
 .gift-controls .gift-step{min-width:2.75rem;background:var(--felt-800);color:var(--ink)}
 .gift-amount{min-width:6rem;color:var(--accent);font-size:var(--text-title);font-variant-numeric:tabular-nums;text-align:center}
+.loans-panel p{margin:0}
+.loans-status{margin:0;color:var(--muted);font-size:var(--text-small);min-height:1.2em}
 .gift-status{margin:0;color:var(--muted);font-size:var(--text-small);min-height:1.2em}
 /* Hand history is a debugging view: dense, readable, no table chrome. */
 .history-shell{display:grid;gap:.75rem;padding-bottom:2rem}

@@ -135,6 +135,10 @@ pub fn router(s: AppState) -> Router {
         )
         .route("/api/bank/repay", axum::routing::post(routes::bank_repay))
         .route(
+            "/api/bank/repay-all",
+            axum::routing::post(routes::bank_repay_all),
+        )
+        .route(
             "/auth/register/begin",
             axum::routing::post(auth::register_begin),
         )

@@ -61,3 +61,26 @@ test("account options save to the account and come back on reload", async ({ pag
   await expect(page.locator("[name=see-bot-cards]")).toBeChecked();
   await expect(page.locator("[name=unfunded-tournaments]")).not.toBeChecked();
 });
+
+test("clears every loan the balance covers in one press", async ({ page }) => {
+  await signIn(page, "Debtor");
+  await page.goto("/player");
+  const panel = page.locator(".loans-panel");
+  await expect(panel).toContainText("You owe $0.00");
+  await expect(panel.locator(".loans-status")).toHaveText("Nothing outstanding.");
+
+  // A re-up is a loan; the button offers exactly what the balance covers.
+  await page.request.post("/api/bank", { data: {} });
+  await page.goto("/player");
+  await expect(panel).toContainText("You owe $1,000.00 on one loan");
+  const payOff = panel.locator(".loans-repay-all");
+  await expect(payOff).toHaveText("Pay off one loan ($1,000.00)");
+
+  await payOff.click();
+
+  // The panel, the summary and the header total all catch up without a reload.
+  await expect(panel).toContainText("You owe $0.00");
+  await expect(panel.locator(".loans-repay-all")).toHaveCount(0);
+  await expect(page.locator("#bank-balance")).toHaveText("$0");
+  await expect(page.locator(".ledger-panel")).toContainText("loan repayment");
+});

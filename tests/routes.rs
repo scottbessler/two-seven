@@ -837,9 +837,9 @@ async fn the_lobby_counts_humans_and_lists_tables_by_affordability() {
     // Cash tables and tournaments are listed apart.
     assert!(html.contains("<h2>Cash tables</h2>"));
     assert!(html.contains("<h2>Tournaments</h2>"));
-    // Cash tables lend for the shortfall, so none of them is out of reach.
+    // Lending only reaches the cheap rungs, so the deep ones stay filed away.
     assert!(
-        !html.contains(
+        html.contains(
             r#"<details class="out-of-reach"><summary>Cash tables to spectate</summary>"#
         )
     );
@@ -2347,6 +2347,127 @@ async fn cash_join_takes_a_loan_unless_the_table_wants_cash_up_front() {
     let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
     assert_eq!(account.loan_count, 1);
     assert_eq!(account.balance, BankStore::RE_UP_AMOUNT - 10_000);
+}
+
+#[tokio::test]
+async fn a_deep_cash_table_is_not_worth_a_loan() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "Deep".into(),
+            display_name: "Deep".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    // A rung above the lending limit: this seat wants money you already have.
+    let id = seat_table(
+        &t,
+        "Deep",
+        9,
+        BankStore::LOAN_BUY_IN_LIMIT + BankStore::RE_UP_AMOUNT,
+        false,
+    )
+    .await;
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(account.loan_count, 0);
+    assert_eq!(account.balance, 0);
+}
+
+#[tokio::test]
+async fn repaying_every_loan_clears_what_the_balance_covers() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "Square".into(),
+            display_name: "Square".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    for _ in 0..2 {
+        t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+        t.bank
+            .append(
+                AccountOwner::User(user),
+                two_seven::bank::LedgerKind::Adjustment,
+                -BankStore::RE_UP_AMOUNT,
+                "spent it".into(),
+            )
+            .await
+            .unwrap();
+    }
+    t.bank
+        .append(
+            AccountOwner::User(user),
+            two_seven::bank::LedgerKind::Adjustment,
+            2 * BankStore::RE_UP_AMOUNT,
+            "winnings".into(),
+        )
+        .await
+        .unwrap();
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/bank/repay-all")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let account: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(account["loan_count"], 0);
+    assert_eq!(account["balance"], 0);
+    assert_eq!(account["repayable_loans"], 0);
+
+    // Nothing left owed, so there is nothing left to press.
+    let response = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/bank/repay-all")
+                .header(header::COOKIE, cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

@@ -499,9 +499,9 @@ function TableCommands({ state, openSeats, refresh }) {
   const seatsForYou = state.tournament
     ? openSeats
     : [...openSeats, ...state.seats.filter((seat) => seat.bot && !seat.reserved)];
-  // A table that allows debt covers the shortfall with an automatic loan, so
-  // the seat is offered whatever the balance is.
-  const canAffordCashSeat = !state.no_debt || (state.bank_balance ?? 0) >= state.buy_in;
+  // A cheap table covers the shortfall with a loan, so the seat is offered
+  // whatever the balance is; a deeper one you pay for yourself.
+  const canAffordCashSeat = state.lends_buy_in || (state.bank_balance ?? 0) >= state.buy_in;
   const viewer = state.viewer_seat == null
     ? null
     : state.seats.find((seat) => seat.index === state.viewer_seat);
