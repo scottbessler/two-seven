@@ -1793,6 +1793,52 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
   await expectImage(page, "landscape-table.png", { fullPage: true });
 });
 
+/**
+ * A short-handed table seats its opponents in one row, which leaves a phone
+ * with room the log used to hold as blank rules above the buttons. V55: the
+ * hand and the tiles take that room instead, and the log keeps only what is
+ * left over.
+ */
+test("spends a short-handed phone table's spare height on the cards", async ({ page }) => {
+  test.skip((page.viewportSize()?.width || 0) > 640, "V55: the surplus tier is a portrait phone rule");
+  await useDevice(page, IPHONE_PORTRAIT);
+  const shortHanded = {
+    ...tableState,
+    button: 2,
+    seats: tableState.seats.slice(0, 3),
+  };
+  await mountTable(page, shortHanded);
+  await expect(page.locator(".seat.viewer")).toBeVisible();
+  const room = await page.locator(".table-shell").evaluate((shell) => {
+    const box = (selector) => shell.querySelector(selector).getBoundingClientRect();
+    const log = shell.querySelector(".game-log");
+    const stage = shell.querySelector(".table-stage");
+    const opponents = [...shell.querySelectorAll(".other-seats .seat")].map((seat) => seat.getBoundingClientRect());
+    return {
+      handHeight: Math.round(box(".seat.viewer .seat-cards .playing-card").height),
+      handInsidePanel: box(".seat.viewer .seat-cards").bottom <= box(".seat.viewer").bottom + 1
+        && box(".seat.viewer .seat-cards").top >= box(".seat.viewer").top - 1,
+      opponentRows: new Set(opponents.map((seat) => Math.round(seat.top))).size,
+      // What the log holds beyond its own entries. One entry cannot fill the
+      // log's own 3.5rem minimum, so this never reaches zero -- it reached
+      // 148px before this tier, which is the waste being spent.
+      logSlack: Math.round(log.getBoundingClientRect().height - box(".game-log ol").height),
+      stageScrolls: stage.scrollHeight > stage.clientHeight,
+      documentScrolls: document.documentElement.scrollHeight > document.documentElement.clientHeight,
+      controlsBottomGap: document.documentElement.clientHeight - box(".table-controls").bottom,
+      safeBottom: Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom")),
+    };
+  });
+  expect(room.opponentRows, "V55: three-handed opponents belong on one row").toBe(1);
+  expect(room.handHeight, `V55: a one-row table must grow the hand past its two-row size ${JSON.stringify(room)}`).toBeGreaterThan(110);
+  expect(room.handInsidePanel, `V55: the grown hand must stay inside its panel ${JSON.stringify(room)}`).toBe(true);
+  expect(room.logSlack, `V55: the log must keep no more than its own minimum height empty ${JSON.stringify(room)}`).toBeLessThanOrEqual(70);
+  expect(room.stageScrolls, `V55: the grown stage must still fit ${JSON.stringify(room)}`).toBe(false);
+  expect(room.documentScrolls, `V55: a short-handed phone table must not scroll ${JSON.stringify(room)}`).toBe(false);
+  expect(room.controlsBottomGap - room.safeBottom, `V55: table controls must still clear the home indicator ${JSON.stringify(room)}`).toBeLessThanOrEqual(4);
+  await expectLayout(page, "short-handed-phone-table", TABLE_LAYOUT);
+});
+
 test("packs the table into a portrait phone without scrolling", async ({ page }) => {
   for (const device of [IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, IPHONE_MAX_PORTRAIT]) {
     /* oxlint-disable no-await-in-loop */
@@ -2187,3 +2233,4 @@ test("keeps your own hand in one place as cards and winnings come and go", async
   expect(between, `V53: an empty hand must not move your own panel ${JSON.stringify({ live, between })}`).toEqual(live);
   expect(won, `V53: a result that pays you must not move your own panel ${JSON.stringify({ live, won })}`).toEqual(live);
 });
+

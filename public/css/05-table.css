@@ -387,6 +387,42 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .confirm-dialog footer button{width:100%}
   .card-test-grid .playing-card{--card-w:3.15rem;--card-h:4.4rem;--corner-gap:.16rem}
 }
+/* A tall phone finishes the layout with room to spare: the fixed part of the
+   table is shorter than the screen, and the log -- the one flexible row --
+   swallowed the difference, standing 150px of empty rules above the buttons on
+   an iPhone 15 Pro. Spend that room on the hand and the opponent tiles, which
+   is what it is for, and let the log keep what is left.
+
+   Only a table whose opponents fit one row has room to spend. The fit guard's
+   39.625rem budget allows for two rows, and a six-handed phone table really
+   does need both -- V42 leaves it about 6px of slack at the top card setting --
+   so a one-row table is a whole row, tile and gap, better off than the guard
+   assumes and nothing else is. Five opponents is where the four-column grid
+   wraps, so that is where this tier stops. A phone with no room to spare (an
+   SE) never reaches it at all, and the guard still shrinks the hand on a phone
+   that only just clears the height.
+
+   The growth is a multiplier on the size you chose rather than a flat addition,
+   so the card-size setting keeps its range here instead of being squeezed
+   toward one size by a constant.
+
+   The shared cards are deliberately left alone: five of them are already as
+   wide as the row allows, so raising that cap would only make a four-card flop
+   taller than a five-card river and move the table on every street. */
+@media (max-width:640px) and (min-height:761px) and (orientation:portrait){
+  .page:has(.table-shell):not(:has(.other-seats .seat:nth-child(5))){
+    /* The same three-way clamp as the short-phone case -- the size you chose,
+       the height the page can spare, the width the panel can spare -- with the
+       height budget credited the row of opponents this table does not have. */
+    --viewer-card-h-fit-mobile:min(
+      calc(var(--viewer-card-h-mobile) * 1.5),
+      max(3rem,calc(var(--usable-h) - 32.575rem)),
+      calc((100vw - var(--safe-left) - var(--safe-right) - 11rem) / 2 / .712));
+  }
+  .page:not(:has(.other-seats .seat:nth-child(5))) .table-stage .other-seats .seat{height:8.5rem;min-height:8.5rem}
+  .page:not(:has(.other-seats .seat:nth-child(5))) .table-stage .seat-cards .playing-card{--seat-card-cap:2.4rem}
+  .page:not(:has(.other-seats .seat:nth-child(5))) .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:3.25rem}
+}
 @media (max-width:640px) and (max-height:760px) and (orientation:portrait){
   .table-stage .seats .seat,.table-metrics span{line-height:1}
   .table-stage .seats.viewer-seats{margin-top:0}
