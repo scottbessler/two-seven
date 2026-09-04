@@ -107,13 +107,12 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                     if table.next_action_at.is_some_and(|at| at > now) {
                         return Ok(());
                     }
-                    let kind = bot.kind;
                     let view = hand_view(hand, Some(seat), &[]);
                     let legal = view
                         .legal_actions
                         .clone()
                         .ok_or_else(|| anyhow::anyhow!("bot turn has no legal actions"))?;
-                    let action = kind.act(
+                    let action = bot.act(
                         &view,
                         &legal,
                         hand.seed.wrapping_add(hand.players.len() as u64),
@@ -304,7 +303,63 @@ pub async fn ensure_cash_ladder(state: &AppState) -> Result<(), anyhow::Error> {
             state.tables.insert(crate::cash::table(tier)).await?;
         }
     }
+    retire_out_of_depth_house_players(state).await;
     Ok(())
+}
+
+/// Stand up any house player the rung no longer allows (§V62). A table saved
+/// before the stakes constraint arrived can be holding a fish at a $1,000 seat;
+/// the seat empties and the tick refills it from the kinds that belong.
+async fn retire_out_of_depth_house_players(state: &AppState) {
+    for id in state.tables.ids().await {
+        let Some(table) = state.tables.get(id).await else {
+            continue;
+        };
+        let out_of_depth = {
+            let table = table.lock().await;
+            if table.cash_tier.is_none() || table.hand.is_some() {
+                continue;
+            }
+            let out_of_depth: Vec<(usize, crate::table::Bot, crate::money::Cents)> = table
+                .seats
+                .iter()
+                .enumerate()
+                .filter_map(|(index, seat)| {
+                    let bot = seat.occupant.as_bot()?;
+                    (!crate::cash::kind_allowed(table.buy_in, bot.kind))
+                        .then_some((index, bot, seat.stack))
+                })
+                .collect();
+            out_of_depth
+        };
+        for (index, bot, stack) in out_of_depth {
+            if state
+                .bank
+                .cash_out(AccountOwner::Bot(bot), id, stack)
+                .await
+                .is_err()
+            {
+                continue;
+            }
+            if let Err(error) = state
+                .tables
+                .update(id, |table| {
+                    if let Some(seat) = table.seats.get_mut(index)
+                        && seat.occupant.as_bot() == Some(bot)
+                    {
+                        seat.occupant = SeatOccupant::Empty;
+                        seat.stack = 0;
+                        seat.sitting_out = false;
+                        seat.pending_departure = false;
+                    }
+                    Ok(())
+                })
+                .await
+            {
+                tracing::warn!(%id, %error, "could not stand up an out-of-depth house player");
+            }
+        }
+    }
 }
 
 /// Fill one empty seat at a standing table from the roster. One per tick is
@@ -967,6 +1022,19 @@ mod tests {
         for _ in 0..(crate::cash::SEATS * crate::cash::TIERS.len() + 4) {
             tick_once(&state).await.unwrap();
         }
+        // Nobody sits at a table their kind is not seated at (§V62).
+        for id in tables.ids().await {
+            let table = tables.get(id).await.unwrap();
+            let table = table.lock().await;
+            for bot in table.seats.iter().filter_map(|seat| seat.occupant.as_bot()) {
+                assert!(
+                    crate::cash::kind_allowed(table.buy_in, bot.kind),
+                    "{} is out of their depth at {}",
+                    bot.name(),
+                    table.name
+                );
+            }
+        }
         let cheapest = {
             let mut found = None;
             for id in tables.ids().await {
@@ -1009,6 +1077,66 @@ mod tests {
                 bot.name()
             );
         }
+    }
+
+    /// V62: a table saved before the stakes constraint arrived can be holding
+    /// somebody it would not seat today. Startup stands them up.
+    #[tokio::test]
+    async fn startup_stands_up_a_house_player_who_is_out_of_their_depth() {
+        let root = std::env::temp_dir().join(format!("two-seven-depth-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let blitz = BlitzStore::load(&root).await.unwrap();
+        let tables = TableStore::load(&root).await.unwrap();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let stats = crate::stats::StatsStore::load(&root).await.unwrap();
+        let state = AppState {
+            users,
+            bank,
+            blackjack: crate::blackjack::BlackjackStore::new(),
+            blitz,
+            tables: tables.clone(),
+            history,
+            stats,
+            admin_password: Arc::new("test-admin-password".into()),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        ensure_cash_ladder(&state).await.unwrap();
+        // The dearest rung takes sharks only; put a fish there as an old save
+        // would have.
+        let dearest = {
+            let mut found = None;
+            for id in tables.ids().await {
+                let table = tables.get(id).await.unwrap();
+                let tier = table.lock().await.cash_tier;
+                if tier == Some(crate::cash::TIERS.len() - 1) {
+                    found = Some(id);
+                }
+            }
+            found.expect("the dearest table")
+        };
+        let fish = crate::table::Bot::new(BotKind::Fish, 0);
+        tables
+            .update(dearest, |table| {
+                table.seats[0].occupant = SeatOccupant::bot(fish);
+                table.seats[0].stack = table.buy_in;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        ensure_cash_ladder(&state).await.unwrap();
+        let table = tables.get(dearest).await.unwrap();
+        let table = table.lock().await;
+        assert!(
+            !table
+                .seats
+                .iter()
+                .any(|seat| seat.occupant.as_bot() == Some(fish)),
+            "a fish does not keep a seat at the dearest table"
+        );
+        assert_eq!(table.seats[0].stack, 0, "the seat is cleared, not stranded");
     }
 
     #[tokio::test]

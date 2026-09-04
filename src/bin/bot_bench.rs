@@ -5,7 +5,7 @@
 //! where `lineup` is a comma-separated list of bot kinds, e.g.
 //! `fish,rock,grinder,shark` (the default). Shark also accepts named
 //! parameter presets as `shark:<preset>`; `shark:default` is an alias for
-//! `shark`. Bench-only `steal` and `steal_check` bots are also available.
+//! `shark`, and `shark:regular<n>` is the tuning house shark `n` plays with. Bench-only `steal` and `steal_check` bots are also available.
 //! `stakes` is optional and accepts `no-limit` (the default) or `limit`.
 
 use std::collections::BTreeMap;
@@ -99,7 +99,13 @@ fn shark_preset(name: &str) -> Option<SharkParams> {
         "samples200" => Some(samples200_params()),
         "samples400" => Some(samples400_params()),
         "samples64" => Some(samples64_params()),
-        _ => None,
+        // The tuning one of the house sharks actually plays with, so a
+        // personality can be benched against the reference build.
+        _ => name
+            .strip_prefix("regular")
+            .and_then(|index| index.parse::<u8>().ok())
+            .filter(|index| *index < SharkParams::REGULARS)
+            .map(SharkParams::for_regular),
     }
 }
 
@@ -885,6 +891,29 @@ mod tests {
         assert_eq!(phase1.late_open_score, conservative.late_open_score);
         assert_eq!(phase1.heads_up_in_position_edge, 0.10);
         assert_eq!(default.heads_up_in_position_edge, 0.08);
+    }
+
+    #[test]
+    fn every_house_shark_is_benchable_and_plays_their_own_way() {
+        let regulars: Vec<_> = (0..SharkParams::REGULARS)
+            .map(|index| {
+                (
+                    index,
+                    shark_preset(&format!("regular{index}"))
+                        .unwrap_or_else(|| panic!("regular{index} is not a preset")),
+                )
+            })
+            .collect();
+        for (index, params) in regulars.iter().enumerate() {
+            for other in regulars.iter().skip(index + 1) {
+                assert_ne!(
+                    params.1, other.1,
+                    "sharks {} and {} share a tuning",
+                    params.0, other.0
+                );
+            }
+        }
+        assert!(shark_preset(&format!("regular{}", SharkParams::REGULARS)).is_none());
     }
 
     #[test]

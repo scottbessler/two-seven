@@ -78,18 +78,21 @@ pub enum BotKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct Bot {
     pub kind: BotKind,
-    /// Which of the kind's five regulars this is.
+    /// Which of the kind's regulars this is (see `BotKind::regulars`).
     #[serde(default)]
     pub seat: u8,
 }
 
 impl Bot {
+    /// How many regulars most kinds have. Sharks have more of them, because a
+    /// table above the shark-only rung has to be filled by sharks alone and a
+    /// tournament seats up to nine.
     pub const PER_KIND: u8 = 5;
 
     pub fn new(kind: BotKind, seat: u8) -> Self {
         Self {
             kind,
-            seat: seat % Self::PER_KIND,
+            seat: seat % kind.regulars(),
         }
     }
 
@@ -97,18 +100,30 @@ impl Bot {
     pub fn roster() -> Vec<Self> {
         BotKind::ALL
             .into_iter()
-            .flat_map(|kind| (0..Self::PER_KIND).map(move |seat| Self { kind, seat }))
+            .flat_map(|kind| (0..kind.regulars()).map(move |seat| Self { kind, seat }))
             .collect()
     }
 
     pub fn name(self) -> &'static str {
-        let names = match self.kind {
-            BotKind::Fish => ["Marlon", "Dede", "Ollie", "Pip", "Wanda"],
-            BotKind::Rock => ["Agnes", "Bernard", "Constance", "Dov", "Edda"],
-            BotKind::Grinder => ["Hark", "Ines", "Jules", "Kip", "Lena"],
-            BotKind::Shark => ["Nadia", "Osman", "Prisha", "Quill", "Rune"],
+        let names: &[&'static str] = match self.kind {
+            BotKind::Fish => &["Marlon", "Dede", "Ollie", "Pip", "Wanda"],
+            BotKind::Rock => &["Agnes", "Bernard", "Constance", "Dov", "Edda"],
+            BotKind::Grinder => &["Hark", "Ines", "Jules", "Kip", "Lena"],
+            BotKind::Shark => &[
+                "Nadia", "Osman", "Prisha", "Quill", "Rune", "Sable", "Thea", "Ulric", "Vesna",
+            ],
         };
-        names[(self.seat % Self::PER_KIND) as usize]
+        names[(self.seat % self.kind.regulars()) as usize]
+    }
+
+    /// How this regular plays: their kind's style, with a shark's own tuning.
+    pub fn act(
+        self,
+        view: &crate::view::HandView,
+        legal: &crate::holdem::LegalActions,
+        seed: u64,
+    ) -> crate::holdem::Action {
+        crate::bot::act(self, view, legal, seed)
     }
 }
 
@@ -135,6 +150,19 @@ impl FromStr for Bot {
 
 impl BotKind {
     pub const ALL: [Self; 4] = [Self::Fish, Self::Rock, Self::Grinder, Self::Shark];
+
+    /// The largest house table there is: nine tournament seats. A kind that
+    /// can be asked to fill one on its own needs that many regulars.
+    pub const MOST_SEATS: u8 = 9;
+
+    /// How many regulars this kind has.
+    pub const fn regulars(self) -> u8 {
+        match self {
+            // Sharks fill the top of the ladder by themselves (§V62).
+            Self::Shark => Self::MOST_SEATS,
+            _ => Bot::PER_KIND,
+        }
+    }
 }
 
 impl fmt::Display for BotKind {
@@ -359,7 +387,19 @@ mod bot_kind_tests {
     #[test]
     fn every_bot_is_a_distinct_person() {
         let roster = Bot::roster();
-        assert_eq!(roster.len(), 20, "five regulars for each of four kinds");
+        assert_eq!(
+            roster.len(),
+            24,
+            "five regulars each, and nine sharks so they can fill a table alone"
+        );
+        assert_eq!(
+            roster
+                .iter()
+                .filter(|bot| bot.kind == BotKind::Shark)
+                .count(),
+            usize::from(BotKind::MOST_SEATS),
+            "a shark-only game seats sharks all the way up to nine"
+        );
         let names: std::collections::BTreeSet<&str> = roster.iter().map(|bot| bot.name()).collect();
         assert_eq!(names.len(), roster.len(), "no two share a name");
         // A seat round-trips through its text form, and a bare kind still reads
@@ -369,6 +409,8 @@ mod bot_kind_tests {
         }
         assert_eq!("shark".parse::<Bot>().unwrap(), Bot::new(BotKind::Shark, 0));
         assert_eq!(Bot::new(BotKind::Fish, 7), Bot::new(BotKind::Fish, 2));
+        assert_eq!(Bot::new(BotKind::Shark, 7), Bot::new(BotKind::Shark, 7));
+        assert_eq!(Bot::new(BotKind::Shark, 11), Bot::new(BotKind::Shark, 2));
     }
 
     #[test]

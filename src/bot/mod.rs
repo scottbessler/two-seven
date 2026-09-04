@@ -2,7 +2,7 @@ use crate::{
     cards::Rank,
     eval::{Category, evaluate},
     holdem::{Action, LegalActions},
-    table::BotKind,
+    table::{Bot, BotKind},
     view::HandView,
 };
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
@@ -10,15 +10,23 @@ use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 const MAX_BOT_STREET_RAISES: usize = 3;
 
 impl BotKind {
+    /// How the kind plays, with its reference tuning. A seated regular acts
+    /// through [`Bot::act`] instead, so a shark brings their own.
     pub fn act(self, view: &HandView, legal: &LegalActions, seed: u64) -> Action {
-        let action = match self {
-            Self::Fish => fish(view, legal, seed),
-            Self::Rock => rock(view, legal),
-            Self::Grinder => grinder(view, legal),
-            Self::Shark => shark_with(&SharkParams::DEFAULT, view, legal, seed),
-        };
-        avoid_excessive_raise(avoid_free_fold(action, legal), view, legal)
+        act(Bot::new(self, 0), view, legal, seed)
     }
+}
+
+/// One regular's decision: their kind's style, and for a shark the tuning that
+/// tells them apart from the rest of the house's sharks (§V62).
+pub fn act(bot: Bot, view: &HandView, legal: &LegalActions, seed: u64) -> Action {
+    let action = match bot.kind {
+        BotKind::Fish => fish(view, legal, seed),
+        BotKind::Rock => rock(view, legal),
+        BotKind::Grinder => grinder(view, legal),
+        BotKind::Shark => shark_with(&SharkParams::for_regular(bot.seat), view, legal, seed),
+    };
+    avoid_excessive_raise(avoid_free_fold(action, legal), view, legal)
 }
 
 fn avoid_excessive_raise(action: Action, view: &HandView, legal: &LegalActions) -> Action {
@@ -200,6 +208,62 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn every_shark_regular_plays_legally_and_none_plays_the_same() {
+        let mut lines: Vec<(u8, Vec<Action>)> = Vec::new();
+        for regular in 0..BotKind::Shark.regulars() {
+            let bot = Bot::new(BotKind::Shark, regular);
+            let mut actions = Vec::new();
+            for seed in 0..40 {
+                let mut hand = Hand::new(
+                    Stakes::NoLimit {
+                        small_blind: 1,
+                        big_blind: 2,
+                    },
+                    &[100, 100, 100],
+                    0,
+                    seed,
+                );
+                for turn in 0..100 {
+                    if hand.complete {
+                        break;
+                    }
+                    if hand.advance_runout() {
+                        continue;
+                    }
+                    let legal = hand.legal_actions().expect("action");
+                    let view = hand_view(&hand, Some(legal.seat), &[]);
+                    let action = bot.act(&view, &legal, seed + turn);
+                    actions.push(action);
+                    hand.apply_action(action).unwrap_or_else(|error| {
+                        panic!("{bot} seed {seed} turn {turn}: {action:?} rejected: {error}")
+                    });
+                }
+            }
+            lines.push((regular, actions));
+        }
+        // Regular 0 is the reference build; the other eight each sit on their
+        // own (looseness, aggression) pair, so no two of them play alike.
+        for (index, (regular, actions)) in lines.iter().enumerate() {
+            for (other, other_actions) in &lines[index + 1..] {
+                assert_ne!(
+                    actions, other_actions,
+                    "shark {regular} and shark {other} play the same corpus identically"
+                );
+            }
+        }
+        assert_eq!(
+            SharkParams::for_regular(0),
+            SharkParams::DEFAULT,
+            "the first shark is the reference tuning"
+        );
+        assert_eq!(
+            SharkParams::for_regular(BotKind::Shark.regulars()),
+            SharkParams::for_regular(0),
+            "tuning wraps with the roster"
+        );
     }
 
     #[test]

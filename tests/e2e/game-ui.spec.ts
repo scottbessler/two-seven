@@ -1559,6 +1559,16 @@ test("offers one state-aware table lifecycle command", async ({ page }) => {
     botBody = route.request().postDataJSON();
     await route.fulfill({ json: { ok: true } });
   });
+  // V62: the stakes decide who the house will sit. A $20,000 seat is past the
+  // shark-only rung, so a shark is the only thing on offer here.
+  await expect(page.locator(".seat-bot button")).toHaveText(["Seat shark"]);
+  await page.getByRole("button", { name: "Seat shark" }).click();
+  expect(botBody).toEqual({ kind: "shark" });
+  // A $1,000 seat has dropped the fish but keeps the rest; the cheapest keeps
+  // everyone.
+  await mountTable(page, { ...unseated, bank_balance: 2_500_000, buy_in: 100_000 });
+  await expect(page.locator(".seat-bot button")).toHaveText(["Seat rock", "Seat grinder", "Seat shark"]);
+  await mountTable(page, { ...unseated, bank_balance: 2_500_000 });
   await expect(page.locator(".seat-bot button")).toHaveText(["Seat fish", "Seat rock", "Seat grinder", "Seat shark"]);
   await page.getByRole("button", { name: "Seat rock" }).click();
   expect(botBody).toEqual({ kind: "rock" });
