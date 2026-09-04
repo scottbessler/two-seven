@@ -5,10 +5,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::Key;
 use cookie::{Cookie as RawCookie, CookieJar};
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 use tower::ServiceExt;
 use two_seven::{
     app,
@@ -28,13 +25,12 @@ struct T {
     state: app::AppState,
 }
 async fn appx() -> T {
-    let dir = std::env::temp_dir().join(format!(
-        "two-seven-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
+    // Tests run in parallel and the clock is not fine-grained enough to keep
+    // them apart: two harnesses landing in the same nanosecond shared a data
+    // directory, and so opened one SQLite file twice and ran its migrations
+    // twice. A fresh id per harness is the only thing that actually collides
+    // never.
+    let dir = std::env::temp_dir().join(format!("two-seven-{}", Uuid::new_v4()));
     let users = Arc::new(UserStore::load(&dir).await.unwrap());
     let bank = two_seven::bank::BankStore::load(&dir).await.unwrap();
     let blitz = two_seven::blitz::BlitzStore::load(&dir).await.unwrap();

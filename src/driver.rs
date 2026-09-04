@@ -1094,10 +1094,14 @@ mod tests {
         let users = Arc::new(UserStore::load(&root).await.unwrap());
         let history = crate::history::HistoryStore::load(&root).await.unwrap();
         let stats = crate::stats::StatsStore::load(&root).await.unwrap();
+        let blackjack_stats = crate::blackjack_stats::BlackjackStatsStore::load(&root)
+            .await
+            .unwrap();
         let state = AppState {
             users,
             bank,
             blackjack: crate::blackjack::BlackjackStore::new(),
+            blackjack_stats,
             blitz,
             tables: tables.clone(),
             history,
