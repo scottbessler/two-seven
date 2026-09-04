@@ -93,28 +93,6 @@ pub fn router(s: AppState) -> Router {
             axum::routing::post(routes::blackjack_settings),
         )
         .route("/admin", get(routes::admin_page).post(routes::admin_action))
-        .route(
-            "/blackjack/start",
-            axum::routing::post(routes::blackjack_start),
-        )
-        .route("/blackjack/resume", get(routes::blackjack_resume))
-        .route("/blackjack/hit", axum::routing::post(routes::blackjack_hit))
-        .route(
-            "/blackjack/stand",
-            axum::routing::post(routes::blackjack_stand),
-        )
-        .route(
-            "/blackjack/double",
-            axum::routing::post(routes::blackjack_double),
-        )
-        .route(
-            "/blackjack/split",
-            axum::routing::post(routes::blackjack_split),
-        )
-        .route(
-            "/blackjack/insurance",
-            axum::routing::post(routes::blackjack_insurance),
-        )
         .route("/hand-blitz", get(routes::hand_blitz))
         .route(
             "/hand-blitz/start",

@@ -435,9 +435,6 @@ fn shared_card_settings_preserve_storage_contract() {
 #[test]
 fn blackjack_island_has_game_contracts() {
     for literal in [
-        "/blackjack/start",
-        "/blackjack/${kind}",
-        "/blackjack/resume",
         "act(\"hit\")",
         "act(\"stand\")",
         "dealer_score",

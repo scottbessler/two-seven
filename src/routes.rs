@@ -3,7 +3,6 @@ use crate::{
     bank::AccountOwner,
     blackjack::{
         Action as BlackjackAction, BlackjackError, BlackjackTableView, BlackjackTrainerSettings,
-        max_starting_bet,
     },
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
@@ -56,7 +55,7 @@ pub async fn blackjack_table_page(
     Path(id): Path<Uuid>,
 ) -> Result<Html<String>, AppError> {
     s.blackjack
-        .get_view(id, None)
+        .view(id, None, 0)
         .await
         .map_err(blackjack_error)?;
     Ok(Html(render::blackjack_table(id)))
@@ -73,7 +72,7 @@ async fn blackjack_view(
     };
     let mut view = s
         .blackjack
-        .view_with_balance(id, user, balance)
+        .view(id, user, balance)
         .await
         .map_err(blackjack_error)?;
     for seat in &mut view.seats {
@@ -214,7 +213,7 @@ pub async fn blackjack_action(
     let kind = input.kind.to_ascii_lowercase();
     if kind == "insure" {
         s.blackjack
-            .insure_table(id, user, Utc::now(), &s.bank, &s.blackjack_stats)
+            .insure(id, user, Utc::now(), &s.bank, &s.blackjack_stats)
             .await
     } else if kind == "decline" {
         s.blackjack
@@ -684,13 +683,6 @@ pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html
     ))
 }
 
-#[derive(Deserialize)]
-pub struct BlackjackStartRequest {
-    pub bet: i64,
-    #[serde(default)]
-    pub settings: crate::blackjack::BlackjackTrainerSettings,
-}
-
 /// Fold a finished round into the player's blackjack record.
 ///
 /// Every route that can end a hand calls this; the store hands the round back
@@ -698,187 +690,6 @@ pub struct BlackjackStartRequest {
 /// for the same game, counts nothing. A record that fails to write is not
 /// worth failing the player's hand over — the money is already settled in the
 /// ledger, which is what the backfill reads.
-async fn record_blackjack_round(s: &AppState, user: Uuid, id: Uuid) {
-    let Some(outcome) = s.blackjack.take_settlement(user, id).await else {
-        return;
-    };
-    if let Err(error) = s.blackjack_stats.record(user, outcome).await {
-        tracing::warn!(%error, "could not record a blackjack round");
-    }
-}
-
-pub async fn blackjack_start(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<BlackjackStartRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    // Leave half the bankroll available for a double or split.
-    let balance = balance_of(&s, user).await;
-    let max_start = max_starting_bet(balance);
-    if !valid_game_amount(input.bet) || input.bet > max_start {
-        return Err(AppError::bad_request(
-            "bet must be at least $1 and no more than half your balance",
-        ));
-    }
-    let id = Uuid::new_v4();
-    let view = s
-        .blackjack
-        .start(user, input.bet, id, balance - input.bet, input.settings)
-        .await
-        .map_err(blackjack_error)?;
-    s.bank
-        .blackjack_bet(AccountOwner::User(user), id, input.bet)
-        .await
-        .map_err(AppError::internal)?;
-    if view.payout > 0 {
-        s.bank
-            .blackjack_payout(AccountOwner::User(user), id, view.payout)
-            .await
-            .map_err(AppError::internal)?;
-    }
-    record_blackjack_round(&s, user, id).await;
-    s.blackjack.persist().await.map_err(AppError::internal)?;
-    Ok(Json(serde_json::json!(view)))
-}
-
-pub async fn blackjack_resume(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-) -> Json<Option<crate::blackjack::BlackjackView>> {
-    Json(s.blackjack.resume(user, balance_of(&s, user).await).await)
-}
-
-#[derive(Deserialize)]
-pub struct BlackjackActionRequest {
-    pub id: Uuid,
-}
-
-pub async fn blackjack_hit(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<BlackjackActionRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let balance = balance_of(&s, user).await;
-    let view = s
-        .blackjack
-        .hit(user, input.id, balance)
-        .await
-        .map_err(blackjack_error)?;
-    if view.payout > 0 {
-        s.bank
-            .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
-            .await
-            .map_err(AppError::internal)?;
-    }
-    record_blackjack_round(&s, user, input.id).await;
-    s.blackjack.persist().await.map_err(AppError::internal)?;
-    Ok(Json(serde_json::json!(view)))
-}
-
-pub async fn blackjack_stand(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<BlackjackActionRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let balance = balance_of(&s, user).await;
-    let view = s
-        .blackjack
-        .stand(user, input.id, balance)
-        .await
-        .map_err(blackjack_error)?;
-    if view.payout > 0 {
-        s.bank
-            .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
-            .await
-            .map_err(AppError::internal)?;
-    }
-    record_blackjack_round(&s, user, input.id).await;
-    s.blackjack.persist().await.map_err(AppError::internal)?;
-    Ok(Json(serde_json::json!(view)))
-}
-
-pub async fn blackjack_double(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<BlackjackActionRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let balance = balance_of(&s, user).await;
-    match s.blackjack.double(user, input.id, balance).await {
-        Ok((view, wager)) => {
-            if wager > 0 {
-                s.bank
-                    .blackjack_bet(AccountOwner::User(user), input.id, wager)
-                    .await
-                    .map_err(AppError::internal)?;
-            }
-            if view.payout > 0 {
-                s.bank
-                    .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
-                    .await
-                    .map_err(AppError::internal)?;
-            }
-            record_blackjack_round(&s, user, input.id).await;
-            s.blackjack.persist().await.map_err(AppError::internal)?;
-            Ok(Json(serde_json::json!(view)))
-        }
-        Err(error) => Err(blackjack_error(error)),
-    }
-}
-
-pub async fn blackjack_split(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<BlackjackActionRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let balance = balance_of(&s, user).await;
-    match s.blackjack.split(user, input.id, balance).await {
-        Ok((view, wager)) => {
-            if wager > 0 {
-                s.bank
-                    .blackjack_bet(AccountOwner::User(user), input.id, wager)
-                    .await
-                    .map_err(AppError::internal)?;
-            }
-            if view.payout > 0 {
-                s.bank
-                    .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
-                    .await
-                    .map_err(AppError::internal)?;
-            }
-            record_blackjack_round(&s, user, input.id).await;
-            s.blackjack.persist().await.map_err(AppError::internal)?;
-            Ok(Json(serde_json::json!(view)))
-        }
-        Err(error) => Err(blackjack_error(error)),
-    }
-}
-
-pub async fn blackjack_insurance(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-    Json(input): Json<BlackjackActionRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let balance = balance_of(&s, user).await;
-    match s.blackjack.insure(user, input.id, balance).await {
-        Ok((view, wager)) => {
-            s.bank
-                .blackjack_bet(AccountOwner::User(user), input.id, wager)
-                .await
-                .map_err(AppError::internal)?;
-            if view.payout > 0 {
-                s.bank
-                    .blackjack_payout(AccountOwner::User(user), input.id, view.payout)
-                    .await
-                    .map_err(AppError::internal)?;
-            }
-            record_blackjack_round(&s, user, input.id).await;
-            s.blackjack.persist().await.map_err(AppError::internal)?;
-            Ok(Json(serde_json::json!(view)))
-        }
-        Err(error) => Err(blackjack_error(error)),
-    }
-}
-
 fn blackjack_error(error: BlackjackError) -> AppError {
     match error {
         BlackjackError::NotFound => AppError::not_found("blackjack game not found"),
