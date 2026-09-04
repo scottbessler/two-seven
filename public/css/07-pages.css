@@ -1,7 +1,44 @@
-.out-of-reach summary{color:var(--muted);cursor:pointer}
-.out-of-reach ul{margin-top:.6rem}
-.out-of-reach li a{color:var(--muted)}
-.table-list{margin-top:1.5rem}.table-list ul{list-style:none;padding:0;display:grid;gap:.6rem}.table-list li{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap}.table-list li span{color:var(--muted)}.table-list li b{color:var(--accent)}
+/* The lobby ladder: one row per buy-in rung, cheapest first. The buy-in is the
+   row's name -- it decides whether the table is open to you and it is what the
+   list sorts by -- with the blinds and the house it seats underneath. A rung
+   above your balance keeps its place and greys out, so the ladder stays whole
+   and a busy table you cannot afford is still visible. */
+.table-list{margin-top:1.5rem}
+.table-list>header{display:grid;gap:.15rem;margin-bottom:.6rem}
+.table-list>header h2{margin:0;font-size:var(--text-action)}
+.table-list>header p{margin:0;color:var(--muted);font-size:var(--text-small)}
+.table-list ul{display:grid;gap:.3rem;margin:0;padding:0;list-style:none}
+.table-empty{padding:.55rem .7rem;color:var(--muted);font-size:var(--text-small)}
+.table-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:.75rem;padding:.5rem .7rem .5rem .85rem;border:1px solid var(--line-1);border-left:3px solid transparent;border-radius:var(--radius-control);background:var(--surface-deep)}
+.table-row>a{display:grid;gap:.1rem;min-width:0;color:inherit;text-decoration:none}
+.table-row>a:hover .table-stake,.table-row>a:focus-visible .table-stake{color:var(--gold-hi)}
+.table-row>a:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:var(--radius-card)}
+.table-stake{color:var(--accent);font-size:var(--text-action);font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.table-detail{color:var(--muted);font-size:var(--text-small);font-weight:500;font-variant-numeric:tabular-nums}
+.table-status{display:flex;align-items:center;gap:.6rem}
+/* Seat pips: filled for a person, hollow for one of the house regulars. */
+.pips{display:flex;gap:3px;align-items:center}
+.pip{width:7px;height:7px;border-radius:var(--radius-chip);border:1px solid var(--line-2);background:none}
+.pip-house{background:var(--line-1)}
+.pip-human{border-color:var(--mint);background:var(--mint);box-shadow:0 0 6px var(--mint-44)}
+.pip-you{border-color:var(--gold-hi);background:var(--gold-hi);box-shadow:0 0 6px var(--gold-44)}
+.table-chip{padding:.12rem .45rem;border-radius:var(--radius-chip);font-size:var(--text-label);font-weight:700;white-space:nowrap}
+.table-chip-live{background:var(--mint);color:var(--ink-on-mint)}
+.table-chip-you{background:var(--accent);color:var(--ink-on-gold)}
+/* Somebody is at this table. The one cue that has to carry across the page. */
+.table-row-live{border-color:var(--mint-44);border-left-color:var(--mint);background:linear-gradient(var(--mint-13),var(--mint-13)),var(--surface-deep)}
+/* Past what you can cover: still listed, still watchable, plainly not yours. */
+.table-row.out-of-reach{border-style:dashed;background:none}
+.table-row.out-of-reach .table-stake{color:var(--ink-faint)}
+.table-row.out-of-reach .table-detail{color:var(--ink-faint)}
+.table-row.out-of-reach>a:hover .table-stake,.table-row.out-of-reach>a:focus-visible .table-stake{color:var(--muted)}
+.table-short{color:var(--ink-faint);font-size:var(--text-small);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* A busy table you cannot afford keeps a solid rail: locked, not quiet. */
+.table-row-live.out-of-reach{border-left-style:solid}
+@media(max-width:640px){
+  .table-row{padding:.5rem .6rem .5rem .7rem}
+  .table-status{gap:.4rem}
+}
 .blitz-shell{display:grid;gap:1rem}.blitz-top{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem}.blitz-top h1{margin:.2rem 0;font-size:var(--text-display)}.blitz-top p{margin:.2rem 0;color:var(--muted)}.blitz-menu,.blitz-table{display:grid;gap:1rem;padding:1rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-60)}.blitz-stat-grid,.blitz-score{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem}.blitz-stat-grid span,.blitz-score span{display:grid;gap:.15rem;min-height:4rem;padding:.8rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-align:center}.blitz-stat-grid b,.blitz-score b{color:var(--accent);font-size:var(--text-title)}.difficulty-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}.difficulty-grid button{display:grid;gap:.25rem;min-height:5.5rem}.difficulty-grid span{font-weight:500;color:var(--ink-on-difficulty)}.blitz-clock{height:.75rem;overflow:hidden;border-radius:var(--radius-chip);background:var(--surface-dark);border:1px solid var(--line-legacy)}.blitz-clock span{display:block;height:100%;background:var(--accent);transition:width .12s linear}.blitz-table>.board{min-height:4rem}.blitz-hands{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem}.blitz-hands button{display:grid;gap:.7rem;min-height:8rem;background:var(--surface-blitz);color:var(--ink);border-color:var(--line-3)}.blitz-hands button>span{color:var(--accent);font-size:var(--text-action)}.blitz-feedback{margin:0;color:var(--accent);font-weight:700;text-align:center}.blitz-actions{display:flex;justify-content:center}
 .page:has(.card-test){max-width:92rem}.card-test-suit{display:grid;gap:.6rem}.card-test-suit h2{margin:.5rem 0 0}.card-test-grid{--card-w:6.4rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem;padding:.65rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-60)}
 

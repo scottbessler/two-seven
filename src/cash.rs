@@ -77,6 +77,24 @@ pub fn name(buy_in: Cents) -> String {
     )
 }
 
+/// Who the house sits at this rung, in the words the lobby uses. Read off the
+/// same mix that fills the seats, so the label can never drift from the table.
+/// A buy-in that is not a rung at all (nothing builds one today) says nothing
+/// rather than guessing.
+pub fn house_style(buy_in: Cents) -> Option<&'static str> {
+    let tier = TIERS.iter().position(|rung| *rung == buy_in)?;
+    let [fish, _, _, sharks] = bot_mix(tier);
+    Some(if sharks == 100 {
+        "sharks only"
+    } else if fish >= 50 {
+        "mostly fish"
+    } else if sharks >= 50 {
+        "mostly sharks"
+    } else {
+        "mixed house"
+    })
+}
+
 /// How the house fills a table, as percentages in roster order. The cheap
 /// tables are mostly fish; the dearest is nothing but sharks.
 pub fn bot_mix(tier: usize) -> [u32; 4] {
@@ -237,6 +255,27 @@ mod tests {
             assert!(
                 mix[3] >= bot_mix(tier.saturating_sub(1))[3],
                 "sharks never thin out as the stakes climb: tier {tier}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_house_style_reads_off_the_mix_that_seats_the_table() {
+        assert_eq!(house_style(TIERS[0]), Some("mostly fish"));
+        assert_eq!(house_style(SHARKS_ONLY_FROM), Some("sharks only"));
+        assert_eq!(house_style(*TIERS.last().unwrap()), Some("sharks only"));
+        assert_eq!(house_style(1), None);
+        // Every rung says something, and no rung claims fish it may not seat.
+        for (tier, buy_in) in TIERS.into_iter().enumerate() {
+            let style = house_style(buy_in).expect("a rung describes itself");
+            assert_eq!(
+                style == "sharks only",
+                bot_mix(tier)[3] == 100,
+                "tier {tier} says {style}"
+            );
+            assert!(
+                style != "mostly fish" || kind_allowed(buy_in, BotKind::Fish),
+                "tier {tier} claims fish it may not seat"
             );
         }
     }
