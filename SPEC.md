@@ -249,6 +249,7 @@ and the board) — the same redacted view a human gets (§V3).
 | POST | `/tables/{id}/rebuy` | Top up the seat stack from the bank |
 | POST | `/tables/{id}/bot` | Seat/remove a bot: `{seat, kind?}` |
 | POST | `/tables/{id}/action` | `{kind: fold\|check\|call\|bet\|raise, amount?}` |
+| POST | `/tables/{id}/emote` | Seated human emits `{kind: cry\|joy\|laugh\|poop\|shock}` |
 | GET | `/tournaments/new`, POST `/tournaments` | Create a sit-and-go |
 | POST | `/tournaments/{id}/register` | Buy in to the first open seat: `{}` |
 | GET | `/api/bank` | Balance, derived debt/net/next repayment + recent ledger entries |
@@ -561,6 +562,10 @@ Mark each milestone done here as it lands.
   landscape; stable identity+role, stack, cards/state, wager rows; existing
   acting/leading/winner/champion/folded/all-in semantics remain distinct;
   content ⊥ clip/overlap; viewer seat unchanged.
+- **V63** A seated human may emit only `cry|joy|laugh|poop|shock`. Every
+  accepted tap produces one ephemeral SSE event with a unique id, seat, and
+  kind; ⊥ persistence/game-state mutation. Clients animate every event upward
+  from that seat, including rapid repeats. Spectators and bots cannot emit.
 
 ## §T Build tasks
 
@@ -615,6 +620,7 @@ T41|x|net out gifts per counterparty on the player page|V58
 T42|x|give the viewer's own hand a panel: cards left, name/stack/wager beside them|V15,V16,V48
 T43|x|hold the table's shape as cards, metrics and results come and go|V48,V53
 T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,V53,V54,V61
+T45|x|add live table emotes|V3,V30,V42,V53,V61,V63
 
 ## §B Bug log
 

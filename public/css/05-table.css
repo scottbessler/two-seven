@@ -153,6 +153,12 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .turn-clock>i{display:block;height:100%;background:var(--accent);transition:width .1s linear}
 .turn-clock.urgent>i{background:var(--danger)}
 .seat .seat-clock{left:.45rem;right:.45rem;bottom:.25rem;height:.2rem;border-radius:var(--radius-chip)}
+.seat .seat-emotes{position:absolute;inset:0;z-index:40;grid-area:1/1/-1/-1;display:block;overflow:visible;pointer-events:none}
+.seat .seat-emotes:empty{display:none}
+.seat .seat-emote{--emote-drift:0rem;position:absolute;left:50%;top:45%;display:block;color:var(--ink);font-family:system-ui,sans-serif;font-size:var(--text-display);font-style:normal;line-height:1;filter:drop-shadow(0 .2rem .25rem var(--shadow-73));animation:seat-emote-rise 1.8s ease-out forwards;will-change:transform,opacity}
+.seat .seat-emote:nth-child(3n+1){--emote-drift:-2rem}
+.seat .seat-emote:nth-child(3n+2){--emote-drift:2rem}
+@keyframes seat-emote-rise{0%{opacity:0;transform:translate(-50%,0) scale(.65)}12%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--emote-drift)),-7rem) scale(1.35)}}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-control);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid var(--gold);border-radius:var(--radius-control)}
@@ -213,6 +219,8 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-controls{justify-content:flex-end;padding-bottom:0}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .table-controls button,.table-controls .table-command-link{background:var(--felt-800);color:var(--muted)}
+.table-controls .emote-controls{display:flex;gap:.2rem;margin-right:auto}
+.table-controls .emote-controls button{display:grid;place-items:center;width:2rem;min-width:2rem;height:2rem;min-height:2rem;padding:0;border-color:var(--line-2);font-family:system-ui,sans-serif;font-size:var(--text-title);line-height:1}
 .table-config-button{display:grid;place-items:center;flex:0 0 auto;width:2rem;height:2rem;min-height:0;padding:0;border-color:var(--line-2);background:var(--felt-800);color:var(--muted);font-size:var(--text-action)}
 /* The bot control rides alongside the buy-in/leave command as a dialog. */
 .table-controls .seat-bot{display:contents}

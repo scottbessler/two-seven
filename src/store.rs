@@ -1,4 +1,5 @@
 use crate::table::Table;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -11,6 +12,26 @@ pub struct TableStore {
     tables: Arc<Mutex<HashMap<Uuid, Arc<Mutex<Table>>>>>,
     dir: PathBuf,
     changed: broadcast::Sender<Uuid>,
+    emotes: broadcast::Sender<TableEmote>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmoteKind {
+    Cry,
+    Joy,
+    Laugh,
+    Poop,
+    Shock,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct TableEmote {
+    pub id: Uuid,
+    #[serde(skip)]
+    pub table_id: Uuid,
+    pub seat: usize,
+    pub kind: EmoteKind,
 }
 impl TableStore {
     pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
@@ -18,6 +39,7 @@ impl TableStore {
         tokio::fs::create_dir_all(&dir).await?;
         let (mut map, entries) = (HashMap::new(), tokio::fs::read_dir(&dir).await?);
         let (tx, _) = broadcast::channel(128);
+        let (emotes, _) = broadcast::channel(128);
         let mut entries = entries;
         while let Some(e) = entries.next_entry().await? {
             if let Ok(bytes) = tokio::fs::read(e.path()).await
@@ -30,10 +52,24 @@ impl TableStore {
             tables: Arc::new(Mutex::new(map)),
             dir,
             changed: tx,
+            emotes,
         })
     }
     pub fn subscribe(&self) -> broadcast::Receiver<Uuid> {
         self.changed.subscribe()
+    }
+    pub fn subscribe_emotes(&self) -> broadcast::Receiver<TableEmote> {
+        self.emotes.subscribe()
+    }
+    pub fn emit(&self, table_id: Uuid, seat: usize, kind: EmoteKind) -> TableEmote {
+        let emote = TableEmote {
+            id: Uuid::new_v4(),
+            table_id,
+            seat,
+            kind,
+        };
+        let _ = self.emotes.send(emote.clone());
+        emote
     }
     pub async fn get(&self, id: Uuid) -> Option<Arc<Mutex<Table>>> {
         self.tables.lock().await.get(&id).cloned()
@@ -115,5 +151,33 @@ mod tests {
             .unwrap();
         assert_eq!(events.recv().await.unwrap(), id);
         assert_eq!(store.get(id).await.unwrap().lock().await.name, "changed");
+    }
+
+    #[tokio::test]
+    async fn emotes_are_unique_ephemeral_events_not_table_changes() {
+        let root = std::env::temp_dir().join(format!("two-seven-store-{}", Uuid::new_v4()));
+        let store = TableStore::load(&root).await.unwrap();
+        let table = Table::new(
+            "test".into(),
+            Stakes::NoLimit {
+                small_blind: 1,
+                big_blind: 2,
+            },
+            TableMode::Cash { no_debt: false },
+            2,
+            100,
+        );
+        let table_id = table.id;
+        store.insert(table).await.unwrap();
+        let mut changes = store.subscribe();
+        let mut emotes = store.subscribe_emotes();
+
+        let first = store.emit(table_id, 1, EmoteKind::Laugh);
+        let second = store.emit(table_id, 1, EmoteKind::Laugh);
+
+        assert_ne!(first.id, second.id);
+        assert_eq!(emotes.recv().await.unwrap(), first);
+        assert_eq!(emotes.recv().await.unwrap(), second);
+        assert!(changes.try_recv().is_err(), "emotes must not mutate tables");
     }
 }

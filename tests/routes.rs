@@ -115,6 +115,137 @@ async fn health() {
 }
 
 #[tokio::test]
+async fn only_seated_humans_can_emit_the_five_table_emotes() {
+    let t = appx().await;
+    let seated = Uuid::new_v4();
+    let spectator = Uuid::new_v4();
+    for (id, username) in [(seated, "emoter"), (spectator, "watcher")] {
+        t.users
+            .insert(User {
+                id,
+                username: username.into(),
+                display_name: username.into(),
+                credentials: vec![],
+                settings: UserSettings::default(),
+                created_at: chrono::Utc::now(),
+            })
+            .await
+            .unwrap();
+    }
+    let table_id = seat_table(&t, "Emote table", 2, 20_000, false).await;
+    t.tables
+        .update(table_id, |table| {
+            table.seats[0].occupant = two_seven::table::SeatOccupant::Human { user_id: seated };
+            table.seats[0].stack = 20_000;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let mut emotes = t.tables.subscribe_emotes();
+
+    for kind in ["cry", "joy", "laugh", "poop", "shock"] {
+        let response = t
+            .router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/tables/{table_id}/emote"))
+                    .header(header::COOKIE, cookie(&t.key, seated))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(format!(r#"{{"kind":"{kind}"}}"#)))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        let emote = emotes.recv().await.unwrap();
+        assert_eq!(emote.table_id, table_id);
+        assert_eq!(emote.seat, 0);
+        assert_eq!(serde_json::to_value(emote.kind).unwrap(), kind);
+    }
+
+    let repeat = |router: Router| {
+        let cookie_value = cookie(&t.key, seated);
+        async move {
+            router
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(format!("/tables/{table_id}/emote"))
+                        .header(header::COOKIE, cookie_value)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(r#"{"kind":"cry"}"#))
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(
+        repeat(t.router.clone()).await.status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        repeat(t.router.clone()).await.status(),
+        StatusCode::NO_CONTENT
+    );
+    assert_ne!(
+        emotes.recv().await.unwrap().id,
+        emotes.recv().await.unwrap().id
+    );
+
+    let spectator_response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{table_id}/emote"))
+                .header(header::COOKIE, cookie(&t.key, spectator))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"kind":"joy"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        spectator_response.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    let invalid = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{table_id}/emote"))
+                .header(header::COOKIE, cookie(&t.key, seated))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"kind":"wave"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let signed_out = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{table_id}/emote"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"kind":"shock"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(signed_out.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn card_test_renders_full_deck_with_game_card_faces() {
     let t = appx().await;
     let r = t
