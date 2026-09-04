@@ -554,9 +554,12 @@ Mark each milestone done here as it lands.
 - **V62** The buy-in decides which house players may be seated, at a cash table
   and at a tournament alike: no `Fish` from $100,000 up, nothing but `Shark`
   from $500,000 up. The standing tables' mix and every seat they fill obey it,
-  a bot seating request that breaks it is refused, a saved table still holding
-  somebody the rung no longer allows stands them up at startup, and no two of
-  the nine sharks play with the same tuning.
+  a bot seating request that breaks it is refused, and no two of the nine
+  sharks play with the same tuning. At startup every standing table is
+  reconciled against the lineup its rung calls for, seat by seat: a house
+  player the seat does not call for stands up and the tick refills it, so a
+  table saved under an older mix converges on the current one instead of
+  keeping a lineup nothing would seat today.
 - **V61** Other-player seats → compact dark tiles across desktop/tablet/portrait/
   landscape; stable identity+role, stack, cards/state, wager rows; existing
   acting/leading/winner/champion/folded/all-in semantics remain distinct;

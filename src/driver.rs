@@ -303,36 +303,49 @@ pub async fn ensure_cash_ladder(state: &AppState) -> Result<(), anyhow::Error> {
             state.tables.insert(crate::cash::table(tier)).await?;
         }
     }
-    retire_out_of_depth_house_players(state).await;
+    reseat_house_players_off_the_mix(state).await;
     Ok(())
 }
 
-/// Stand up any house player the rung no longer allows (§V62). A table saved
-/// before the stakes constraint arrived can be holding a fish at a $1,000 seat;
-/// the seat empties and the tick refills it from the kinds that belong.
-async fn retire_out_of_depth_house_players(state: &AppState) {
+/// Stand up any house player the table's own lineup does not call for (§V62),
+/// so a saved table converges on the mix its rung is supposed to have. Two
+/// things put a table off it: a kind the rung no longer allows at all, and a
+/// kind seated more often than the mix asks for -- a table saved while the
+/// thresholds sat a band lower can be all sharks at a rung that wants a
+/// spread. Either way the seat empties and the tick refills it from
+/// `house_bot`, which seats the kind that seat calls for.
+async fn reseat_house_players_off_the_mix(state: &AppState) {
     for id in state.tables.ids().await {
         let Some(table) = state.tables.get(id).await else {
             continue;
         };
-        let out_of_depth = {
+        let off_the_mix = {
             let table = table.lock().await;
-            if table.cash_tier.is_none() || table.hand.is_some() {
+            let Some(tier) = table.cash_tier else {
+                continue;
+            };
+            if table.hand.is_some() {
                 continue;
             }
-            let out_of_depth: Vec<(usize, crate::table::Bot, crate::money::Cents)> = table
+            // A seat keeps its house player when they are the kind that seat
+            // calls for, and stands them up otherwise. Judging it seat by seat
+            // is what makes one pass enough: `house_bot` fills a vacancy from
+            // the same per-seat order, so the table lands on the mix instead
+            // of trading one surplus for another.
+            let wanted = crate::cash::seating_order(tier);
+            let off_the_mix: Vec<(usize, crate::table::Bot, crate::money::Cents)> = table
                 .seats
                 .iter()
                 .enumerate()
                 .filter_map(|(index, seat)| {
                     let bot = seat.occupant.as_bot()?;
-                    (!crate::cash::kind_allowed(table.buy_in, bot.kind))
-                        .then_some((index, bot, seat.stack))
+                    let calls_for = wanted.get(index % wanted.len())?;
+                    (bot.kind != *calls_for).then_some((index, bot, seat.stack))
                 })
                 .collect();
-            out_of_depth
+            off_the_mix
         };
-        for (index, bot, stack) in out_of_depth {
+        for (index, bot, stack) in off_the_mix {
             if state
                 .bank
                 .cash_out(AccountOwner::Bot(bot), id, stack)
@@ -356,7 +369,7 @@ async fn retire_out_of_depth_house_players(state: &AppState) {
                 })
                 .await
             {
-                tracing::warn!(%id, %error, "could not stand up an out-of-depth house player");
+                tracing::warn!(%id, %error, "could not stand up a house player off the mix");
             }
         }
     }
@@ -1084,9 +1097,11 @@ mod tests {
     }
 
     /// V62: a table saved before the stakes constraint arrived can be holding
-    /// somebody it would not seat today. Startup stands them up.
+    /// somebody it would not seat today -- a kind the rung disallows outright,
+    /// or a kind seated more often than its mix calls for. Startup stands both
+    /// up and the tick refills the seats from the lineup the rung wants.
     #[tokio::test]
-    async fn startup_stands_up_a_house_player_who_is_out_of_their_depth() {
+    async fn startup_reseats_house_players_who_are_off_the_mix() {
         let root = std::env::temp_dir().join(format!("two-seven-depth-{}", Uuid::new_v4()));
         let bank = BankStore::load(&root).await.unwrap();
         let blitz = BlitzStore::load(&root).await.unwrap();
@@ -1134,6 +1149,38 @@ mod tests {
             })
             .await
             .unwrap();
+        // A rung that wants a spread can be saved full of sharks -- every one
+        // of them allowed there, so an allow-list check alone would leave it
+        // alone. This is what a table saved while the thresholds sat a band
+        // lower looks like.
+        let (middling, tier) = {
+            let mut found = None;
+            for id in tables.ids().await {
+                let table = tables.get(id).await.unwrap();
+                let tier = table.lock().await.cash_tier;
+                if tier == Some(4) {
+                    found = Some((id, 4));
+                }
+            }
+            found.expect("the $10,000 table")
+        };
+        let wanted = crate::cash::seating_order(tier);
+        assert!(
+            wanted.iter().any(|kind| *kind != BotKind::Shark),
+            "this rung is supposed to want a spread: {wanted:?}"
+        );
+        tables
+            .update(middling, |table| {
+                for (index, seat) in table.seats.iter_mut().enumerate() {
+                    seat.occupant =
+                        SeatOccupant::bot(crate::table::Bot::new(BotKind::Shark, index as u8));
+                    seat.stack = table.buy_in;
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
+
         ensure_cash_ladder(&state).await.unwrap();
         let table = tables.get(dearest).await.unwrap();
         let table = table.lock().await;
@@ -1145,6 +1192,50 @@ mod tests {
             "a fish does not keep a seat at the dearest table"
         );
         assert_eq!(table.seats[0].stack, 0, "the seat is cleared, not stranded");
+        drop(table);
+
+        // The surplus sharks stood up; the tick fills what they left with the
+        // kinds the rung actually calls for.
+        let seated_sharks = |table: &crate::table::Table| {
+            table
+                .seats
+                .iter()
+                .filter(|seat| seat.occupant.as_bot().map(|bot| bot.kind) == Some(BotKind::Shark))
+                .count()
+        };
+        let sharks_wanted = wanted
+            .iter()
+            .filter(|kind| **kind == BotKind::Shark)
+            .count();
+        {
+            let table = tables.get(middling).await.unwrap();
+            let table = table.lock().await;
+            assert_eq!(
+                seated_sharks(&table),
+                sharks_wanted,
+                "the rung keeps only the sharks its mix asks for"
+            );
+        }
+        for _ in 0..(crate::cash::SEATS * crate::cash::TIERS.len() + 4) {
+            tick_once(&state).await.unwrap();
+        }
+        let table = tables.get(middling).await.unwrap();
+        let table = table.lock().await;
+        let seated: Vec<_> = table
+            .seats
+            .iter()
+            .filter_map(|seat| seat.occupant.as_bot().map(|bot| bot.kind))
+            .collect();
+        assert_eq!(seated.len(), crate::cash::SEATS, "the table refills");
+        assert!(
+            seated.iter().any(|kind| *kind != BotKind::Shark),
+            "the rung is no longer all sharks: {seated:?}"
+        );
+        assert_eq!(
+            seated_sharks(&table),
+            sharks_wanted,
+            "the refilled lineup matches the mix"
+        );
     }
 
     #[tokio::test]
