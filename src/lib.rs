@@ -3,6 +3,7 @@ pub mod app;
 pub mod auth;
 pub mod bank;
 pub mod blackjack;
+pub mod blackjack_stats;
 pub mod blitz;
 pub mod bot;
 pub mod cards;

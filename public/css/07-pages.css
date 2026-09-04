@@ -5,8 +5,25 @@
 .blitz-shell{display:grid;gap:1rem}.blitz-top{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem}.blitz-top h1{margin:.2rem 0;font-size:var(--text-display)}.blitz-top p{margin:.2rem 0;color:var(--muted)}.blitz-menu,.blitz-table{display:grid;gap:1rem;padding:1rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-60)}.blitz-stat-grid,.blitz-score{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem}.blitz-stat-grid span,.blitz-score span{display:grid;gap:.15rem;min-height:4rem;padding:.8rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-align:center}.blitz-stat-grid b,.blitz-score b{color:var(--accent);font-size:var(--text-title)}.difficulty-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}.difficulty-grid button{display:grid;gap:.25rem;min-height:5.5rem}.difficulty-grid span{font-weight:500;color:var(--ink-on-difficulty)}.blitz-clock{height:.75rem;overflow:hidden;border-radius:var(--radius-chip);background:var(--surface-dark);border:1px solid var(--line-legacy)}.blitz-clock span{display:block;height:100%;background:var(--accent);transition:width .12s linear}.blitz-table>.board{min-height:4rem}.blitz-hands{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem}.blitz-hands button{display:grid;gap:.7rem;min-height:8rem;background:var(--surface-blitz);color:var(--ink);border-color:var(--line-3)}.blitz-hands button>span{color:var(--accent);font-size:var(--text-action)}.blitz-feedback{margin:0;color:var(--accent);font-weight:700;text-align:center}.blitz-actions{display:flex;justify-content:center}
 .page:has(.card-test){max-width:92rem}.card-test-suit{display:grid;gap:.6rem}.card-test-suit h2{margin:.5rem 0 0}.card-test-grid{--card-w:6.4rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem;padding:.65rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-60)}
 
-/* Standings table: money on the left, blitz sharpness on the right. */
-.leaderboard{display:grid;gap:.9rem;padding-bottom:2rem}
+/* Standings: a board per game, then the record books. Each board scrolls
+   sideways on its own so a wide one never drags the page with it. */
+.leaderboard{display:grid;gap:1.6rem;padding-bottom:2rem}
+.standings-board{display:grid;gap:.5rem}
+.standings-board>header{display:grid;gap:.15rem;padding-bottom:.35rem;border-bottom:1px solid var(--line-legacy)}
+.standings-board h2{margin:0;font-size:var(--text-action)}
+.standings-board>header p{margin:0;max-width:70ch;color:var(--muted);font-size:var(--text-small)}
+.standings-scroll{overflow-x:auto}
+.standings-empty{margin:.3rem 0;color:var(--muted);font-size:var(--text-small)}
+/* The share of a player's shown wins, tucked under the count. */
+.leaderboard-table .of-wins{display:block;color:var(--muted);font-size:var(--text-label);font-style:normal;font-variant-numeric:tabular-nums}
+.leaderboard-table .made-hand{white-space:nowrap}
+.leaderboard-table .made-hand .playing-card{--card-w:1.5rem;display:inline-flex;vertical-align:middle;margin-right:.1rem}
+.leaderboard-table .made,.leaderboard-table .when{color:var(--muted)}
+.leaderboard-table .equity,.leaderboard-table .equity-plain{font-variant-numeric:tabular-nums;white-space:nowrap}
+.leaderboard-table .equity b{font-weight:700}
+.equity-bar{display:inline-block;width:3.2rem;height:.42rem;margin-right:.4rem;overflow:hidden;vertical-align:middle;border:1px solid var(--line-1);border-radius:var(--radius-chip);background:var(--surface-dark)}
+.equity-bar i{display:block;height:100%;background:var(--accent);border-radius:var(--radius-chip)}
+.royal-tag{padding:.05rem .3rem;border-radius:var(--radius-chip);background:var(--accent);color:var(--ink-on-gold);font-size:var(--text-label);font-style:normal;font-weight:700}
 .leaderboard-table{width:100%;border-collapse:collapse;font-size:var(--text-small)}
 .leaderboard-table th{padding:.4rem .6rem;color:var(--muted);font-weight:600;text-align:left;white-space:nowrap}
 .leaderboard-table thead tr:first-child th{border-bottom:1px solid var(--line-legacy)}

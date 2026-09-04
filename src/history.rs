@@ -88,6 +88,31 @@ impl HistoryStore {
         hands
     }
 
+    /// Every hand every table has ever played, for a one-off walk over the
+    /// whole record. Read one file at a time rather than all at once: the
+    /// history outgrows the tables themselves, and only the backfill needs it.
+    pub async fn every_hand(&self) -> Vec<HandRecord> {
+        let mut hands = Vec::new();
+        let Ok(mut entries) = tokio::fs::read_dir(&self.dir).await else {
+            return hands;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if entry.path().extension().is_none_or(|ext| ext != "jsonl") {
+                continue;
+            }
+            let Ok(text) = tokio::fs::read_to_string(entry.path()).await else {
+                continue;
+            };
+            hands.extend(
+                text.lines()
+                    .filter(|line| !line.is_empty())
+                    .filter_map(|line| serde_json::from_str::<HandRecord>(line).ok()),
+            );
+        }
+        hands.sort_by_key(|hand| hand.at);
+        hands
+    }
+
     /// How many hands the table has on record.
     pub async fn count(&self, table: Uuid) -> usize {
         let table = table.to_string();

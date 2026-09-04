@@ -642,24 +642,224 @@ pub fn table_page(view: &crate::view::TableView) -> String {
     )
 }
 
-/// Standings: the bankroll, and how well people read a board.
-pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
-    let headers = rows.first().map_or_else(String::new, |row| {
+/// The winning-hand types the poker board breaks out.
+///
+/// High card is left off deliberately: it wins at showdown so rarely that a
+/// column of dashes says less than the space costs. It still counts toward
+/// `wins_shown`, so the shares stay honest.
+const WINNING_CATEGORIES: [(crate::eval::Category, &str); 8] = [
+    (crate::eval::Category::Pair, "Pair"),
+    (crate::eval::Category::TwoPair, "2 pair"),
+    (crate::eval::Category::ThreeOfAKind, "Trips"),
+    (crate::eval::Category::Straight, "Str"),
+    (crate::eval::Category::Flush, "Flush"),
+    (crate::eval::Category::FullHouse, "Boat"),
+    (crate::eval::Category::FourOfAKind, "Quads"),
+    (crate::eval::Category::StraightFlush, "St fl"),
+];
+
+/// A tenths-of-a-percent share as a percentage, carrying the decimal only when
+/// dropping it would change the number. Quads are rare enough that "0%" would
+/// be a lie where "0.5%" is the truth, but a flat quarter should read "25%".
+fn permille(value: u64) -> String {
+    if value == 0 {
+        String::new()
+    } else if value.is_multiple_of(10) {
+        format!("{}%", value / 10)
+    } else {
+        format!("{}.{}%", value / 10, value % 10)
+    }
+}
+
+/// A player's name, linked to their page when they have one, with the house
+/// marked as the house.
+fn standings_name(name: &str, player_id: Option<Uuid>, house: bool) -> String {
+    let linked = match player_id {
+        Some(id) => format!(
+            r#"<a class="player-link" href="/player/{id}">{}</a>"#,
+            escape(name)
+        ),
+        None => escape(name),
+    };
+    format!(
+        "{linked}{}",
+        if house {
+            " <i class=\"house-tag\">house</i>"
+        } else {
+            ""
+        }
+    )
+}
+
+/// The five cards of a made hand, as faces rather than text.
+fn hand_faces(cards: &[crate::cards::Card]) -> String {
+    cards
+        .iter()
+        .map(|card| {
+            let text = card.to_string();
+            card_face(&text[0..1], &text[1..2])
+        })
+        .collect()
+}
+
+fn short_date(at: chrono::DateTime<chrono::Utc>) -> String {
+    at.format("%b %-d").to_string()
+}
+
+/// One board, with a heading and a note, or a line saying it is still empty.
+fn standings_board(title: &str, note: &str, head: &str, body: &str, empty: &str) -> String {
+    let table = if body.is_empty() {
+        format!("<p class=\"standings-empty\">{}</p>", escape(empty))
+    } else {
+        format!(
+            "<div class=\"standings-scroll\"><table class=\"leaderboard-table\">{head}<tbody>{body}</tbody></table></div>"
+        )
+    };
+    format!(
+        "<section class=\"standings-board\"><header><h2>{}</h2><p>{}</p></header>{table}</section>",
+        escape(title),
+        escape(note)
+    )
+}
+
+/// Standings: the bankroll, then a board per game, then the record books.
+///
+/// This was one very wide table until the record books arrived; splitting it
+/// per game is what let the winning-hand breakdown and the beat boards have
+/// room for a real header instead of another `colspan`.
+pub fn leaderboard(
+    rows: &[crate::view::LeaderboardRow],
+    straight_flushes: &[crate::view::LeaderboardBigHand],
+    quads: &[crate::view::LeaderboardBigHand],
+    bad_beats: &[crate::view::LeaderboardBeat],
+    worst_beats: &[crate::view::LeaderboardBeat],
+) -> String {
+    // ---- the money, which is what ranks the page ----
+    let money_body = rows
+        .iter()
+        .map(|row| {
+            format!(
+                "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"money\">{}</td><td class=\"money\">{}</td><td>{}</td></tr>",
+                row.rank,
+                standings_name(&row.name, row.player_id, row.house),
+                format_cents(row.balance),
+                format_cents(row.net_balance),
+                row.loan_count,
+            )
+        })
+        .collect::<String>();
+    let money = standings_board(
+        "Bankroll",
+        "Net balance, house regulars included. A tie goes to whoever took fewer loans.",
+        "<thead><tr><th></th><th>Player</th><th>Balance</th><th>Net</th><th>Loans</th></tr></thead>",
+        &money_body,
+        "Nobody has played yet.",
+    );
+
+    // ---- poker, with what people actually win with ----
+    let poker_body = rows
+        .iter()
+        .filter(|row| row.poker.hands > 0)
+        .map(|row| {
+            let types = WINNING_CATEGORIES
+                .iter()
+                .map(|(category, _)| {
+                    let won = row.poker.won_with(*category);
+                    if won == 0 {
+                        return "<td class=\"blitz-empty\">—</td>".to_string();
+                    }
+                    format!(
+                        "<td>{won}<i class=\"of-wins\">{}</i></td>",
+                        permille(row.poker.won_with_permille(*category))
+                    )
+                })
+                .collect::<String>();
+            format!(
+                "<tr><td class=\"rank\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}</td><td>{}</td><td class=\"money\">{}</td>{types}</tr>",
+                row.rank,
+                standings_name(&row.name, row.player_id, row.house),
+                row.poker.hands,
+                row.poker.vpip_percent(),
+                row.poker.pfr_percent(),
+                row.poker.hands_won,
+                row.poker.wins_shown,
+                format_cents(row.poker.biggest_pot),
+            )
+        })
+        .collect::<String>();
+    let type_headers = WINNING_CATEGORIES
+        .iter()
+        .map(|(_, label)| format!("<th>{label}</th>"))
+        .collect::<String>();
+    let poker = standings_board(
+        "Hold'em",
+        "Each type column is winning hands of that make, over their share of the hands this player showed down. A hand everyone folded to never turns over, so the types add up to Shown, not to Won.",
+        &format!(
+            "<thead><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th colspan=\"{}\">Winning hands by type</th></tr><tr class=\"leaderboard-subhead\"><th></th><th>Player</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Shown</th><th>Biggest pot</th>{type_headers}</tr></thead>",
+            WINNING_CATEGORIES.len()
+        ),
+        &poker_body,
+        "Nobody has played a hand yet.",
+    );
+
+    // ---- blackjack ----
+    let blackjack_body = rows
+        .iter()
+        .filter(|row| row.blackjack.rounds > 0)
+        .map(|row| {
+            // The ledger knew the money and the result, never the detail, so a
+            // record seeded from it says so rather than showing a false zero.
+            let detail = if row.blackjack.watched() {
+                format!(
+                    "<td>{}</td><td>{}</td><td>{}</td><td>{}</td>",
+                    row.blackjack.naturals,
+                    row.blackjack.busts,
+                    row.blackjack.doubles,
+                    row.blackjack.splits,
+                )
+            } else {
+                "<td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td>".to_string()
+            };
+            format!(
+                "<tr><td class=\"rank\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}%</td>{detail}<td class=\"money\">{}</td><td class=\"money\">{}</td></tr>",
+                row.rank,
+                standings_name(&row.name, row.player_id, row.house),
+                row.blackjack.rounds,
+                row.blackjack.won,
+                row.blackjack.lost,
+                row.blackjack.push,
+                row.blackjack.win_percent(),
+                format_cents(row.blackjack.wagered),
+                format_cents(row.blackjack.net()),
+            )
+        })
+        .collect::<String>();
+    let blackjack = standings_board(
+        "Blackjack",
+        "Every round on the books, counted back from the bank ledger. A dash means that player's record was read from the ledger, which knew the money and the result but never whether a hand busted, split or doubled — those fill in as they play.",
+        "<thead><tr><th></th><th>Player</th><th>Rounds</th><th>Won</th><th>Lost</th><th>Push</th><th>Win</th><th>Naturals</th><th>Busts</th><th>Doubles</th><th>Splits</th><th>Wagered</th><th>Net</th></tr></thead>",
+        &blackjack_body,
+        "Nobody has sat down at the blackjack table yet.",
+    );
+
+    // ---- hand blitz ----
+    let blitz_headers = rows.first().map_or_else(String::new, |row| {
         row.blitz
             .iter()
             .map(|blitz| format!("<th colspan=\"2\">{}</th>", escape(&blitz.difficulty)))
             .collect()
     });
-    let subheaders = rows.first().map_or_else(String::new, |row| {
+    let blitz_subheaders = rows.first().map_or_else(String::new, |row| {
         row.blitz
             .iter()
             .map(|_| "<th>Accuracy</th><th>Streak</th>".to_string())
             .collect()
     });
-    let body = rows
+    let blitz_body = rows
         .iter()
+        .filter(|row| row.blitz.iter().any(|blitz| blitz.attempts > 0))
         .map(|row| {
-            let blitz = row
+            let cells = row
                 .blitz
                 .iter()
                 .map(|blitz| {
@@ -673,41 +873,106 @@ pub fn leaderboard(rows: &[crate::view::LeaderboardRow]) -> String {
                     )
                 })
                 .collect::<String>();
-            let name = match row.player_id {
-                Some(id) => format!(
-                    r#"<a class="player-link" href="/player/{id}">{}</a>"#,
-                    escape(&row.name)
-                ),
-                None => escape(&row.name),
-            };
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td class=\"money\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}%</td><td class=\"money\">{}</td>{}</tr>",
+                "<tr><td class=\"rank\">{}</td><td>{}</td>{cells}</tr>",
                 row.rank,
-                name,
-                if row.house { " <i class=\"house-tag\">house</i>" } else { "" },
-                format_cents(row.balance),
-                format_cents(row.net_balance),
-                row.loan_count,
-                row.poker.hands,
-                row.poker.vpip_percent(),
-                row.poker.pfr_percent(),
-                row.poker.win_percent(),
-                format_cents(row.poker.biggest_pot),
-                blitz
+                standings_name(&row.name, row.player_id, row.house),
             )
         })
         .collect::<String>();
-    let table = if rows.is_empty() {
-        "<p class=\"loading\">Nobody has played yet.</p>".to_string()
-    } else {
-        format!(
-            "<table class=\"leaderboard-table\"><thead><tr><th></th><th>Player</th><th>Balance</th><th>Net</th><th>Loans</th><th colspan=\"5\">Poker</th>{headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th></th><th></th><th></th><th></th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Biggest pot</th>{subheaders}</tr></thead><tbody>{body}</tbody></table>"
-        )
+    let blitz = standings_board(
+        "Hand Blitz",
+        "How sharp people are at reading a board, which is a different kind of good.",
+        &format!(
+            "<thead><tr><th></th><th></th>{blitz_headers}</tr><tr class=\"leaderboard-subhead\"><th></th><th>Player</th>{blitz_subheaders}</tr></thead>"
+        ),
+        &blitz_body,
+        "Nobody has played a run yet.",
+    );
+
+    // ---- the record books ----
+    let big_hand_rows = |hands: &[crate::view::LeaderboardBigHand]| {
+        hands
+            .iter()
+            .map(|hand| {
+                format!(
+                    "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"made-hand\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td class=\"when\">{}</td></tr>",
+                    hand.rank,
+                    standings_name(&hand.name, hand.player_id, hand.house),
+                    hand_faces(&hand.cards),
+                    escape(&hand.label),
+                    if hand.royal {
+                        " <i class=\"royal-tag\">royal</i>"
+                    } else {
+                        ""
+                    },
+                    format_cents(hand.won),
+                    escape(&short_date(hand.at)),
+                )
+            })
+            .collect::<String>()
     };
+    let big_hand_head = "<thead><tr><th></th><th>Player</th><th>Hand</th><th>Made</th><th>Won</th><th>When</th></tr></thead>";
+    let straight_flush_board = standings_board(
+        "Straight flushes",
+        "Every one ever made. Rare enough that the board keeps them all rather than a top ten, and a royal is flagged where it falls.",
+        big_hand_head,
+        &big_hand_rows(straight_flushes),
+        "Nobody has made one yet.",
+    );
+    let quads_board = standings_board(
+        "Four of a kind",
+        "The biggest by what the hand took down.",
+        big_hand_head,
+        &big_hand_rows(quads),
+        "Nobody has made quads yet.",
+    );
+
+    // Both beat boards read the same row from opposite ends, so they share a
+    // shape: who was ahead, who won anyway, and what it cost.
+    let beat_rows = |beats: &[crate::view::LeaderboardBeat]| {
+        beats
+            .iter()
+            .map(|beat| {
+                format!(
+                    "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"equity\"><span class=\"equity-bar\"><i style=\"width:{}%\"></i></span><b>{}</b></td><td class=\"made\">{}</td><td>{}</td><td class=\"made\">{}</td><td class=\"equity-plain\">{}</td><td class=\"money\">{}</td><td class=\"when\">{}</td></tr>",
+                    beat.rank,
+                    standings_name(&beat.loser, beat.loser_id, beat.loser_house),
+                    beat.loser_equity_permille / 10,
+                    permille(u64::from(beat.loser_equity_permille)),
+                    escape(&beat.loser_label),
+                    standings_name(&beat.winner, beat.winner_id, beat.winner_house),
+                    escape(&beat.winner_label),
+                    permille(u64::from(beat.winner_equity_permille)),
+                    format_cents(beat.pot),
+                    escape(&short_date(beat.at)),
+                )
+            })
+            .collect::<String>()
+    };
+    let beat_head = "<thead><tr><th></th><th>Beaten</th><th>Their chance</th><th>Holding</th><th>Lost to</th><th>Who had</th><th>Their chance</th><th>Pot</th><th>When</th></tr></thead>";
+    let bad_beats_board = standings_board(
+        "Bad beats",
+        "The biggest favourite who still lost, measured the moment the last chips went in and the board was not yet finished.",
+        beat_head,
+        &beat_rows(bad_beats),
+        "Nobody has been beaten as a favourite yet.",
+    );
+    let worst_beats_board = standings_board(
+        "Worst beats",
+        &format!(
+            "The costliest of them: the biggest pots lost while a {}% favourite or better.",
+            crate::stats::COOLER_PERMILLE / 10
+        ),
+        beat_head,
+        &beat_rows(worst_beats),
+        "No pot has been lost from that far ahead yet.",
+    );
+
     layout(
         "Leaderboard",
         &format!(
-            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by net balance, house players included. A tie goes to whoever took fewer loans.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{table}</section>",
+            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by net balance, house regulars included.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{money}{poker}{blackjack}{blitz}{straight_flush_board}{quads_board}{bad_beats_board}{worst_beats_board}</section>",
             crate::routes::LEADERBOARD_SIZE
         ),
         "",
@@ -1006,4 +1271,140 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
             "<li>None running · <a href=\"/tables/new\">start one</a></li>"
         )
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::eval::Category;
+
+    fn blitz_boards() -> Vec<crate::view::LeaderboardBlitz> {
+        crate::blitz::BlitzDifficulty::ALL
+            .iter()
+            .map(|difficulty| crate::view::LeaderboardBlitz {
+                difficulty: difficulty.config().label.to_string(),
+                attempts: 9,
+                accuracy_percent: 88,
+                best_streak: 7,
+            })
+            .collect()
+    }
+
+    fn row() -> crate::view::LeaderboardRow {
+        let mut poker = crate::stats::PlayerStats {
+            hands: 100,
+            hands_won: 40,
+            wins_shown: 20,
+            ..Default::default()
+        };
+        poker.won_by_category.insert(Category::Flush, 5);
+        poker.won_by_category.insert(Category::FourOfAKind, 1);
+        crate::view::LeaderboardRow {
+            rank: 1,
+            name: "Dana".into(),
+            player_id: None,
+            house: false,
+            balance: 1_000,
+            net_balance: 1_000,
+            loan_count: 0,
+            poker,
+            blackjack: crate::blackjack_stats::BlackjackStats {
+                rounds: 4,
+                hands: 4,
+                won: 2,
+                lost: 2,
+                wagered: 400,
+                returned: 400,
+                ..Default::default()
+            },
+            blitz: blitz_boards(),
+        }
+    }
+
+    #[test]
+    fn every_blitz_difficulty_keeps_its_own_accuracy_and_streak_columns() {
+        let html = leaderboard(&[row()], &[], &[], &[], &[]);
+        for difficulty in crate::blitz::BlitzDifficulty::ALL {
+            let label = difficulty.config().label;
+            assert!(html.contains(label), "missing {label} columns");
+        }
+        assert_eq!(html.matches("<th>Accuracy</th><th>Streak</th>").count(), 3);
+    }
+
+    #[test]
+    fn a_winning_hand_shows_its_count_over_its_share_of_the_hands_shown() {
+        let html = leaderboard(&[row()], &[], &[], &[], &[]);
+        // Five flushes out of twenty hands shown is a quarter of them.
+        assert!(html.contains("<td>5<i class=\"of-wins\">25%</i></td>"));
+        // One in twenty would round away to nothing as a whole percent, so
+        // the rare makes keep a decimal.
+        assert!(html.contains("<td>1<i class=\"of-wins\">5%</i></td>"));
+        // A make nobody has won with is a dash, not a zero.
+        assert!(html.contains("<td class=\"blitz-empty\">—</td>"));
+    }
+
+    #[test]
+    fn a_record_seeded_from_the_ledger_admits_it_knows_no_detail() {
+        // Nothing watched, so busts and splits are dashes rather than zeros.
+        let mut seeded = row();
+        seeded.blackjack.derived_rounds = seeded.blackjack.rounds;
+        assert!(!seeded.blackjack.watched());
+        let html = leaderboard(&[seeded], &[], &[], &[], &[]);
+        let blackjack = html
+            .split("Blackjack</h2>")
+            .nth(1)
+            .expect("a blackjack board");
+        assert_eq!(blackjack.matches("class=\"blitz-empty\"").count(), 4);
+    }
+
+    #[test]
+    fn a_royal_is_flagged_where_it_falls_and_a_beat_shows_both_ends() {
+        let straight_flush = crate::view::LeaderboardBigHand {
+            rank: 1,
+            name: "Dana".into(),
+            player_id: None,
+            house: false,
+            royal: true,
+            label: "Straight flush, aces high".into(),
+            cards: "AhKhQhJhTh"
+                .as_bytes()
+                .chunks(2)
+                .map(|pair| std::str::from_utf8(pair).unwrap().parse().unwrap())
+                .collect(),
+            won: 100_000,
+            at: chrono::Utc::now(),
+        };
+        let beat = crate::view::LeaderboardBeat {
+            rank: 1,
+            loser: "Scott".into(),
+            loser_id: None,
+            loser_house: false,
+            loser_equity_permille: 977,
+            loser_label: "Four of a kind, sevens".into(),
+            winner: "Dana".into(),
+            winner_id: None,
+            winner_house: false,
+            winner_equity_permille: 23,
+            winner_label: "Straight flush, aces high".into(),
+            pot: 100_000,
+            at: chrono::Utc::now(),
+        };
+        let html = leaderboard(&[row()], &[straight_flush], &[], &[beat], &[]);
+        assert!(html.contains("royal-tag"));
+        // Five card faces for the hand that made it.
+        assert!(html.contains("Straight flush, aces high"));
+        // Both ends of the beat, and the favourite's share drawn as a bar.
+        assert!(html.contains("Scott"));
+        assert!(html.contains("Four of a kind, sevens"));
+        assert!(html.contains("<b>97.7%</b>"));
+        assert!(html.contains("width:97%"));
+    }
+
+    #[test]
+    fn a_board_nobody_has_played_says_so_instead_of_showing_a_bare_header() {
+        let html = leaderboard(&[], &[], &[], &[], &[]);
+        assert!(html.contains("Nobody has played yet."));
+        assert!(html.contains("Nobody has made one yet."));
+        assert!(html.contains("No pot has been lost from that far ahead yet."));
+    }
 }

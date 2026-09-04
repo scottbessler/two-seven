@@ -1,7 +1,7 @@
 use crate::{
-    auth, bank::BankStore, blackjack::BlackjackStore, blitz::BlitzStore, driver,
-    history::HistoryStore, render, routes, session::MaybeUser, stats::StatsStore,
-    store::TableStore, users::UserStore,
+    auth, bank::BankStore, blackjack::BlackjackStore, blackjack_stats::BlackjackStatsStore,
+    blitz::BlitzStore, driver, history::HistoryStore, render, routes, session::MaybeUser,
+    stats::StatsStore, store::TableStore, users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
@@ -26,6 +26,7 @@ pub struct AppState {
     pub users: Arc<UserStore>,
     pub bank: BankStore,
     pub blackjack: BlackjackStore,
+    pub blackjack_stats: BlackjackStatsStore,
     pub blitz: BlitzStore,
     pub tables: TableStore,
     pub history: HistoryStore,
@@ -213,14 +214,32 @@ pub async fn run() -> Result<()> {
     let tables = TableStore::load(&data).await?;
     let history = HistoryStore::load(&data).await?;
     let stats = StatsStore::load(&data).await?;
+    let blackjack_stats = BlackjackStatsStore::load(&data).await?;
     let admin_password = Arc::new(crate::admin::load_password(&data).await?);
     if house_was_reset {
         stats.forget_bots().await?;
+    }
+    // The record books were always latent in the history and the ledger;
+    // nothing wrote them down until now. Both walks mark themselves done, so
+    // this is the only boot that pays for them.
+    match stats.backfill_records(&history).await {
+        Ok(0) => {}
+        Ok(hands) => tracing::info!(hands, "rebuilt the record books from the hand history"),
+        Err(error) => tracing::warn!(%error, "could not rebuild the record books"),
+    }
+    match blackjack_stats
+        .backfill_from_ledger(&bank.accounts().await)
+        .await
+    {
+        Ok(0) => {}
+        Ok(rounds) => tracing::info!(rounds, "seeded blackjack records from the ledger"),
+        Err(error) => tracing::warn!(%error, "could not seed blackjack records"),
     }
     let state = AppState {
         users,
         bank,
         blackjack,
+        blackjack_stats,
         blitz,
         tables,
         history,

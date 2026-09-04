@@ -49,6 +49,9 @@ async fn appx() -> T {
         blackjack: two_seven::blackjack::BlackjackStore::load(&dir)
             .await
             .unwrap(),
+        blackjack_stats: two_seven::blackjack_stats::BlackjackStatsStore::load(&dir)
+            .await
+            .unwrap(),
         blitz,
         tables,
         history,
@@ -66,12 +69,6 @@ async fn appx() -> T {
         bank,
         tables: table_store,
     }
-}
-fn blitz_labels() -> Vec<&'static str> {
-    two_seven::blitz::BlitzDifficulty::ALL
-        .iter()
-        .map(|difficulty| difficulty.config().label)
-        .collect()
 }
 /// Cash tables are not created by players any more, so tests that need a
 /// particular shape of table put one in the store directly.
@@ -1030,11 +1027,12 @@ async fn the_leaderboard_ranks_by_net_balance_then_by_fewer_loans() {
         place("Poorest") < place("Borrower"),
         "a better net balance outranks"
     );
-    // Every difficulty gets its own accuracy and streak columns.
-    for difficulty in blitz_labels() {
-        assert!(html.contains(difficulty), "missing {difficulty} columns");
-    }
-    assert_eq!(html.matches("<th>Accuracy</th><th>Streak</th>").count(), 3);
+    // Each game gets its own board now, and a board nobody has played says so
+    // rather than showing a bare header. The column structure itself is
+    // covered in render's own tests, where a board can be given rows.
+    assert!(html.contains("Nobody has played a run yet."));
+    assert!(html.contains("Nobody has sat down at the blackjack table yet."));
+    assert!(html.contains("Nobody has made one yet."));
     // Bots bankroll themselves and are not in the running.
     assert!(!html.contains("fish"));
 }

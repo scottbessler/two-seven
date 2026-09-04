@@ -117,6 +117,7 @@ pub struct LeaderboardRow {
     pub net_balance: Cents,
     pub loan_count: u64,
     pub poker: crate::stats::PlayerStats,
+    pub blackjack: crate::blackjack_stats::BlackjackStats,
     pub blitz: Vec<LeaderboardBlitz>,
 }
 
@@ -126,6 +127,41 @@ pub struct LeaderboardBlitz {
     pub attempts: u64,
     pub accuracy_percent: u64,
     pub best_streak: u64,
+}
+
+/// One entry in a record book: a hand rare enough to name the player who made
+/// it, with their name already resolved.
+#[derive(Clone, Debug, Serialize)]
+pub struct LeaderboardBigHand {
+    pub rank: usize,
+    pub name: String,
+    pub player_id: Option<uuid::Uuid>,
+    pub house: bool,
+    pub royal: bool,
+    pub label: String,
+    pub cards: Vec<crate::cards::Card>,
+    pub won: Cents,
+    pub at: chrono::DateTime<chrono::Utc>,
+}
+
+/// One beat, from both ends. The same row serves the board ranked by odds and
+/// the one ranked by money.
+#[derive(Clone, Debug, Serialize)]
+pub struct LeaderboardBeat {
+    pub rank: usize,
+    pub loser: String,
+    pub loser_id: Option<uuid::Uuid>,
+    pub loser_house: bool,
+    /// Tenths of a percent, so 977 reads as 97.7%.
+    pub loser_equity_permille: u16,
+    pub loser_label: String,
+    pub winner: String,
+    pub winner_id: Option<uuid::Uuid>,
+    pub winner_house: bool,
+    pub winner_equity_permille: u16,
+    pub winner_label: String,
+    pub pot: Cents,
+    pub at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Clone, Debug, Serialize)]
