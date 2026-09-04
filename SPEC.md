@@ -207,10 +207,10 @@ edges, bluff frequencies, and value sizing), so no two of them play the same
 (`SharkParams::for_regular`). Regular 0 is the reference build, `DEFAULT`.
 
 Who the house will sit follows from the stakes, at a cash table and at a
-tournament alike (§V62): below $1,000 anyone, from $1,000 up no fish, from
-$5,000 up sharks only. The cash-ladder mix runs 60/20/10/10 fish/grinder/rock/
-shark at the cheapest rung, drops the fish at $1,000, and is all sharks from
-$5,000.
+tournament alike (§V62): below $100,000 anyone, from $100,000 up no fish, from
+$500,000 up sharks only. The cash-ladder mix runs 60/20/10/10 fish/grinder/rock/
+shark at the cheapest rung and slides evenly from there: the fish are gone by
+the $50,000 rung, and the top two rungs are sharks alone.
 
 Bots see only what a player in that seat legitimately sees (their own hole cards
 and the board) — the same redacted view a human gets (§V3).
@@ -552,9 +552,9 @@ Mark each milestone done here as it lands.
   exposes bot seats' hole cards ⟺ ∄ seated human, viewer included; any human
   sitting down ⇒ face down again for everyone.
 - **V62** The buy-in decides which house players may be seated, at a cash table
-  and at a tournament alike: no `Fish` from $1,000 up, nothing but `Shark` from
-  $5,000 up. The standing tables' mix and every seat they fill obey it, a bot
-  seating request that breaks it is refused, a saved table still holding
+  and at a tournament alike: no `Fish` from $100,000 up, nothing but `Shark`
+  from $500,000 up. The standing tables' mix and every seat they fill obey it,
+  a bot seating request that breaks it is refused, a saved table still holding
   somebody the rung no longer allows stands them up at startup, and no two of
   the nine sharks play with the same tuning.
 - **V61** Other-player seats → compact dark tiles across desktop/tablet/portrait/
