@@ -600,6 +600,22 @@ Mark each milestone done here as it lands.
 - **V64** ∀ live emote, drift lane fixed at receipt; sibling expiry ⊥ alter its
   path. Normal DOM removal follows the final transparent animation frame, with
   a later timer only as background-tab fallback.
+- **V65** ⊥ hot path carries an unbounded store. A ledger is append-only and
+  never compacted ∴ its length is a clock, not a size, and anything O(ledger)
+  per request grows without limit. Concretely: a seat carries ≤
+  `SEAT_LEDGER_LINES` ledger lines (the tail, oldest first) — the view enforces
+  this at the wire, whatever it is handed, ∵ a table view is rebuilt per
+  subscriber per table change, so an unbounded field is an unbounded push to
+  every watcher. The standings read `Standing` (owner+balance+loans), ⊥ whole
+  accounts. The finance chart plots ≤ `CHART_POINTS`, extremes read off the
+  whole series so the caption stays true. Bank writes serialize & rewrite a
+  whole account file ∴ the books are released before the write, the write slot
+  being claimed under them so writers keep their mutation order. A tournament
+  ⊥ started ∧ ⊥ registered ∧ ⊥ prize pool ∧ older than
+  `ABANDONED_TOURNAMENT_HOURS` is swept — anything holding money is left
+  standing ∴ ⊥ refund happens here. Every response logs `bytes`; past
+  `SLOW_REQUEST_MS` or `LARGE_RESPONSE_BYTES` it also warns, ∵ elapsed time
+  alone never showed the payload that caused this.
 
 ## §T Build tasks
 
@@ -658,6 +674,7 @@ T45|x|add live table emotes|V3,V30,V42,V53,V61,V63
 T46|x|replace the personal blackjack game with four shared fixed-stake tables, quarter-step wagers, multi-seat play and turn clocks|V24,V27,V63
 T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,V46,V50,V54
 T48|x|make overlapping emotes keep their paths and finish fading before removal|V63,V64
+T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart points, bank writes, abandoned tournaments, payload logging|V64
 
 ## §B Bug log
 
@@ -813,3 +830,4 @@ B25|2026-09-04|blackjack's landscape play area stacked dealer, seat strip and yo
 B26|2026-09-04|the emote taps shipped at a fixed 2rem square on the same footer row as 44px History and Leave, below the tap target every other control on that row keeps|V46,V63
 B27|2026-09-04|a revealed opponent hand is taller than a face-down one and the cards carry a `z-index`, so at a showdown an all-in seat's own cards grew down out of their track and over the ALL IN chip in the strip below them; the hit test that would have caught it was only ever run against a live flop, where the cards are small|V45
 B28|2026-09-04|emote drift came from live `:nth-child`, so sibling removal jumped bubbles between lanes; JS removal matched CSS duration exactly, so it could delete before the final transparent frame painted|V64
+B29|2026-09-04|every table state read and every SSE push carried each seat's whole bank ledger — the client renders 3 lines, the server sent all of them — so a state read grew a line per hand forever: 228KB in prod (98% ledger), 1.7MB against a table seating the oldest house accounts. `elapsed_ms` never showed it ∵ it stops when the handler returns, ⊥ when the bytes land|V64
