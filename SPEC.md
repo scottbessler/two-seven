@@ -597,6 +597,9 @@ Mark each milestone done here as it lands.
   accepted tap produces one ephemeral SSE event with a unique id, seat, and
   kind; ⊥ persistence/game-state mutation. Clients animate every event upward
   from that seat, including rapid repeats. Spectators and bots cannot emit.
+- **V64** ∀ live emote, drift lane fixed at receipt; sibling expiry ⊥ alter its
+  path. Normal DOM removal follows the final transparent animation frame, with
+  a later timer only as background-tab fallback.
 
 ## §T Build tasks
 
@@ -654,6 +657,7 @@ T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,
 T45|x|add live table emotes|V3,V30,V42,V53,V61,V63
 T46|x|replace the personal blackjack game with four shared fixed-stake tables, quarter-step wagers, multi-seat play and turn clocks|V24,V27,V63
 T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,V46,V50,V54
+T48|x|make overlapping emotes keep their paths and finish fading before removal|V63,V64
 
 ## §B Bug log
 
@@ -808,3 +812,4 @@ B24|2026-09-04|safe-area insets were only ever wired into the poker table, one b
 B25|2026-09-04|blackjack's landscape play area stacked dealer, seat strip and your own hands with the strip on an `auto` track, so the strip took the whole area and both hands collapsed to nothing — B14's failure from the other side. It went unseen because the blackjack rewrite made every table test desktop-only and left the phone one 412x915 check with every inset at zero, asserting only that nothing scrolled sideways|V42,V54
 B26|2026-09-04|the emote taps shipped at a fixed 2rem square on the same footer row as 44px History and Leave, below the tap target every other control on that row keeps|V46,V63
 B27|2026-09-04|a revealed opponent hand is taller than a face-down one and the cards carry a `z-index`, so at a showdown an all-in seat's own cards grew down out of their track and over the ALL IN chip in the strip below them; the hit test that would have caught it was only ever run against a live flop, where the cards are small|V45
+B28|2026-09-04|emote drift came from live `:nth-child`, so sibling removal jumped bubbles between lanes; JS removal matched CSS duration exactly, so it could delete before the final transparent frame painted|V64

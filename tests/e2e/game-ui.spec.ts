@@ -222,9 +222,20 @@ test("seated humans can bubble every emote from a player seat", async ({ page })
   const controls = page.getByRole("group", { name: "Emotes" });
   await expect(controls.getByRole("button")).toHaveCount(5);
   const opponent = page.locator('[data-seat-index="0"]');
-  await expect(opponent.locator('.seat-emote[aria-label="Cry from Dev"]')).toHaveCount(2);
+  const cries = opponent.locator('.seat-emote[aria-label="Cry from Dev"]');
+  await expect(cries).toHaveCount(2);
   await expect(page.locator('[data-seat-index="2"] .seat-emote[aria-label="Joy from You"]')).toHaveCount(1);
   await expect(opponent.locator(".seat-emotes")).toHaveCSS("position", "absolute");
+
+  // Finishing one bubble must not move the still-rising sibling onto a new
+  // :nth-child lane, and DOM removal waits for the animation's final frame.
+  const survivorPath = await cries.nth(1).getAttribute("style");
+  await cries.first().evaluate((bubble) => bubble.dispatchEvent(new AnimationEvent("animationend", {
+    animationName: "seat-emote-rise",
+    bubbles: true,
+  })));
+  await expect(cries).toHaveCount(1);
+  await expect(cries.first()).toHaveAttribute("style", survivorPath);
 
   await controls.getByRole("button").evaluateAll((buttons) => {
     for (const button of buttons) button.click();

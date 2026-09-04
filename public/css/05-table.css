@@ -160,10 +160,8 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .seat .seat-clock{left:.45rem;right:.45rem;bottom:.25rem;height:.2rem;border-radius:var(--radius-chip)}
 .seat .seat-emotes{position:absolute;inset:0;z-index:40;grid-area:1/1/-1/-1;display:block;overflow:visible;pointer-events:none}
 .seat .seat-emotes:empty{display:none}
-.seat .seat-emote{--emote-drift:0rem;position:absolute;left:50%;top:45%;display:block;color:var(--ink);font-family:system-ui,sans-serif;font-size:var(--text-display);font-style:normal;line-height:1;filter:drop-shadow(0 .2rem .25rem var(--shadow-73));animation:seat-emote-rise 1.8s ease-out forwards;will-change:transform,opacity}
-.seat .seat-emote:nth-child(3n+1){--emote-drift:-2rem}
-.seat .seat-emote:nth-child(3n+2){--emote-drift:2rem}
-@keyframes seat-emote-rise{0%{opacity:0;transform:translate(-50%,0) scale(.65)}12%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--emote-drift)),-7rem) scale(1.35)}}
+.seat .seat-emote{--emote-drift:0rem;position:absolute;left:50%;top:45%;display:block;color:var(--ink);font-family:system-ui,sans-serif;font-size:var(--text-display);font-style:normal;line-height:1;text-shadow:0 .2rem .25rem var(--shadow-73);animation:seat-emote-rise 1.8s cubic-bezier(.2,.7,.2,1) forwards;will-change:transform,opacity}
+@keyframes seat-emote-rise{0%{opacity:0;transform:translate(-50%,0) scale(.65)}12%{opacity:1}55%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--emote-drift)),-7rem) scale(1.35)}}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-control);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid var(--gold);border-radius:var(--radius-control)}
