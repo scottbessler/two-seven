@@ -142,6 +142,11 @@ struct StatsFile {
     /// the walk over every hand ever played happens exactly once.
     #[serde(default)]
     backfilled_at: Option<DateTime<Utc>>,
+    /// Set once the winning-hand breakdown has been recounted from the hand
+    /// history. Its own mark: the books were rebuilt before that breakdown
+    /// existed, so a tree carrying the first mark still needs this walk.
+    #[serde(default)]
+    categories_backfilled_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone)]
@@ -255,6 +260,7 @@ impl StatsStore {
             // to players the leaderboard no longer knows.
             *guard = StatsFile {
                 backfilled_at: guard.backfilled_at,
+                categories_backfilled_at: guard.categories_backfilled_at,
                 ..StatsFile::default()
             };
             removed
@@ -301,6 +307,64 @@ impl StatsStore {
         }
         self.persist().await?;
         Ok(found)
+    }
+
+    /// Recount the winning-hand breakdown from every hand ever played, once.
+    ///
+    /// `won_by_category` and `wins_shown` arrived after the tallies did, so
+    /// every record written before them counts nothing under a make it
+    /// certainly had. Unlike the other tallies these are recoverable: the
+    /// history says what each winner turned over. The walk therefore replaces
+    /// the two fields outright rather than adding to them — the hands it reads
+    /// include the ones already counted, so adding would double them — and
+    /// leaves every other number alone.
+    pub async fn backfill_categories(
+        &self,
+        history: &crate::history::HistoryStore,
+    ) -> Result<usize> {
+        if self.inner.lock().await.categories_backfilled_at.is_some() {
+            return Ok(0);
+        }
+        let mut counted = 0;
+        {
+            let mut guard = self.inner.lock().await;
+            for stats in guard.players.values_mut() {
+                stats.won_by_category.clear();
+                stats.wins_shown = 0;
+            }
+            for hand in history.every_hand().await {
+                for seat in &hand.seats {
+                    let Some(owner) = owner_of(&seat.occupant) else {
+                        continue;
+                    };
+                    let won: Cents = hand
+                        .summary
+                        .awards
+                        .iter()
+                        .filter(|award| award.seat == seat.seat)
+                        .map(|award| award.amount)
+                        .sum();
+                    if won == 0 {
+                        continue;
+                    }
+                    let Some(made) = made_hand(&hand, seat.seat) else {
+                        continue;
+                    };
+                    let category = made.rank.category;
+                    // A player the tallies never knew is not invented here:
+                    // this walk fixes a breakdown, it does not add records.
+                    let Some(stats) = guard.players.get_mut(&key(&owner)) else {
+                        continue;
+                    };
+                    stats.wins_shown += 1;
+                    *stats.won_by_category.entry(category).or_default() += 1;
+                    counted += 1;
+                }
+            }
+            guard.categories_backfilled_at = Some(Utc::now());
+        }
+        self.persist().await?;
+        Ok(counted)
     }
 
     async fn persist(&self) -> Result<()> {
@@ -807,5 +871,49 @@ mod tests {
         let reloaded = StatsStore::load(&root).await.unwrap();
         assert_eq!(reloaded.backfill_records(&history).await.unwrap(), 0);
         assert_eq!(reloaded.big_hands().await.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn the_winning_hand_types_are_recounted_from_the_history_once() {
+        let root = std::env::temp_dir().join(format!("two-seven-types-{}", Uuid::new_v4()));
+        let history = crate::history::HistoryStore::load(&root).await.unwrap();
+        let hero = Uuid::new_v4();
+        let record = hand(
+            [(0, hero, "AhKh"), (1, Uuid::new_v4(), "7s7d")],
+            "QhJhTh2c3d",
+            3,
+            0,
+            50_000,
+            [(0, 977), (1, 23)],
+        );
+        history.append(record.table, &record).await.unwrap();
+
+        // A record kept before the breakdown existed: the hand is counted,
+        // the make it was won with is not.
+        let stats = StatsStore::load(&root).await.unwrap();
+        {
+            let mut guard = stats.inner.lock().await;
+            guard.players.insert(
+                key(&AccountOwner::User(hero)),
+                PlayerStats {
+                    hands: 1,
+                    hands_won: 1,
+                    ..Default::default()
+                },
+            );
+        }
+        assert_eq!(stats.backfill_categories(&history).await.unwrap(), 1);
+        let hero_stats = stats.of(&AccountOwner::User(hero)).await;
+        assert_eq!(hero_stats.wins_shown, 1);
+        assert_eq!(hero_stats.won_with(Category::StraightFlush), 1);
+        // Everything else is left exactly as it was.
+        assert_eq!(hero_stats.hands, 1);
+        assert_eq!(hero_stats.hands_won, 1);
+
+        // A second boot finds the watermark, so the count never doubles.
+        assert_eq!(stats.backfill_categories(&history).await.unwrap(), 0);
+        let reloaded = StatsStore::load(&root).await.unwrap();
+        assert_eq!(reloaded.backfill_categories(&history).await.unwrap(), 0);
+        assert_eq!(reloaded.of(&AccountOwner::User(hero)).await.wins_shown, 1);
     }
 }

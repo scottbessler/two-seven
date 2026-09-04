@@ -732,6 +732,39 @@ fn standings_name(name: &str, player_id: Option<Uuid>, house: bool) -> String {
     )
 }
 
+/// The rank a row has once the house is hidden, advancing the count only for
+/// the rows that survive that. `None` for the house itself, which has no place
+/// in that numbering.
+fn people_rank(house: bool, people: &mut usize) -> Option<usize> {
+    if house {
+        return None;
+    }
+    *people += 1;
+    Some(*people)
+}
+
+/// A row's rank cell, carrying both numberings: the one it has among everyone,
+/// and the one it would have with the house hidden. Which is shown is the
+/// checkbox's business, in CSS, so the toggle never has to renumber anything.
+fn rank_cell(overall: usize, among_people: Option<usize>) -> String {
+    match among_people {
+        Some(people) => format!(
+            "<td class=\"rank\"><span class=\"rank-all\">{overall}</span><span class=\"rank-people\">{people}</span></td>"
+        ),
+        None => format!("<td class=\"rank\"><span class=\"rank-all\">{overall}</span></td>"),
+    }
+}
+
+/// The opening `<tr>` for a standings row, marked when it belongs to the house
+/// so the toggle can hide it.
+fn standings_row_open(house: bool) -> &'static str {
+    if house {
+        "<tr class=\"house-row\">"
+    } else {
+        "<tr>"
+    }
+}
+
 /// The five cards of a made hand, as faces rather than text.
 fn hand_faces(cards: &[crate::cards::Card]) -> String {
     cards
@@ -776,12 +809,14 @@ pub fn leaderboard(
     worst_beats: &[crate::view::LeaderboardBeat],
 ) -> String {
     // ---- the money, which is what ranks the page ----
+    let mut people = 0;
     let money_body = rows
         .iter()
         .map(|row| {
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"money\">{}</td><td class=\"money\">{}</td><td>{}</td></tr>",
-                row.rank,
+                "{}{}<td>{}</td><td class=\"money\">{}</td><td class=\"money\">{}</td><td>{}</td></tr>",
+                standings_row_open(row.house),
+                rank_cell(row.rank, people_rank(row.house, &mut people)),
                 standings_name(&row.name, row.player_id, row.house),
                 format_cents(row.balance),
                 format_cents(row.net_balance),
@@ -798,10 +833,25 @@ pub fn leaderboard(
     );
 
     // ---- poker, with what people actually win with ----
-    let poker_body = rows
+    //
+    // Ranked by hands played rather than by the money: this board is about
+    // form over a sample, and a big score in a handful of hands says less than
+    // a long record does.
+    let mut poker_rows: Vec<&crate::view::LeaderboardRow> =
+        rows.iter().filter(|row| row.poker.hands > 0).collect();
+    poker_rows.sort_by(|left, right| {
+        right
+            .poker
+            .hands
+            .cmp(&left.poker.hands)
+            .then(right.poker.hands_won.cmp(&left.poker.hands_won))
+            .then(left.rank.cmp(&right.rank))
+    });
+    let mut people = 0;
+    let poker_body = poker_rows
         .iter()
-        .filter(|row| row.poker.hands > 0)
-        .map(|row| {
+        .enumerate()
+        .map(|(index, row)| {
             let types = WINNING_CATEGORIES
                 .iter()
                 .map(|(category, _)| {
@@ -816,13 +866,15 @@ pub fn leaderboard(
                 })
                 .collect::<String>();
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}</td><td>{}</td><td class=\"money\">{}</td>{types}</tr>",
-                row.rank,
+                "{}{}<td>{}</td><td>{}</td><td>{}%</td><td>{}%</td><td>{}</td><td>{}%</td><td>{}</td><td class=\"money\">{}</td>{types}</tr>",
+                standings_row_open(row.house),
+                rank_cell(index + 1, people_rank(row.house, &mut people)),
                 standings_name(&row.name, row.player_id, row.house),
                 row.poker.hands,
                 row.poker.vpip_percent(),
                 row.poker.pfr_percent(),
                 row.poker.hands_won,
+                row.poker.win_percent(),
                 row.poker.wins_shown,
                 format_cents(row.poker.biggest_pot),
             )
@@ -834,9 +886,9 @@ pub fn leaderboard(
         .collect::<String>();
     let poker = standings_board(
         "Hold'em",
-        "Each type column is winning hands of that make, over their share of the hands this player showed down. A hand everyone folded to never turns over, so the types add up to Shown, not to Won.",
+        "Most hands played first. Win is hands taken down over hands dealt. Each type column is winning hands of that make, over their share of the hands this player showed down. A hand everyone folded to never turns over, so the types add up to Shown, not to Won.",
         &format!(
-            "<thead><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th colspan=\"{}\">Winning hands by type</th></tr><tr class=\"leaderboard-subhead\"><th></th><th>Player</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Shown</th><th>Biggest pot</th>{type_headers}</tr></thead>",
+            "<thead><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th colspan=\"{}\">Winning hands by type</th></tr><tr class=\"leaderboard-subhead\"><th></th><th>Player</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Win</th><th>Shown</th><th>Biggest pot</th>{type_headers}</tr></thead>",
             WINNING_CATEGORIES.len()
         ),
         &poker_body,
@@ -844,6 +896,7 @@ pub fn leaderboard(
     );
 
     // ---- blackjack ----
+    let mut people = 0;
     let blackjack_body = rows
         .iter()
         .filter(|row| row.blackjack.rounds > 0)
@@ -862,8 +915,9 @@ pub fn leaderboard(
                 "<td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td><td class=\"blitz-empty\">—</td>".to_string()
             };
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}%</td>{detail}<td class=\"money\">{}</td><td class=\"money\">{}</td></tr>",
-                row.rank,
+                "{}{}<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}%</td>{detail}<td class=\"money\">{}</td><td class=\"money\">{}</td></tr>",
+                standings_row_open(row.house),
+                rank_cell(row.rank, people_rank(row.house, &mut people)),
                 standings_name(&row.name, row.player_id, row.house),
                 row.blackjack.rounds,
                 row.blackjack.won,
@@ -896,6 +950,7 @@ pub fn leaderboard(
             .map(|_| "<th>Accuracy</th><th>Streak</th>".to_string())
             .collect()
     });
+    let mut people = 0;
     let blitz_body = rows
         .iter()
         .filter(|row| row.blitz.iter().any(|blitz| blitz.attempts > 0))
@@ -915,8 +970,9 @@ pub fn leaderboard(
                 })
                 .collect::<String>();
             format!(
-                "<tr><td class=\"rank\">{}</td><td>{}</td>{cells}</tr>",
-                row.rank,
+                "{}{}<td>{}</td>{cells}</tr>",
+                standings_row_open(row.house),
+                rank_cell(row.rank, people_rank(row.house, &mut people)),
                 standings_name(&row.name, row.player_id, row.house),
             )
         })
@@ -933,12 +989,14 @@ pub fn leaderboard(
 
     // ---- the record books ----
     let big_hand_rows = |hands: &[crate::view::LeaderboardBigHand]| {
+        let mut people = 0;
         hands
             .iter()
             .map(|hand| {
                 format!(
-                    "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"made-hand\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td class=\"when\">{}</td></tr>",
-                    hand.rank,
+                    "{}{}<td>{}</td><td class=\"made-hand\">{}</td><td>{}{}</td><td class=\"money\">{}</td><td class=\"when\">{}</td></tr>",
+                    standings_row_open(hand.house),
+                    rank_cell(hand.rank, people_rank(hand.house, &mut people)),
                     standings_name(&hand.name, hand.player_id, hand.house),
                     hand_faces(&hand.cards),
                     escape(&hand.label),
@@ -972,12 +1030,17 @@ pub fn leaderboard(
     // Both beat boards read the same row from opposite ends, so they share a
     // shape: who was ahead, who won anyway, and what it cost.
     let beat_rows = |beats: &[crate::view::LeaderboardBeat]| {
+        // A beat has two players in it, so it is the house's only when both
+        // ends are: a hand a person was in still concerns them.
+        let mut people = 0;
         beats
             .iter()
             .map(|beat| {
+                let house = beat.loser_house && beat.winner_house;
                 format!(
-                    "<tr><td class=\"rank\">{}</td><td>{}</td><td class=\"equity\"><span class=\"equity-bar\"><i style=\"width:{}%\"></i></span><b>{}</b></td><td class=\"made\">{}</td><td>{}</td><td class=\"made\">{}</td><td class=\"equity-plain\">{}</td><td class=\"money\">{}</td><td class=\"when\">{}</td></tr>",
-                    beat.rank,
+                    "{}{}<td>{}</td><td class=\"equity\"><span class=\"equity-bar\"><i style=\"width:{}%\"></i></span><b>{}</b></td><td class=\"made\">{}</td><td>{}</td><td class=\"made\">{}</td><td class=\"equity-plain\">{}</td><td class=\"money\">{}</td><td class=\"when\">{}</td></tr>",
+                    standings_row_open(house),
+                    rank_cell(beat.rank, people_rank(house, &mut people)),
                     standings_name(&beat.loser, beat.loser_id, beat.loser_house),
                     beat.loser_equity_permille / 10,
                     permille(u64::from(beat.loser_equity_permille)),
@@ -1013,10 +1076,13 @@ pub fn leaderboard(
     layout(
         "Leaderboard",
         &format!(
-            "<section class=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by net balance, house regulars included.</p></div><nav><a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{money}{poker}{blackjack}{blitz}{straight_flush_board}{quads_board}{bad_beats_board}{worst_beats_board}</section>",
+            "<section class=\"leaderboard\" id=\"leaderboard\"><header class=\"history-top\"><div><h1>Leaderboard</h1><p>Top {} by net balance, house regulars included.</p></div><nav><label class=\"house-toggle\"><input type=\"checkbox\" id=\"show-house\" checked>Show house regulars</label> · <a href=\"/tables\">Lobby</a> · <a href=\"/hand-blitz\">Hand Blitz</a></nav></header>{money}{poker}{blackjack}{blitz}{straight_flush_board}{quads_board}{bad_beats_board}{worst_beats_board}</section>",
             crate::routes::LEADERBOARD_SIZE
         ),
-        "",
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/leaderboard.js")
+        ),
     )
 }
 
@@ -1541,6 +1607,95 @@ mod tests {
         assert!(html.contains("Four of a kind, sevens"));
         assert!(html.contains("<b>97.7%</b>"));
         assert!(html.contains("width:97%"));
+    }
+
+    #[test]
+    fn the_poker_board_leads_with_the_longest_record_and_shows_a_win_rate() {
+        let mut short = row();
+        short.rank = 1;
+        short.name = "Flash".into();
+        short.poker.hands = 10;
+        short.poker.hands_won = 9;
+        let mut long = row();
+        long.rank = 2;
+        long.name = "Grinder".into();
+        long.poker.hands = 400;
+        long.poker.hands_won = 100;
+        let html = leaderboard(&[short, long], &[], &[], &[], &[]);
+        let poker = html
+            .split("Hold&#39;em</h2>")
+            .nth(1)
+            .expect("a poker board");
+        let body = poker.split("<tbody>").nth(1).expect("rows");
+        assert!(
+            body.find("Grinder").unwrap() < body.find("Flash").unwrap(),
+            "the longer record ranks first"
+        );
+        // Ranked where the board puts them, not where the money did.
+        assert!(body.contains(
+            "<span class=\"rank-all\">1</span><span class=\"rank-people\">1</span></td><td>Grinder"
+        ));
+        // A hundred hands won of four hundred dealt.
+        assert!(body.contains("<td>100</td><td>25%</td>"));
+        assert!(poker.contains("<th>Won</th><th>Win</th><th>Shown</th>"));
+    }
+
+    #[test]
+    fn the_house_is_marked_and_renumbered_so_it_can_be_hidden() {
+        let mut person = row();
+        person.rank = 1;
+        let mut bot = row();
+        bot.rank = 2;
+        bot.name = "Callie".into();
+        bot.house = true;
+        let mut second_person = row();
+        second_person.rank = 3;
+        second_person.name = "Scott".into();
+        let html = leaderboard(&[person, bot, second_person], &[], &[], &[], &[]);
+        let money = html.split("Bankroll</h2>").nth(1).expect("a money board");
+        let body = money.split("<tbody>").nth(1).expect("rows");
+        // The house row carries the class the toggle hides, and no place in
+        // the numbering that survives hiding it.
+        assert!(body.contains(
+            "<tr class=\"house-row\"><td class=\"rank\"><span class=\"rank-all\">2</span></td>"
+        ));
+        // Third overall, second once the house is out.
+        assert!(
+            body.contains("<span class=\"rank-all\">3</span><span class=\"rank-people\">2</span>")
+        );
+        assert!(html.contains("id=\"show-house\""));
+        assert!(html.contains("/public/leaderboard.js"));
+    }
+
+    #[test]
+    fn a_beat_is_the_house_only_when_both_ends_of_it_are() {
+        let beat = |loser_house, winner_house| crate::view::LeaderboardBeat {
+            rank: 1,
+            loser: "Scott".into(),
+            loser_id: None,
+            loser_house,
+            loser_equity_permille: 900,
+            loser_label: "Aces".into(),
+            winner: "Callie".into(),
+            winner_id: None,
+            winner_house,
+            winner_equity_permille: 100,
+            winner_label: "Kings".into(),
+            pot: 100,
+            at: chrono::Utc::now(),
+        };
+        let mixed = leaderboard(&[row()], &[], &[], &[beat(false, true)], &[]);
+        let board = mixed.split("Bad beats</h2>").nth(1).expect("a beat board");
+        assert!(
+            !board
+                .split("Worst beats")
+                .next()
+                .unwrap()
+                .contains("house-row")
+        );
+        let house = leaderboard(&[row()], &[], &[], &[beat(true, true)], &[]);
+        let board = house.split("Bad beats</h2>").nth(1).expect("a beat board");
+        assert!(board.contains("house-row"));
     }
 
     #[test]

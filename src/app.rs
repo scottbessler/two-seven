@@ -242,6 +242,14 @@ pub async fn run() -> Result<()> {
         Ok(hands) => tracing::info!(hands, "rebuilt the record books from the hand history"),
         Err(error) => tracing::warn!(%error, "could not rebuild the record books"),
     }
+    match stats.backfill_categories(&history).await {
+        Ok(0) => {}
+        Ok(wins) => tracing::info!(
+            wins,
+            "recounted winning hands by type from the hand history"
+        ),
+        Err(error) => tracing::warn!(%error, "could not recount winning hands by type"),
+    }
     match blackjack_stats
         .backfill_from_ledger(&bank.accounts().await)
         .await
@@ -351,6 +359,7 @@ fn asset_version() -> String {
         "public/shared.js",
         "public/card.js",
         "public/lobby.js",
+        "public/leaderboard.js",
         "public/player.js",
         "public/table.js",
         "public/card-settings.js",
