@@ -273,7 +273,7 @@ pub fn admin(error: Option<&str>, message: Option<&str>) -> String {
     layout(
         "Admin",
         &format!(
-            r#"<section class="card admin-panel"><h1>Admin</h1>{notice}{error}<form method="post" action="/admin"><label>Secret password<input type="password" name="password" autocomplete="current-password" required autofocus></label><div class="admin-actions"><button class="danger" type="submit" name="action" value="money">Reset all money and loans</button><button type="submit" name="action" value="forgive-bot-loans">Forgive all bot loans</button><button class="danger" type="submit" name="action" value="poker">Reset all poker stats</button><button class="danger" type="submit" name="action" value="blitz">Reset all blitz stats</button></div></form><p><a href="/tables">Lobby</a></p></section>"#
+            r#"<section class="card admin-panel"><h1>Admin</h1>{notice}{error}<form method="post" action="/admin"><label>Secret password<input type="password" name="password" autocomplete="current-password" required autofocus></label><div class="admin-actions"><button class="danger" type="submit" name="action" value="money">Reset all money and loans</button><button type="submit" name="action" value="forgive-bot-loans">Forgive all bot loans</button><button class="danger" type="submit" name="action" value="poker">Reset all poker stats</button><button class="danger" type="submit" name="action" value="blitz">Reset all blitz stats</button><button class="danger" type="submit" name="action" value="blackjack">Reset all blackjack stats</button></div></form><p><a href="/tables">Lobby</a></p></section>"#
         ),
         "",
     )

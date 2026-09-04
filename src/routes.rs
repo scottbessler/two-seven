@@ -94,6 +94,14 @@ pub async fn admin_action(
             let removed = s.blitz.reset_stats().await.map_err(AppError::internal)?;
             format!("Reset blitz stats for {removed} players.")
         }
+        "blackjack" => {
+            let removed = s
+                .blackjack_stats
+                .reset_all()
+                .await
+                .map_err(AppError::internal)?;
+            format!("Reset blackjack stats for {removed} players.")
+        }
         _ => return Err(AppError::bad_request("unknown admin action")),
     };
     Ok(Html(render::admin(None, Some(&message))))
