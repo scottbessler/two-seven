@@ -3424,3 +3424,42 @@ async fn gifts_move_whole_thousands_between_players() {
         "a refused gift leaves the money where it is"
     );
 }
+
+#[tokio::test]
+async fn the_admin_page_can_clear_a_blackjack_record() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.state
+        .blackjack_stats
+        .record(
+            user,
+            two_seven::blackjack_stats::RoundOutcome {
+                hands: 1,
+                won: 1,
+                wagered: 1_000,
+                returned: 2_000,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(t.state.blackjack_stats.of(user).await.rounds, 1);
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("password=test-admin-password&action=blackjack"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("Reset blackjack stats for 1 players."));
+    assert_eq!(t.state.blackjack_stats.of(user).await.rounds, 0);
+}
