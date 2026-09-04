@@ -7,6 +7,7 @@ pub mod blitz;
 pub mod bot;
 pub mod cards;
 pub mod cash;
+pub mod db;
 pub mod driver;
 pub mod error;
 pub mod eval;
