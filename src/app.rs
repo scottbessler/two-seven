@@ -59,29 +59,40 @@ pub fn router(s: AppState) -> Router {
         )
         .route("/leaderboard", get(routes::leaderboard))
         .route("/blackjack", get(routes::blackjack))
+        .route("/blackjack/tables/{id}", get(routes::blackjack_table_page))
+        .route(
+            "/blackjack/tables/{id}/state",
+            get(routes::blackjack_table_state),
+        )
+        .route(
+            "/blackjack/tables/{id}/events",
+            get(routes::blackjack_table_events),
+        )
+        .route(
+            "/blackjack/tables/{id}/join",
+            axum::routing::post(routes::blackjack_join),
+        )
+        .route(
+            "/blackjack/tables/{id}/leave",
+            axum::routing::post(routes::blackjack_leave),
+        )
+        .route(
+            "/blackjack/tables/{id}/rebuy",
+            axum::routing::post(routes::blackjack_rebuy),
+        )
+        .route(
+            "/blackjack/tables/{id}/bet",
+            axum::routing::post(routes::blackjack_bet),
+        )
+        .route(
+            "/blackjack/tables/{id}/action",
+            axum::routing::post(routes::blackjack_action),
+        )
+        .route(
+            "/blackjack/tables/{id}/settings",
+            axum::routing::post(routes::blackjack_settings),
+        )
         .route("/admin", get(routes::admin_page).post(routes::admin_action))
-        .route(
-            "/blackjack/start",
-            axum::routing::post(routes::blackjack_start),
-        )
-        .route("/blackjack/resume", get(routes::blackjack_resume))
-        .route("/blackjack/hit", axum::routing::post(routes::blackjack_hit))
-        .route(
-            "/blackjack/stand",
-            axum::routing::post(routes::blackjack_stand),
-        )
-        .route(
-            "/blackjack/double",
-            axum::routing::post(routes::blackjack_double),
-        )
-        .route(
-            "/blackjack/split",
-            axum::routing::post(routes::blackjack_split),
-        )
-        .route(
-            "/blackjack/insurance",
-            axum::routing::post(routes::blackjack_insurance),
-        )
         .route("/hand-blitz", get(routes::hand_blitz))
         .route(
             "/hand-blitz/start",

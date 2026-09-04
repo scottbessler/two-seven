@@ -1,7 +1,7 @@
 import { html, render, useEffect, useRef, useState } from "/public/vendor/htm-preact.js";
 import { Card } from "/public/card.js";
 import { CardSettings, useCardSettings } from "/public/card-settings.js";
-import { refreshBank, responseError, useOverflowTitle, usePending, wholeDollarMoney as money } from "/public/shared.js";
+import { refreshBank, responseError, useOverflowTitle, usePending, useResultClock, wholeDollarMoney as money } from "/public/shared.js";
 // Card geometry contracts live in card.js: rawRank === "T" ? "10", card-corner rank over suit.
 
 const root = document.getElementById("table-app");
@@ -468,18 +468,6 @@ function TableLog({ events, seats, summary, settled, status }) {
   // Awards are the punchline; they wait for the last card like everything else.
   const shown = settled ? events : events.filter((event) => event.kind !== "Award");
   return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
-}
-
-// One clock for the whole result: it paces the runout and the countdown.
-function useResultClock(active, deadline, duration) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!active) return undefined;
-    const timer = setInterval(() => setNow(Date.now()), 100);
-    return () => clearInterval(timer);
-  }, [active, deadline]);
-  const dueAt = Date.parse(deadline || "");
-  return Number.isFinite(dueAt) ? Math.min(duration, Math.max(0, dueAt - now)) : duration;
 }
 
 function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
