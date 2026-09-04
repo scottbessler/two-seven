@@ -504,14 +504,20 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let html = String::from_utf8_lossy(&body);
     assert!(!html.contains("Old custom game"));
-    // Every rung appears, cheapest first.
+    // Every rung appears, cheapest first. Rows are keyed by their buy-in, which
+    // is also the name the ladder shows.
     let mut last = 0;
     for tier in two_seven::cash::TIERS {
+        let row = format!(r#"data-buy-in="{tier}""#);
         let at = html
-            .find(&two_seven::cash::name(tier))
-            .unwrap_or_else(|| panic!("{} should be listed", two_seven::cash::name(tier)));
+            .find(&row)
+            .unwrap_or_else(|| panic!("the {tier} rung should be listed"));
         assert!(at > last, "tables run cheapest first");
         last = at;
+        assert!(
+            html.contains(&two_seven::money::format_dollars(tier)),
+            "the {tier} rung is named by its buy-in"
+        );
     }
 }
 
@@ -825,26 +831,43 @@ async fn the_lobby_counts_humans_and_lists_tables_by_affordability() {
         .unwrap();
     let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
     let html = String::from_utf8_lossy(&body);
-    // The house filled every table, so none of them holds a person yet.
-    assert!(html.contains("no humans"), "the list says who is a person");
+    // The house filled every table, so none of them holds a person yet: no row
+    // claims anybody is playing.
+    assert!(
+        !html.contains("table-chip-live"),
+        "nobody is playing, so no row says so"
+    );
     // Cash tables and tournaments are listed apart.
     assert!(html.contains("<h2>Cash tables</h2>"));
     assert!(html.contains("<h2>Tournaments</h2>"));
-    // Lending only reaches the cheap rungs, so the deep ones stay filed away.
+    // Lending only reaches the cheap rungs. The deeper ones keep their place in
+    // the ladder, greyed out, and say how far out of reach they are.
+    let cheapest = two_seven::cash::TIERS[0];
+    let deep = *two_seven::cash::TIERS.last().unwrap();
     assert!(
-        html.contains(
-            r#"<details class="out-of-reach"><summary>Cash tables to spectate</summary>"#
-        )
+        html.contains(&format!(
+            r#"<li class="table-row" data-buy-in="{cheapest}""#
+        )),
+        "a rung that lends the shortfall is not out of reach"
     );
     assert!(
-        html.contains(
-            r#"<details class="out-of-reach"><summary>Tournaments to spectate</summary>"#
-        )
+        html.contains(&format!(
+            r#"<li class="table-row out-of-reach" data-buy-in="{deep}""#
+        )),
+        "a rung past the balance is greyed out in place"
     );
+    assert!(
+        html.contains(r#"<span class="table-short">"#),
+        "an unaffordable rung names the shortfall"
+    );
+    // Nothing is filed away behind a disclosure any more.
+    assert!(!html.contains("<details class=\"out-of-reach\""));
     assert!(html.contains("Pricey tournament"));
     for tier in two_seven::cash::TIERS {
-        let name = two_seven::cash::name(tier);
-        assert!(html.contains(&name), "{name} should be visible");
+        assert!(
+            html.contains(&format!(r#"data-buy-in="{tier}""#)),
+            "the {tier} rung should be visible"
+        );
     }
 }
 
