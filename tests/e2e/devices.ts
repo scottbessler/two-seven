@@ -107,3 +107,82 @@ export async function useDevice(page: Page, device: EmulatedDevice): Promise<voi
   await page.setViewportSize(device.viewport);
   await applyDevice(page, device);
 }
+
+/** One control that reaches into a device inset band, and which edges it hit. */
+export type ChromeIntrusion = { selector: string; text: string; box: [number, number, number, number]; sides: string[] };
+
+/**
+ * Every interactive control whose box reaches into an inset band — under the
+ * notch, behind the Dynamic Island in landscape, or below the home indicator.
+ *
+ * This is the assertion an image baseline cannot make and a scroll check misses
+ * entirely: a landscape blackjack table with no side gutter neither scrolls nor
+ * overflows, it just puts `Bet $25` behind a black pill. The device chrome that
+ * `applyDevice` paints is excluded — it is decoration standing in for hardware,
+ * not part of the page.
+ *
+ * Only meaningful on a surface that fits the viewport. A scrolling page always
+ * has something mid-list under the indicator; what it owes is a gutter, which
+ * `readPageGutters` reports instead.
+ */
+export async function readChromeIntrusions(page: Page, device: EmulatedDevice): Promise<ChromeIntrusion[]> {
+  return page.evaluate((insets: SafeAreaInsets) => {
+    const doc = document.documentElement;
+    const { clientWidth: vw, clientHeight: vh } = doc;
+    const intrusions = [];
+    for (const element of document.querySelectorAll("button,a[href],summary,input,select")) {
+      if (element.closest(".e2e-device-chrome")) continue;
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      if (box.bottom <= 0 || box.top >= vh || box.right <= 0 || box.left >= vw) continue;
+      const sides = [];
+      if (insets.top > 0 && box.top < insets.top) sides.push("top");
+      if (insets.right > 0 && box.right > vw - insets.right) sides.push("right");
+      if (insets.bottom > 0 && box.bottom > vh - insets.bottom) sides.push("bottom");
+      if (insets.left > 0 && box.left < insets.left) sides.push("left");
+      if (sides.length === 0) continue;
+      intrusions.push({
+        selector: `${element.tagName.toLowerCase()}${[...element.classList].map((name) => `.${name}`).join("")}`,
+        text: (element.textContent || "").trim().slice(0, 24),
+        box: [Math.round(box.x), Math.round(box.y), Math.round(box.width), Math.round(box.height)],
+        sides,
+      });
+    }
+    return intrusions;
+  }, device.insets);
+}
+
+/** The gutter `.page` reserves on each edge, in whole pixels: top, right, bottom, left. */
+export async function readPageGutters(page: Page): Promise<[number, number, number, number]> {
+  return page.locator(".page").evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return ["Top", "Right", "Bottom", "Left"].map((side) => Math.round(Number.parseFloat(styles[`padding${side}`]))) as [number, number, number, number];
+  });
+}
+
+/**
+ * Elements that clip their own content — a shell taller than the room it has.
+ *
+ * A box nobody can see is not one of them: the visually-hidden pattern is a 1x1
+ * transparent box whose whole job is to clip the text a screen reader reads, so
+ * anything that small, that transparent, or that clip-pathed is skipped rather
+ * than reported as a layout fault.
+ */
+export async function readClippedBoxes(page: Page): Promise<{ selector: string; overflow: [number, number] }[]> {
+  return page.evaluate(() => {
+    const clipped = [];
+    for (const element of document.querySelectorAll("body *")) {
+      if (element.closest(".e2e-device-chrome")) continue;
+      const over: [number, number] = [element.scrollWidth - element.clientWidth, element.scrollHeight - element.clientHeight];
+      if (over[0] <= 1 && over[1] <= 1) continue;
+      const styles = getComputedStyle(element);
+      if (styles.overflow === "visible") continue;
+      if (styles.visibility === "hidden" || styles.display === "none" || Number.parseFloat(styles.opacity) === 0) continue;
+      if (styles.clipPath !== "none") continue;
+      const box = element.getBoundingClientRect();
+      if (box.width <= 2 || box.height <= 2) continue;
+      clipped.push({ selector: `${element.tagName.toLowerCase()}${[...element.classList].map((name) => `.${name}`).join("")}`, overflow: over });
+    }
+    return clipped;
+  });
+}

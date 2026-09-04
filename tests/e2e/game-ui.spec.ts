@@ -1,4 +1,4 @@
-import { IPHONE_LANDSCAPE, IPHONE_MAX_PORTRAIT, IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, useDevice } from "./devices";
+import { IPHONE_LANDSCAPE, IPHONE_MAX_PORTRAIT, IPHONE_PORTRAIT, IPHONE_SE_PORTRAIT, readChromeIntrusions, readClippedBoxes, useDevice } from "./devices";
 import { expect, test } from "./fixtures";
 import { expectLayout } from "./layout";
 import { expectImage } from "./rendering";
@@ -140,6 +140,44 @@ const tournamentCompleteRailState = {
     ],
   },
 };
+
+/**
+ * Every opponent seat's wager chip, and whether anything is standing on it.
+ *
+ * V45 wants the chip fully visible, and the seat gives it a strip of its own
+ * below the cards -- but the cards carry a `z-index` and a revealed hand is
+ * taller than a face-down one, so at a showdown they can grow down over the
+ * strip and paint ALL IN out. The hit test is the part that catches that; the
+ * boxes alone only catch the chip being pushed out of the seat.
+ */
+async function readOpponentWagers(page) {
+  return page.locator(".other-seats").evaluate((rail) => [...rail.querySelectorAll(".seat")].map((seat) => {
+    const cardNode = seat.querySelector(".seat-cards,.seat-card-state");
+    const wagerNode = seat.querySelector(".seat-wager:not(.no-wager)");
+    const cards = cardNode?.getBoundingClientRect();
+    const wager = wagerNode?.getBoundingClientRect();
+    if (!cards || !wager || !wagerNode) return { ok: true };
+    // A compact seat hands its strip to the AHEAD/WINNER badge and hides the
+    // chip outright; nothing can be standing on what is not being shown.
+    if (getComputedStyle(wagerNode).visibility === "hidden") return { ok: true };
+    const overlaps = wager.left < cards.right && wager.right > cards.left && wager.top < cards.bottom && wager.bottom > cards.top;
+    const topmost = document.elementFromPoint(wager.left + wager.width / 2, wager.top + wager.height / 2);
+    const coveredByCard = Boolean(topmost?.closest?.(".seat-cards,.playing-card"));
+    const coveredByControl = Boolean(topmost?.closest?.(".decision-area,.table-controls,.game-log"));
+    return {
+      name: seat.querySelector(".player-info strong")?.textContent,
+      ok: !overlaps && wager.top >= cards.bottom && wager.width > 0 && wager.height > 0 && !coveredByCard && !coveredByControl,
+      overlaps,
+      coveredBy: topmost?.className || topmost?.tagName || null,
+      coveredByCard,
+      coveredByControl,
+      cardsBottom: cards.bottom,
+      wagerTop: wager.top,
+      wagerBottom: wager.bottom,
+    };
+  }));
+}
+
 
 async function mountTable(page, state, sseEvents = []) {
   await page.unroute("**/tables/mock/state");
@@ -307,15 +345,19 @@ test("re-ups from the lobby without a manual refresh", async ({ page }) => {
   await signIn(page, "reuplobby");
   await page.evaluate(() => document.documentElement.setAttribute("data-still-loaded", "yes"));
   await expect(page.locator("#bank-balance")).toHaveText("$0");
-  // Rows are keyed by buy-in in cents: the $200 rung and the $2,000 one.
-  const cheapest = page.locator('li[data-buy-in="20000"]');
-  const dear = page.locator('li[data-buy-in="200000"]');
+  // Rows are keyed by buy-in in cents: the $200 rung and the $2,000 one. The
+  // key is unique to the cash ladder, not to the page -- a tournament at the
+  // same buy-in is a second row with the same key -- so scope to the ladder.
+  const ladder = page.locator(".table-list", { has: page.getByRole("heading", { name: "Cash tables" }) });
+  const cheapest = ladder.locator('li[data-buy-in="20000"]');
+  const dear = ladder.locator('li[data-buy-in="200000"]');
   // The cheap rungs lend the shortfall, so a broke player is not shut out of
   // them; the deeper games stay in the ladder, greyed out, and say how far off
   // they are.
   await expect(cheapest).toHaveCount(1);
   await expect(cheapest).not.toHaveClass(/out-of-reach/);
   await expect(cheapest).toContainText("$200");
+  await expect(dear).toHaveCount(1);
   await expect(dear).toHaveClass(/out-of-reach/);
   await expect(dear.locator(".table-short")).toHaveText("$2,000 short");
   // Mark the sections that are on the page now, so a re-render is visible even
@@ -525,28 +567,7 @@ test("shows live hand cues and event log", async ({ page }) => {
     && viewerWager.y < viewerCards.y + viewerCards.height
     && viewerWager.y + viewerWager.height > viewerCards.y;
   expect(wagerBehindCards, "V16: viewer cards must not cover the viewer wager").toBe(false);
-  const opponentWagerLayout = await page.locator(".other-seats").evaluate((rail) => [...rail.querySelectorAll(".seat")].map((seat) => {
-    const cardNode = seat.querySelector(".seat-cards,.seat-card-state");
-    const wagerNode = seat.querySelector(".seat-wager:not(.no-wager)");
-    const cards = cardNode?.getBoundingClientRect();
-    const wager = wagerNode?.getBoundingClientRect();
-    if (!cards || !wager || !wagerNode) return { ok: true };
-    const overlaps = wager.left < cards.right && wager.right > cards.left && wager.top < cards.bottom && wager.bottom > cards.top;
-    const topmost = document.elementFromPoint(wager.left + wager.width / 2, wager.top + wager.height / 2);
-    const coveredByCard = Boolean(topmost?.closest?.(".seat-cards,.playing-card"));
-    const coveredByControl = Boolean(topmost?.closest?.(".decision-area,.table-controls,.game-log"));
-    return {
-      name: seat.querySelector(".player-info strong")?.textContent,
-      ok: !overlaps && wager.top >= cards.bottom && wager.width > 0 && wager.height > 0 && !coveredByCard && !coveredByControl,
-      overlaps,
-      coveredBy: topmost?.className || topmost?.tagName || null,
-      coveredByCard,
-      coveredByControl,
-      cardsBottom: cards.bottom,
-      wagerTop: wager.top,
-      wagerBottom: wager.bottom,
-    };
-  }));
+  const opponentWagerLayout = await readOpponentWagers(page);
   expect(opponentWagerLayout.every((seat) => seat.ok), `V44: opponent wagers must sit below cards/folded state and remain visible ${JSON.stringify(opponentWagerLayout)}`).toBe(true);
   await expect(page.locator(".table-stage > .card-settings")).toHaveCount(0);
   const stageStart = await page.locator(".table-stage").evaluate((stage) => {
@@ -1826,6 +1847,22 @@ test("packs the table into a landscape phone without scrolling", async ({ page }
   expect(rail.viewerCardsClipped, `L5: landscape viewer cards must not be clipped ${JSON.stringify(rail)}`).toBe(false);
   expect(rail.stageScrolls, "L4: a landscape table must fit its stage").toBe(false);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
+  // L6/L7 are what L4 could not see. The stage does not scroll when it overflows
+  // the shell -- it just stands taller than the room the shell has, and the
+  // shell's `overflow:hidden` hides the difference: the whole action bar and the
+  // footer sat below the fold for a fortnight while L4 stayed green.
+  const clipped = await readClippedBoxes(page);
+  expect(clipped, "L6: V42 -- no box on a landscape table may clip its own content").toEqual([]);
+  const belowFold = await page.evaluate(() => {
+    const bottom = document.documentElement.clientHeight;
+    return [...document.querySelectorAll(".actions button, .table-controls a, .table-controls button, .seat.viewer")]
+      .map((element) => ({ element, box: element.getBoundingClientRect() }))
+      .filter((entry) => entry.box.bottom > bottom + 1 || entry.box.top < -1)
+      .map((entry) => `${entry.element.tagName.toLowerCase()}.${[...entry.element.classList].join(".")}`);
+  });
+  expect(belowFold, "L7: V42 -- your hand and every control must be on the screen in landscape").toEqual([]);
+  const intrusions = await readChromeIntrusions(page, IPHONE_LANDSCAPE);
+  expect(intrusions, "L8: V54 -- no landscape control may sit behind the Dynamic Island").toEqual([]);
   await expectLayout(page, "landscape-table", TABLE_LAYOUT);
   await expectImage(page, "landscape-table.png", { fullPage: true });
 });
@@ -2105,6 +2142,11 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
   }
   expect(revealLayout.clearsViewer, `V37: odds must not overlap the viewer seat ${JSON.stringify(revealLayout)}`).toBe(true);
   expect(revealLayout.boardGap, `V37: center content must keep a visible viewer gap ${JSON.stringify(revealLayout)}`).toBeGreaterThanOrEqual(12);
+  // The state that showed the bug: an all-in seat, face up, and ahead. Its
+  // revealed cards are the tallest a compact tile ever holds, and they were
+  // growing down over the ALL IN chip in the strip below them (V45).
+  const shoveWagers = await readOpponentWagers(page);
+  expect(shoveWagers.every((seat) => seat.ok), `V45: an all-in seat's wager must survive its own revealed cards ${JSON.stringify(shoveWagers)}`).toBe(true);
   await expectLayout(page, "allin-reveal-table", TABLE_LAYOUT);
   await expectImage(page, "allin-reveal-table.png", { fullPage: true });
   // Nothing may give the ending away while the board is still coming: there is

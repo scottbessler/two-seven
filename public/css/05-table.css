@@ -1,8 +1,8 @@
 .seat{display:grid;gap:.2rem;text-align:center;padding:.55rem;border:1px solid var(--line-3);border-radius:var(--radius-control);background:var(--surface-deep-95);min-width:6.6rem;min-height:4.2rem;color:var(--ink)}.seat :where(b:not(.seat-cards *)){color:var(--accent)}.seat :where(span:not(.seat-cards,.seat-cards *)){color:var(--muted);font-size:var(--text-small)}
 .actions:not(.blackjack-actions){display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}.actions:not(.blackjack-actions) input{max-width:10rem}.table-controls{display:flex;align-items:center;gap:.5rem}.loading{text-align:center;color:var(--muted)}
-.page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100dvh;overflow:hidden;padding:.6rem 0 1rem}
+.page:has(.table-shell){display:flex;flex-direction:column;max-width:1180px;height:100vh;overflow:hidden;padding:.6rem 0 1rem}
 .page:has(.table-shell) .site-header,.page:has(.table-shell) .table-shell{padding-inline:var(--gutter-left) var(--gutter-right)}
-html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
+html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .page:has(.table-shell)>#table-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .page:has(.table-shell) .site-header{height:2.75rem;margin-bottom:.25rem;white-space:nowrap}
 .header-context{position:relative;display:inline-flex;align-items:center;gap:.25rem;min-width:0;max-width:min(42vw,34rem);overflow:visible;color:var(--muted);font-size:var(--text-body);font-weight:600}
@@ -102,7 +102,12 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .seat.viewer .viewer-summary{grid-column:2;grid-row:1;display:grid;justify-items:start;gap:var(--viewer-panel-rows);width:var(--viewer-summary-w);min-width:0;max-width:100%;text-align:left}
 .seat.viewer .viewer-summary .player-info{max-width:100%;color:var(--muted);font-size:var(--text-label);font-weight:var(--weight-label);letter-spacing:.06em;text-transform:uppercase}
 .seat.viewer .viewer-summary .player-info strong{color:inherit}
-.seat.viewer .seat-stack{max-width:100%;overflow:hidden;color:var(--ink);font-size:var(--text-title);text-overflow:ellipsis;white-space:nowrap}
+/* The clip here is for the ellipsis, not a height cap: the compact tiers set
+   `line-height:1` on the seat, and this is the one line inside it big enough
+   for that to slice its own ascenders (V45). A clip margin lets the glyphs
+   overhang the line box without buying the row a taller one -- the shortest
+   phone has no height to spare for it. */
+.seat.viewer .seat-stack{max-width:100%;overflow:clip;overflow-clip-margin:2px;color:var(--ink);font-size:var(--text-title);text-overflow:ellipsis;white-space:nowrap}
 .seat.viewer .seat-wager{margin:0}
 .seat.viewer .viewer-summary>*{justify-self:start;margin-inline:0}
 /* The seat that held cards under three stacked text rows now holds them beside
@@ -220,7 +225,10 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .table-controls button,.table-controls .table-command-link{background:var(--felt-800);color:var(--muted)}
 .table-controls .emote-controls{display:flex;gap:.2rem;margin-right:auto}
-.table-controls .emote-controls button{display:grid;place-items:center;width:2rem;min-width:2rem;height:2rem;min-height:2rem;padding:0;border-color:var(--line-2);font-family:system-ui,sans-serif;font-size:var(--text-title);line-height:1}
+/* The emote taps share the footer row with History and Leave, so they answer to
+   the same control tier those do -- a square one, but never the smaller of the
+   two targets on a surface where the only pointer is a finger (V46). */
+.table-controls .emote-controls button{--emote-size:2rem;display:grid;place-items:center;width:var(--emote-size);min-width:var(--emote-size);height:var(--emote-size);min-height:var(--emote-size);padding:0;border-color:var(--line-2);font-family:system-ui,sans-serif;font-size:var(--text-title);line-height:1}
 .table-config-button{display:grid;place-items:center;flex:0 0 auto;width:2rem;height:2rem;min-height:0;padding:0;border-color:var(--line-2);background:var(--felt-800);color:var(--muted);font-size:var(--text-action)}
 /* The bot control rides alongside the buy-in/leave command as a dialog. */
 .table-controls .seat-bot{display:contents}
@@ -247,8 +255,6 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
 }
 @media(min-width:641px){
   .page:has(.table-shell)>#table-app{overflow:hidden}
-  .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
-  .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.65rem + var(--viewer-stage-extra,0rem))}
   .decision-area{--decision-pad-y:.45rem;--decision-pad-x:.45rem;min-height:3.4rem;border-top:1px solid var(--line-legacy);border-bottom:1px solid var(--line-legacy);background:var(--surface-deep-44)}
   .table-shell .actions{gap:.4rem;width:100%}
   .table-shell .actions button{min-width:0}
@@ -256,7 +262,13 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .game-log ol{grid-template-columns:1fr;align-content:start}
   .game-log li{grid-template-columns:4.25rem 1fr}
 }
+/* The tablet stage is a fixed block of height. A landscape phone is wider than
+   641px too, so this has to be gated on the height it assumes as well: with the
+   height alone, a 393pt-tall phone pinned a 522pt stage inside a 321pt shell and
+   the hand, the action bar and the footer were all clipped below the fold. */
 @media(min-width:641px) and (min-height:521px){
+  .table-stage{height:calc(32.6rem + var(--viewer-stage-extra,0rem));flex:0 0 auto}
+  .table-stage:has(.showdown-result,.showdown-advance){height:calc(33.65rem + var(--viewer-stage-extra,0rem))}
   .viewer-seats .seat:has(.seat-corner-badges i) .player-info{max-width:calc(100% - 3rem);justify-self:start}
 }
 @media(min-width:641px) and (max-width:1023px){
@@ -289,7 +301,10 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(12cqh / var(--card-aspect) * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5),calc(6rem * var(--card-size-scale,1)))}
   .table-stage .seat-cards .playing-card{--seat-card-cap:3.25rem;--seat-card-share:45cqw;--card-w:min(calc(48cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-stage .seat-cards.revealed .playing-card{--seat-card-cap:4rem;--seat-card-share:62cqw;--card-w:min(calc(54cqh / var(--card-aspect) * var(--card-size-scale,1)),var(--seat-card-share),calc(var(--seat-card-cap) * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
-  .table-stage .other-seats .seat-cards.revealed .playing-card{--card-w:min(calc(70cqh / var(--card-aspect)),var(--seat-card-share),var(--seat-card-cap))}
+  /* The tile keeps a strip below the cards for the wager chip, and a revealed
+     hand is the tallest thing it ever holds: at 70cqh an all-in seat's cards
+     grew down over its own ALL IN (V45). 63cqh is what the strip leaves. */
+  .table-stage .other-seats .seat-cards.revealed .playing-card{--card-w:min(calc(63cqh / var(--card-aspect)),var(--seat-card-share),var(--seat-card-cap))}
   /* The panel is as tall as the cards plus its own padding now: the 3rem that
      allowed for name, stack and wager stacked under them is spent sideways. */
   .table-stage :is(.viewer-seats .seat,.card-config-preview){height:min(calc(18cqh * var(--card-size-scale,1) + var(--viewer-panel-chrome)),calc(5.8rem * var(--card-aspect) * var(--card-size-scale,1) + var(--viewer-panel-chrome)),22rem)}
@@ -301,12 +316,12 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage :is(.seat.viewer .seat-cards,.card-config-preview) .playing-card{--card-w:min(calc(62cqh / var(--card-aspect) * var(--card-size-scale,1)),calc(5.8rem * var(--card-size-scale,1)));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:.15rem}
 }
 @media (max-width:640px),(max-height:520px){
-  html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden;overscroll-behavior:none}
+  html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden;overscroll-behavior:none}
   body:has(.table-shell){padding:0}
   /* The audit's phone panel: 10px 12px inside, 12px between the hand and the
      figures beside it, 4px between the two cards. */
   .table-shell{--viewer-panel-pad-y:.625rem;--viewer-panel-pad-x:.75rem;--viewer-panel-gap:1rem;--viewer-panel-rows:.125rem;--viewer-card-gap:.25rem}
-  .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 39.625rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);--gutter-left:calc(.45rem + var(--safe-left));--gutter-right:calc(.45rem + var(--safe-right));display:flex;flex-direction:column;gap:.25rem;height:100dvh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) 0 calc(.25rem + var(--safe-bottom))}
+  .page:has(.table-shell){--viewer-card-h-fit-mobile:min(var(--viewer-card-h-mobile),max(3rem,calc(var(--usable-h) - 39.625rem)));--viewer-card-w-fit-mobile:calc(var(--viewer-card-h-fit-mobile)*.712);--gutter-left:calc(.45rem + var(--safe-left));--gutter-right:calc(.45rem + var(--safe-right));display:flex;flex-direction:column;gap:.25rem;height:100vh;overflow:hidden;padding:calc(.25rem + var(--safe-top)) 0 calc(.25rem + var(--safe-bottom))}
   .page:has(.table-shell) .site-header{flex:0 0 auto;height:2.55rem;margin-bottom:0;padding-top:0}
   .page:has(.table-shell) .brand{font-size:var(--text-body)}
   .header-context{font-size:var(--text-label)}
@@ -386,6 +401,10 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-shell .actions .capped-call .action-prefix{display:inline}
   .showdown-advance button,.showdown-advance.spectator{min-height:var(--control-h);padding:.35rem .15rem;font-size:var(--text-small);line-height:1.1}
   .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){height:var(--control-h);min-height:var(--control-h);padding:.45rem .25rem;font-size:var(--text-action)}
+  /* A square target at the dense tier's height: the emotes sit on the footer
+     row with History and Leave and must be as tappable, but the shortest phone
+     has no room to spend on the taller tier (V46). */
+  .table-controls .emote-controls button{--emote-size:var(--control-h-compact)}
   .game-log{flex:1 1 5rem;height:auto;min-height:3.5rem;grid-template-columns:1fr;margin:0;padding:.35rem 0}
   .game-log li{font-size:var(--text-label)}
   .table-controls{flex-wrap:wrap;margin-top:auto;padding-bottom:0}
@@ -448,8 +467,13 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage{flex:0 0 auto;gap:0}
   .table-stage .seats.viewer-seats{margin-top:0}
   .table-stage .seats .seat{height:auto;grid-template-rows:auto auto minmax(2.65rem,auto) auto auto;min-height:4.55rem;gap:0;padding:.1rem .2rem;overflow:visible}
-  .table-stage .other-seats .seat{grid-template-rows:auto auto minmax(1.8rem,auto);height:5.8rem;min-height:5.8rem;padding-bottom:1.15rem}
-  .table-stage .seats .seat.viewer{height:auto;min-height:calc(min(3.2rem,(var(--usable-h) - 16.5rem)/3) + 3.2rem)}
+  .table-stage .other-seats .seat{grid-template-rows:auto auto minmax(1.8rem,auto);height:5.25rem;min-height:5.25rem;padding-bottom:1.2rem}
+  .table-stage .seats .seat.viewer{height:auto;min-height:calc(min(3.2rem,(var(--usable-h) - 17.75rem)/3) + 3.2rem)}
+  /* Both seat rows are fixed, so the felt is the one row that can give: a
+     landscape phone's budget has to close against whatever the footer costs
+     today, not against the constant it cost when these numbers were picked. */
+  .table-stage{flex:0 1 auto}
+  .table-stage>.felt{flex:0 1 auto;min-height:3.4rem}
   .decision-area{--decision-pad-y:.2rem;--decision-pad-x:.15rem;min-height:2.35rem}
   .table-stage .seats{display:flex;flex-wrap:wrap;align-content:flex-end;justify-content:center;gap:.25rem}
   .table-stage .seats .seat{flex:1 1 4.6rem}
@@ -457,11 +481,16 @@ html:has(.table-shell),body:has(.table-shell){height:100dvh;overflow:hidden}
   .table-stage .board{min-height:2.7rem}
   .table-shell .actions button,.showdown-advance button,.showdown-advance.spectator{min-height:var(--control-h-compact);padding:.3rem .15rem;font-size:var(--text-small);line-height:1.1}
   .table-controls :is(.table-history-link,.table-command-link,.table-command,.seat-bot button){height:var(--control-h-compact);min-height:var(--control-h-compact);padding:.3rem .25rem;font-size:var(--text-small)}
+  .table-controls .emote-controls button{--emote-size:var(--control-h-compact)}
   /* Inline-size containers have no query block size; keep this height guard viewport-based. */
   .table-stage .table-center>.board .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100cqw - 3 * var(--table-board-gap))/4),7svh);--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
   .table-stage .table-center>.board:has(.playing-card:nth-child(5)) .playing-card{--card-w:min(calc(6.4rem * var(--card-size-scale,1)),calc((100cqw - 4 * var(--table-board-gap))/5),7svh)}
-  .table-metrics{gap:.25rem}
-  .table-metrics span{min-width:4.4rem;padding:.05rem .25rem;line-height:1}
+  /* Landscape has width to spare and no height to spare, so the metrics column
+     is wide enough for `CURRENT BET` to stay on one line: wrapped, it stood
+     taller than the felt and pushed its own figure under the viewer's panel. */
+  .table-stage .table-center{grid-template-columns:7.6rem minmax(0,1fr) 7.6rem}
+  .table-metrics{gap:.2rem}
+  .table-metrics span{min-width:0;padding:.05rem .3rem;line-height:1.1;white-space:nowrap}
   .table-metrics small{font-size:var(--text-label);line-height:1}
   .table-metrics b{font-size:var(--text-label);line-height:1}
   .table-stage .felt{margin-block:auto}

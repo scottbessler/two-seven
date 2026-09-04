@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import type { Page } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
 
 let account = 0;
 async function signIn(page, name: string) {
@@ -15,12 +15,13 @@ async function tableUrl(page, index = 0) {
   await page.goto("/blackjack");
   return page.locator('a[href^="/blackjack/tables/"]').nth(index).getAttribute("href");
 }
-async function shot(page, name: string) {
-  const suffix = (await page.evaluate(() => innerWidth)) < 700 ? "mobile" : "desktop";
-  await page.screenshot({ path: `/home/ubuntu/shots/blackjack-${suffix}-${name}.png`, fullPage: true });
+// A look at the table for whoever is reading the run, filed with the rest of
+// the run's artifacts rather than at a path from the machine it was written on.
+async function shot(page, name: string, testInfo: TestInfo) {
+  await page.screenshot({ path: testInfo.outputPath(`blackjack-${name}.png`), fullPage: true });
 }
 
-test("blackjack lobby lists all four fixed tiers", async ({ page }) => {
+test("blackjack lobby lists all four fixed tiers", async ({ page }, testInfo) => {
   await signIn(page, "Lobby");
   await page.goto("/blackjack");
   /* oxlint-disable no-await-in-loop */
@@ -29,7 +30,7 @@ test("blackjack lobby lists all four fixed tiers", async ({ page }) => {
   }
   /* oxlint-enable no-await-in-loop */
   await expect(page.locator('a[href^="/blackjack/tables/"]')).toHaveCount(4);
-  await shot(page, "lobby");
+  await shot(page, "lobby", testInfo);
 });
 
 // The four blackjack tables are fixed and shared by every signed-in user, so
@@ -53,7 +54,7 @@ async function finishRound(page: Page, url: string): Promise<void> {
 const tableTests = test.extend({});
 tableTests.skip(({ isMobile }) => Boolean(isMobile), "shared tables are exercised once, on desktop");
 
-tableTests("a solo player sees fixed wagers and deals immediately", async ({ page }) => {
+tableTests("a solo player sees fixed wagers and deals immediately", async ({ page }, testInfo) => {
   await signIn(page, "Solo");
   await page.request.post("/api/bank", { data: {} });
   const url = await tableUrl(page, 0);
@@ -61,7 +62,7 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   await page.getByRole("button", { name: /Sit down · \$1,000/ }).click();
   await expect(page.getByText("your chips")).toBeVisible();
   await expect(page.locator(".turn-clock")).toHaveCount(0);
-  await shot(page, "betting");
+  await shot(page, "betting", testInfo);
   /* oxlint-disable no-await-in-loop */
   for (const label of ["Bet $25", "Bet $50", "Bet $75", "Bet $100"]) await expect(page.getByRole("button", { name: label })).toBeVisible();
   /* oxlint-enable no-await-in-loop */
@@ -81,7 +82,7 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   await page.getByRole("button", { name: "Leave table" }).click();
 });
 
-tableTests("two players share a table and the unbet player sits out", async ({ browser }) => {
+tableTests("two players share a table and the unbet player sits out", async ({ browser }, testInfo) => {
   const first = await browser.newPage();
   const second = await browser.newPage();
   await signIn(first, "Alice");
@@ -95,7 +96,7 @@ tableTests("two players share a table and the unbet player sits out", async ({ b
   await expect(second.locator(".blackjack-seat").filter({ hasText: "Alice" }).first()).toBeVisible();
   await first.getByRole("button", { name: "Bet $25" }).click();
   await expect(second.locator(".turn-clock")).toBeVisible();
-  await shot(second, "mid-round-two-player");
+  await shot(second, "mid-round-two-player", testInfo);
   const stateUrl = `${url}/state`;
   await expect.poll(async () => {
     const response = await second.request.get(stateUrl);
@@ -121,15 +122,8 @@ tableTests("leaving a blackjack table returns to the lobby", async ({ page }) =>
   await expect(page.locator(".lobby")).toBeVisible();
 });
 
-tableTests("blackjack mobile keeps the shared table inside the viewport", async ({ page }) => {
-  await page.setViewportSize({ width: 412, height: 915 });
-  await signIn(page, "Mobile");
-  await page.request.post("/api/bank", { data: {} });
-  const url = await tableUrl(page, 0);
-  await page.goto(url!);
-  await page.getByRole("button", { name: /Sit down/ }).click();
-  await expect(page.locator(".blackjack-table")).toBeVisible();
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
-  expect(overflow).toBe(false);
-  await page.getByRole("button", { name: "Leave table" }).click();
-});
+// The phone's own layout is measured in `safe-area.spec.ts`, against the
+// iPhone this ships to and its real insets. It used to be checked here on a
+// 412x915 viewport with every inset at zero -- the notchless phone `B9` was
+// recorded for -- and only for sideways scroll, which a clipped shell never
+// causes.

@@ -1,9 +1,12 @@
 *{box-sizing:border-box}
 html{background:var(--felt)}
-body{margin:0;background:radial-gradient(circle at top,var(--felt-gradient),var(--felt));color:var(--ink);font:16px var(--font-ui);letter-spacing:var(--tracking-ui);min-height:100dvh}
+body{margin:0;background:radial-gradient(circle at top,var(--felt-gradient),var(--felt));color:var(--ink);font:16px var(--font-ui);letter-spacing:var(--tracking-ui);min-height:100vh}
 /* The page gutter is a token so a full-width band -- the table's action bar --
-   can pull back out of it by exactly as much as the page put in. */
-.page{--gutter-left:1rem;--gutter-right:1rem;max-width:1100px;margin:0 auto;padding:1rem var(--gutter-right) 1rem var(--gutter-left)}
+   can pull back out of it by exactly as much as the page put in. The device's
+   own insets live in the gutter, so every page clears the Dynamic Island in
+   landscape and the home indicator below without each one remembering to; a
+   shell that wants a tighter budget overrides the tokens, not the rule. */
+.page{--gutter-left:calc(1rem + var(--safe-left));--gutter-right:calc(1rem + var(--safe-right));max-width:1100px;margin:0 auto;padding:1rem var(--gutter-right) calc(1rem + var(--safe-bottom)) var(--gutter-left)}
 .site-header{padding-top:var(--safe-top);position:relative;display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1rem}
 .brand{font-weight:700;color:var(--accent);text-decoration:none;font-size:var(--text-title)}
 .bank-widget{position:relative;display:block;border:0;background:none;color:var(--muted);padding:0}
