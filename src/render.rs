@@ -1,4 +1,4 @@
-use crate::money::{Cents, format_cents};
+use crate::money::{Cents, format_cents, format_dollars};
 use std::sync::OnceLock;
 use uuid::Uuid;
 static VERSION: OnceLock<String> = OnceLock::new();
@@ -116,13 +116,13 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
     }
 }
 
-pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], _balance: Cents) -> String {
+pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
     layout(
         "Lobby",
         &format!(
             "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/player\">Player</a> · <a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
             escape(name),
-            lobby_table_list(tables, true),
+            lobby_table_list(tables, balance, true),
             sign_out()
         ),
         "",
@@ -1165,23 +1165,59 @@ fn format_duration_ms(ms: u64) -> String {
     }
 }
 
-pub fn lobby(tables: &[crate::view::LobbyTableView], _balance: Cents) -> String {
+pub fn lobby(tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
     layout(
         "Lobby",
         &format!(
             "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
-            lobby_table_list(tables, false)
+            lobby_table_list(tables, balance, false)
         ),
         "",
     )
 }
 
-fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool) -> String {
-    let row = |table: &crate::view::LobbyTableView| {
-        let detail = if let Some(tournament) = &table.tournament {
+/// The seat pips: one dot per chair, filled for a person and hollow for one of
+/// the house regulars. The count of people is the only number on the row that
+/// moves, so it is the one drawn rather than spelled out.
+fn seat_pips(table: &crate::view::LobbyTableView) -> String {
+    let people = table.humans;
+    let house = table.occupied.saturating_sub(people);
+    let empty = table.max_seats.saturating_sub(table.occupied);
+    let mut pips = String::new();
+    for index in 0..people {
+        // Your own chair reads gold, so you can find yourself without reading.
+        let yours = table.your_seat.is_some() && index == 0;
+        pips.push_str(if yours {
+            "<i class=\"pip pip-you\"></i>"
+        } else {
+            "<i class=\"pip pip-human\"></i>"
+        });
+    }
+    for _ in 0..house {
+        pips.push_str("<i class=\"pip pip-house\"></i>");
+    }
+    for _ in 0..empty {
+        pips.push_str("<i class=\"pip\"></i>");
+    }
+    let label = format!("{} of {} seats taken by people", people, table.max_seats);
+    format!("<span class=\"pips\" role=\"img\" aria-label=\"{label}\">{pips}</span>")
+}
+
+/// One rung of the ladder. The buy-in is the name -- it is what decides whether
+/// the table is open to you, and what the list is sorted by -- with the blinds
+/// and the house it seats on a quieter second line. A table above your balance
+/// keeps its place in the ladder and names the shortfall instead of hiding.
+fn lobby_row(table: &crate::view::LobbyTableView, balance: Cents) -> String {
+    // A cash rung is named by its buy-in: the name would otherwise repeat the
+    // stakes printed right under it, and the buy-in is what the list sorts by.
+    // A tournament keeps the name its player gave it -- two of them can share a
+    // rung, and the name is the only thing telling them apart.
+    let (headline, detail) = match &table.tournament {
+        Some(tournament) => (
+            table.name.clone(),
             format!(
-                "buy-in {} · {} · {}/{} seats",
-                format_cents(tournament.buy_in),
+                "{} · {} · {}/{} registered",
+                format_dollars(tournament.buy_in),
                 if tournament.registered == tournament.seat_count {
                     "running"
                 } else {
@@ -1189,86 +1225,152 @@ fn lobby_table_list(tables: &[crate::view::LobbyTableView], include_yours: bool)
                 },
                 tournament.registered,
                 tournament.seat_count
+            ),
+        ),
+        None => (
+            format_dollars(table.buy_in),
+            match crate::cash::house_style(table.buy_in) {
+                Some(style) => format!("{} · {style}", stakes_short(table.stakes)),
+                None => stakes_short(table.stakes),
+            },
+        ),
+    };
+    // Out of reach is the one state that replaces the seats: what you want to
+    // know about a table you cannot sit at is how far off it is.
+    let status = if table.affordable {
+        let chip = if table.your_seat.is_some() {
+            "<b class=\"table-chip table-chip-you\">Your seat</b>".to_string()
+        } else if table.humans > 0 {
+            format!(
+                "<b class=\"table-chip table-chip-live\">{}</b>",
+                people_playing(table.humans)
             )
         } else {
+            String::new()
+        };
+        format!("{chip}{}", seat_pips(table))
+    } else {
+        let chip = if table.humans > 0 {
             format!(
-                "{} buy-in · {} · {} · {}",
-                format_cents(table.buy_in),
-                table.stakes,
-                match table.humans {
-                    0 => "no humans".to_string(),
-                    1 => "1 human".to_string(),
-                    count => format!("{count} humans"),
-                },
-                format_args!("{}/{} seats", table.occupied, table.max_seats)
+                "<b class=\"table-chip table-chip-live\">{}</b>",
+                people_playing(table.humans)
             )
+        } else {
+            String::new()
         };
         format!(
-            "<li><a href=\"/tables/{}\">{}</a><span>{}</span>{}</li>",
-            table.id,
-            escape(&table.name),
-            detail,
-            if table.your_seat.is_some() {
-                " <b>Your seat</b>"
-            } else {
-                ""
-            }
+            "{chip}<span class=\"table-short\">{} short</span>",
+            format_dollars((table.buy_in - balance).max(0))
         )
     };
-    let section = |title: &str, rows: &str, locked_title: &str, locked: &str, empty: &str| {
+    format!(
+        "<li class=\"table-row{}{}\" data-buy-in=\"{}\"><a href=\"/tables/{}\"><b class=\"table-stake\">{}</b><span class=\"table-detail\">{}</span></a><span class=\"table-status\">{}</span></li>",
+        if table.humans > 0 {
+            " table-row-live"
+        } else {
+            ""
+        },
+        if table.affordable {
+            ""
+        } else {
+            " out-of-reach"
+        },
+        table.buy_in,
+        table.id,
+        escape(&headline),
+        escape(&detail),
+        status
+    )
+}
+
+fn people_playing(humans: usize) -> String {
+    match humans {
+        1 => "1 playing".to_string(),
+        count => format!("{count} playing"),
+    }
+}
+
+/// Stakes without the cents nobody needs: `$1/$2`, not `$1.00/$2.00 no-limit`.
+/// Every cash table is no-limit, so saying so on each row says nothing.
+fn stakes_short(stakes: crate::table::Stakes) -> String {
+    match stakes {
+        crate::table::Stakes::NoLimit {
+            small_blind,
+            big_blind,
+        } => format!(
+            "{}/{}",
+            format_dollars(small_blind),
+            format_dollars(big_blind)
+        ),
+        crate::table::Stakes::Limit { small_bet, big_bet } => format!(
+            "{}/{} limit",
+            format_dollars(small_bet),
+            format_dollars(big_bet)
+        ),
+    }
+}
+
+fn lobby_table_list(
+    tables: &[crate::view::LobbyTableView],
+    balance: Cents,
+    include_yours: bool,
+) -> String {
+    let section = |title: &str, sub: &str, rows: &str, empty: &str| {
         format!(
-            "<section class=\"table-list\"><h2>{title}</h2><ul>{}</ul>{}</section>",
-            if rows.is_empty() { empty } else { rows },
-            if locked.is_empty() {
+            "<section class=\"table-list\"><header><h2>{title}</h2>{}</header><ul>{}</ul></section>",
+            if sub.is_empty() {
                 String::new()
             } else {
-                format!(
-                    "<details class=\"out-of-reach\"><summary>{locked_title}</summary><ul>{locked}</ul></details>"
-                )
-            }
+                format!("<p>{sub}</p>")
+            },
+            if rows.is_empty() { empty } else { rows }
         )
     };
     let mut yours = String::new();
     let mut cash = String::new();
-    let mut cash_locked = String::new();
+    let mut cash_rungs = 0;
     let mut tournaments = String::new();
-    let mut tournaments_locked = String::new();
     for table in tables {
-        let entry = row(table);
+        let entry = lobby_row(table, balance);
+        // A seat of yours is called out at the top, and keeps its rung as well:
+        // a ladder with a hole in it is the thing this list is getting away from.
         if include_yours && table.your_seat.is_some() {
             yours.push_str(&entry);
-        } else if table.tournament.is_some() {
-            if table.affordable {
-                tournaments.push_str(&entry);
-            } else {
-                tournaments_locked.push_str(&entry);
-            }
-        } else if table.affordable {
-            cash.push_str(&entry);
+        }
+        if table.tournament.is_some() {
+            tournaments.push_str(&entry);
         } else {
-            cash_locked.push_str(&entry);
+            cash_rungs += 1;
+            cash.push_str(&entry);
         }
     }
+    let cash_sub = match cash_rungs {
+        0 => String::new(),
+        count => format!("{count} tables · six seats each · no-limit"),
+    };
     format!(
         "{}{}{}",
         if include_yours {
-            section("Your seats", &yours, "", "", "<li>None yet</li>")
+            section(
+                "Your seats",
+                "",
+                &yours,
+                "<li class=\"table-empty\">None yet</li>",
+            )
         } else {
             String::new()
         },
         section(
             "Cash tables",
+            &cash_sub,
             &cash,
-            "Cash tables to spectate",
-            &cash_locked,
-            "<li>No tables yet</li>"
+            "<li class=\"table-empty\">No tables yet</li>"
         ),
         section(
             "Tournaments",
+            "",
             &tournaments,
-            "Tournaments to spectate",
-            &tournaments_locked,
-            "<li>None running · <a href=\"/tables/new\">start one</a></li>"
+            "<li class=\"table-empty\">None running · <a href=\"/tables/new\">start one</a></li>"
         )
     )
 }

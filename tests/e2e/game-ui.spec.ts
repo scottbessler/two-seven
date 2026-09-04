@@ -278,13 +278,17 @@ test("re-ups from the lobby without a manual refresh", async ({ page }) => {
   await signIn(page, "reuplobby");
   await page.evaluate(() => document.documentElement.setAttribute("data-still-loaded", "yes"));
   await expect(page.locator("#bank-balance")).toHaveText("$0");
-  const cheapest = page.locator("li", { hasText: "$1.00/$2.00 No-Limit" });
+  // Rows are keyed by buy-in in cents: the $200 rung and the $2,000 one.
+  const cheapest = page.locator('li[data-buy-in="20000"]');
+  const dear = page.locator('li[data-buy-in="200000"]');
   // The cheap rungs lend the shortfall, so a broke player is not shut out of
-  // them; the deeper games are still filed under out of reach.
-  await expect(page.locator(".out-of-reach").locator(cheapest)).toHaveCount(0);
+  // them; the deeper games stay in the ladder, greyed out, and say how far off
+  // they are.
   await expect(cheapest).toHaveCount(1);
-  const dear = page.locator("li", { hasText: "$10.00/$20.00 No-Limit" });
-  await expect(page.locator(".out-of-reach").locator(dear)).toHaveCount(1);
+  await expect(cheapest).not.toHaveClass(/out-of-reach/);
+  await expect(cheapest).toContainText("$200");
+  await expect(dear).toHaveClass(/out-of-reach/);
+  await expect(dear.locator(".table-short")).toHaveText("$2,000 short");
   // Mark the sections that are on the page now, so a re-render is visible even
   // when the lists it produces read the same.
   await page.evaluate(() => {
@@ -300,7 +304,9 @@ test("re-ups from the lobby without a manual refresh", async ({ page }) => {
   await expect(page.locator(".table-list[data-stale]")).toHaveCount(0);
   await expect(page.locator(".table-list")).not.toHaveCount(0);
   await expect(cheapest).toHaveCount(1);
-  await expect(page.locator(".out-of-reach").locator(dear)).toHaveCount(1);
+  // A $1,000 balance still does not cover the $2,000 rung, but it closes on it.
+  await expect(dear).toHaveClass(/out-of-reach/);
+  await expect(dear.locator(".table-short")).toHaveText("$1,000 short");
   // ...and did so without navigating: a reload would have made all of the above
   // true whether or not the re-up updated anything, and would have dropped the
   // marker with the old document.

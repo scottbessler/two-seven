@@ -31,6 +31,19 @@ pub fn format_cents(value: Cents) -> String {
     format!("{sign}${grouped}.{cents:02}")
 }
 
+/// Money for a heading, with the cents left off when there are none. Every rung
+/// on the cash ladder is a whole dollar, so a lobby that spells all of them out
+/// prints twenty-two `.00`s that carry nothing.
+pub fn format_dollars(value: Cents) -> String {
+    let text = format_cents(value);
+    if value % 100 == 0 {
+        // `format_cents` always ends in `.dd`, and all of it is ASCII.
+        text[..text.len() - 3].to_string()
+    } else {
+        text
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct Money(pub Cents);
 impl fmt::Display for Money {
@@ -46,6 +59,21 @@ mod tests {
     fn formats() {
         assert_eq!(format_cents(123456), "$1,234.56");
         assert_eq!(format_cents(-5), "-$0.05");
+    }
+
+    #[test]
+    fn a_heading_drops_cents_it_does_not_have() {
+        assert_eq!(format_dollars(20_000), "$200");
+        assert_eq!(format_dollars(100_000_000), "$1,000,000");
+        assert_eq!(format_dollars(0), "$0");
+        assert_eq!(format_dollars(-20_000), "-$200");
+        // Anything with real cents keeps them.
+        assert_eq!(format_dollars(123_456), "$1,234.56");
+        assert_eq!(format_dollars(-5), "-$0.05");
+        // The whole cash ladder is whole dollars, which is the point of this.
+        for rung in crate::cash::TIERS {
+            assert!(!format_dollars(rung).contains('.'), "rung {rung}");
+        }
     }
 
     #[test]

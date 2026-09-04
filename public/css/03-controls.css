@@ -25,7 +25,6 @@ button[aria-busy=true]::before{content:"";position:absolute;inset:0;z-index:0;ba
 .admin-panel form{gap:1rem}
 .admin-actions{display:grid;grid-template-columns:1fr;gap:.55rem}
 .admin-message{margin:0;padding:.65rem .8rem;border:1px solid var(--line-3);border-radius:var(--radius-control);background:var(--felt-600);color:var(--gold-hi);font-weight:700}
-.out-of-reach{margin-top:1rem;padding:.6rem .8rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-40)}
 /* Sign out sits apart from the things you came here to do. */
 .sign-out{margin-top:1.5rem;justify-items:start}
 .sign-out-trigger{min-height:0;padding:.3rem .55rem;border:0;background:none;color:var(--muted);font-size:var(--text-small);font-weight:500;text-decoration:underline;text-underline-offset:3px}
