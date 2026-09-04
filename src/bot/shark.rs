@@ -275,6 +275,100 @@ impl SharkParams {
         caller_range_score: 4,
         range_rejection_attempts: 12,
     };
+
+    /// How many sharks the house keeps apart from one another. Every regular
+    /// gets one of the nine (looseness, aggression) pairs below.
+    pub const REGULARS: u8 = 9;
+
+    /// The tuning one of the house sharks plays with. They all run the same
+    /// policy; what separates them is how wide they open and how often they
+    /// put money in without the best hand. Regular 0 is the reference build
+    /// (`DEFAULT`); the rest sit one notch loose or tight, passive or wild.
+    pub fn for_regular(index: u8) -> Self {
+        // Nine regulars over a three-by-three grid, so no two of them share a
+        // pair. Regular 0 lands on (0, 0) and keeps DEFAULT exactly.
+        const AXIS: [i32; 3] = [0, -1, 1];
+        let index = (index % Self::REGULARS) as usize;
+        let looseness = AXIS[index / 3];
+        let aggression = AXIS[index % 3];
+        let mut params = Self::DEFAULT;
+
+        // Looser sharks come in on more hands and defend cheaper; tighter ones
+        // want a full Chen point more everywhere.
+        params.late_open_score -= looseness;
+        params.middle_open_score -= looseness;
+        params.early_open_score -= looseness;
+        params.big_blind_defense_score -= looseness;
+        params.small_blind_defense_score -= looseness;
+        params.other_defense_score -= looseness;
+        params.three_bet_score -= looseness;
+        let odds = f64::from(looseness) * 0.03;
+        params.big_blind_defense_pot_odds += odds;
+        params.small_blind_defense_pot_odds += odds;
+        params.three_bet_pot_odds += odds;
+
+        // Aggressive sharks bet a thinner edge, bluff more and size up; the
+        // passive ones want a clearer edge before they build a pot.
+        let edge = f64::from(aggression) * 0.02;
+        params.heads_up_in_position_edge -= edge;
+        params.heads_up_out_of_position_edge -= edge;
+        params.multiway_in_position_edge -= edge;
+        params.multiway_out_of_position_edge -= edge;
+        params.semi_bluff_edge -= edge / 2.0;
+        params.thin_value_edge_cap += edge;
+        match aggression {
+            1 => {
+                params.semi_bluff_frequency = SharkFrequency {
+                    numerator: 2,
+                    denominator: 5,
+                };
+                params.weak_draw_semi_bluff_frequency = SharkFrequency {
+                    numerator: 2,
+                    denominator: 5,
+                };
+                params.strong_draw_semi_bluff_frequency = SharkFrequency {
+                    numerator: 4,
+                    denominator: 5,
+                };
+                params.probe_frequency = SharkFrequency {
+                    numerator: 1,
+                    denominator: 5,
+                };
+                params.polarized_value_frequency = SharkFrequency {
+                    numerator: 2,
+                    denominator: 3,
+                };
+                params.value_bet_ratio = SharkRatio::new(3, 4);
+                params.draw_semi_bluff_max_opponents = 3;
+            }
+            -1 => {
+                params.semi_bluff_frequency = SharkFrequency {
+                    numerator: 1,
+                    denominator: 6,
+                };
+                params.weak_draw_semi_bluff_frequency = SharkFrequency {
+                    numerator: 1,
+                    denominator: 6,
+                };
+                params.strong_draw_semi_bluff_frequency = SharkFrequency {
+                    numerator: 1,
+                    denominator: 2,
+                };
+                params.probe_frequency = SharkFrequency {
+                    numerator: 1,
+                    denominator: 12,
+                };
+                params.polarized_value_frequency = SharkFrequency {
+                    numerator: 1,
+                    denominator: 3,
+                };
+                params.value_bet_ratio = SharkRatio::new(1, 2);
+                params.draw_semi_bluff_out_of_position = false;
+            }
+            _ => {}
+        }
+        params
+    }
 }
 
 pub fn shark_with(

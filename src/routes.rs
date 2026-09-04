@@ -896,7 +896,7 @@ pub const LEADERBOARD_SIZE: usize = 20;
 
 /// A regular of that kind who is not already sitting at this table.
 fn free_bot(table: &Table, kind: BotKind) -> Option<crate::table::Bot> {
-    (0..crate::table::Bot::PER_KIND)
+    (0..kind.regulars())
         .map(|seat| crate::table::Bot::new(kind, seat))
         .find(|bot| {
             !table
@@ -1716,18 +1716,9 @@ pub async fn bot_table(
         let kind = kind_name
             .parse::<BotKind>()
             .map_err(AppError::bad_request)?;
-        // Seat one of that kind's regulars who is not already at this table.
-        let bot = {
-            let table = s
-                .tables
-                .get(id)
-                .await
-                .ok_or_else(|| AppError::not_found("table not found"))?;
-            let table = table.lock().await;
-            free_bot(&table, kind)
-                .ok_or_else(|| AppError::bad_request("every one of them is already seated"))?
-        };
-        let amount = if tournament {
+        // The stakes decide who the house will sit, at a tournament exactly as
+        // at the cash table on the same rung (§V62).
+        let entry = if tournament {
             let table = s
                 .tables
                 .get(id)
@@ -1741,6 +1732,23 @@ pub async fn bot_table(
         } else {
             buy_in
         };
+        if !crate::cash::kind_allowed(entry, kind) {
+            return Err(AppError::bad_request(format!(
+                "a {kind} does not play for these stakes"
+            )));
+        }
+        // Seat one of that kind's regulars who is not already at this table.
+        let bot = {
+            let table = s
+                .tables
+                .get(id)
+                .await
+                .ok_or_else(|| AppError::not_found("table not found"))?;
+            let table = table.lock().await;
+            free_bot(&table, kind)
+                .ok_or_else(|| AppError::bad_request("every one of them is already seated"))?
+        };
+        let amount = entry;
         s.bank
             .buy_in(
                 AccountOwner::Bot(bot),

@@ -26,6 +26,34 @@ pub const TIERS: [Cents; 11] = [
 
 pub const SEATS: usize = 6;
 
+/// From this rung up the house sits no fish: the stakes are past the point
+/// where a player who calls at random belongs in the game (§V62).
+pub const NO_FISH_FROM: Cents = 100_000;
+
+/// From this rung up the house sits nothing but sharks (§V62).
+pub const SHARKS_ONLY_FROM: Cents = 500_000;
+
+/// Whether a kind may be seated at a game of this size. The rule is the buy-in,
+/// not the ladder index, so a tournament at a rung answers the same as the cash
+/// table at it.
+pub fn kind_allowed(buy_in: Cents, kind: BotKind) -> bool {
+    if buy_in >= SHARKS_ONLY_FROM {
+        return kind == BotKind::Shark;
+    }
+    if buy_in >= NO_FISH_FROM {
+        return kind != BotKind::Fish;
+    }
+    true
+}
+
+/// The kinds that may sit at a game of this size, hardest last.
+pub fn kinds_allowed(buy_in: Cents) -> Vec<BotKind> {
+    BotKind::ALL
+        .into_iter()
+        .filter(|kind| kind_allowed(buy_in, *kind))
+        .collect()
+}
+
 /// A hundredth of the entry is the big blind, so a full stack is a hundred
 /// blinds at every table on the ladder.
 pub fn blinds(buy_in: Cents) -> (Cents, Cents) {
@@ -52,28 +80,39 @@ pub fn name(buy_in: Cents) -> String {
 /// How the house fills a table, as percentages in roster order. The cheap
 /// tables are mostly fish; the dearest is nothing but sharks.
 pub fn bot_mix(tier: usize) -> [u32; 4] {
+    // Below the no-fish rung the game is soft; from there to the shark-only
+    // rung the fish are gone and the sharks take their share; above it there
+    // is nobody else at the table.
     const CHEAPEST: [u32; 4] = [60, 20, 10, 10];
-    const SECOND: [u32; 4] = [30, 30, 20, 20];
-    const DEAREST: [u32; 4] = [0, 0, 0, 100];
-    let last = TIERS.len() - 1;
-    match tier {
-        0 => CHEAPEST,
-        _ => {
-            // Everything above the second tier thins the softer players out at
-            // an even rate; the sharks take whatever the others give up, which
-            // keeps the mix at exactly a hundred.
-            let span = (last - 1) as u32;
-            let step = (tier.min(last) - 1) as u32;
-            let mut mix = DEAREST;
-            let mut given = 0;
-            for index in 0..3 {
-                mix[index] = SECOND[index] - (SECOND[index] * step) / span;
-                given += mix[index];
-            }
-            mix[3] = 100 - given;
-            mix
-        }
+    const NO_FISH: [u32; 4] = [0, 40, 30, 30];
+    const SHARKS_ONLY: [u32; 4] = [0, 0, 0, 100];
+    let buy_in = TIERS[tier.min(TIERS.len() - 1)];
+    if buy_in >= SHARKS_ONLY_FROM {
+        return SHARKS_ONLY;
     }
+    if buy_in < NO_FISH_FROM {
+        return CHEAPEST;
+    }
+    // The rungs between the two thresholds thin the softer players out at an
+    // even rate; the sharks take whatever the others give up, which keeps the
+    // mix at exactly a hundred.
+    let rungs = TIERS
+        .iter()
+        .filter(|entry| **entry >= NO_FISH_FROM && **entry < SHARKS_ONLY_FROM)
+        .count();
+    let step = TIERS[..tier]
+        .iter()
+        .filter(|entry| **entry >= NO_FISH_FROM)
+        .count() as u32;
+    let span = rungs as u32;
+    let mut mix = SHARKS_ONLY;
+    let mut given = 0;
+    for index in 0..3 {
+        mix[index] = NO_FISH[index] - (NO_FISH[index] * step) / span;
+        given += mix[index];
+    }
+    mix[3] = 100 - given;
+    mix
 }
 
 /// The kinds a table draws from, in the order the house seats them: the mix
@@ -138,7 +177,7 @@ pub fn house_bot(table: &Table, tier: usize, seat: usize) -> Option<Bot> {
     let kind = *order.get(seat % order.len())?;
     // Prefer the kind this seat calls for, then anyone else who is free.
     let free = |kind: BotKind| {
-        (0..Bot::PER_KIND)
+        (0..kind.regulars())
             .map(move |index| Bot::new(kind, index))
             .find(|bot| {
                 !table
@@ -147,11 +186,11 @@ pub fn house_bot(table: &Table, tier: usize, seat: usize) -> Option<Bot> {
                     .any(|seat| seat.occupant.as_bot() == Some(*bot))
             })
     };
-    // Five regulars per kind but six seats, so an all-shark table has to take
-    // somebody else for the last chair rather than sit a seat short forever.
+    // The seat's own kind first, then anyone else the rung allows -- never
+    // somebody this table is too dear for (§V62).
     free(kind)
         .or_else(|| order.iter().copied().find_map(free))
-        .or_else(|| BotKind::ALL.into_iter().find_map(free))
+        .or_else(|| kinds_allowed(TIERS[tier]).into_iter().find_map(free))
 }
 
 /// The first empty seat, or a bot's seat when a human needs one and the table
@@ -190,7 +229,7 @@ mod tests {
     #[test]
     fn the_mix_slides_from_mostly_fish_to_all_sharks() {
         assert_eq!(bot_mix(0), [60, 20, 10, 10]);
-        assert_eq!(bot_mix(1), [30, 30, 20, 20]);
+        assert_eq!(bot_mix(1), [0, 40, 30, 30]);
         assert_eq!(bot_mix(TIERS.len() - 1), [0, 0, 0, 100]);
         for tier in 0..TIERS.len() {
             let mix = bot_mix(tier);
@@ -199,6 +238,41 @@ mod tests {
                 mix[3] >= bot_mix(tier.saturating_sub(1))[3],
                 "sharks never thin out as the stakes climb: tier {tier}"
             );
+        }
+    }
+
+    #[test]
+    fn the_stakes_decide_who_the_house_will_sit() {
+        // Fish are gone from the $1,000 rung up; above $5,000 it is sharks only.
+        assert_eq!(kinds_allowed(20_000), BotKind::ALL.to_vec());
+        assert_eq!(
+            kinds_allowed(NO_FISH_FROM),
+            vec![BotKind::Rock, BotKind::Grinder, BotKind::Shark]
+        );
+        assert_eq!(kinds_allowed(SHARKS_ONLY_FROM), vec![BotKind::Shark]);
+        assert_eq!(kinds_allowed(100_000_000), vec![BotKind::Shark]);
+        for (tier, buy_in) in TIERS.into_iter().enumerate() {
+            let mix = bot_mix(tier);
+            for (index, kind) in [
+                BotKind::Fish,
+                BotKind::Grinder,
+                BotKind::Rock,
+                BotKind::Shark,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                assert!(
+                    kind_allowed(buy_in, kind) || mix[index] == 0,
+                    "tier {tier} mixes in a {kind} it does not allow"
+                );
+            }
+            for kind in seating_order(tier) {
+                assert!(
+                    kind_allowed(buy_in, kind),
+                    "tier {tier} seats a {kind} it does not allow"
+                );
+            }
         }
     }
 
@@ -213,6 +287,17 @@ mod tests {
                 .all(|kind| *kind == BotKind::Shark),
             "the dearest table is nothing but sharks"
         );
+        // Only the cheapest table has fish at all, and every seat above the
+        // shark-only rung is a shark (§V62).
+        for (tier, buy_in) in TIERS.into_iter().enumerate() {
+            let order = seating_order(tier);
+            for kind in &order {
+                assert!(
+                    kind_allowed(buy_in, *kind),
+                    "tier {tier} seats a {kind}: {order:?}"
+                );
+            }
+        }
         let cheapest = seating_order(0);
         assert!(
             cheapest

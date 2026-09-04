@@ -1501,6 +1501,122 @@ async fn tournament_accepts_the_full_ten_thousand_chip_ladder() {
     assert_eq!(create.status(), StatusCode::OK);
 }
 
+/// V62: a tournament seats the same house players the cash table on its rung
+/// would -- no fish from $1,000 up, sharks only from $5,000 up.
+#[tokio::test]
+async fn tournament_bot_seating_follows_the_cash_ladder_constraints() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "seater".into(),
+            display_name: "Seater".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let tournament = |buy_in: i64| async move {
+        let config = two_seven::table::TournamentConfig {
+            buy_in,
+            seat_count: 6,
+            starting_chips: 1_000_000,
+            levels: vec![two_seven::table::BlindLevel {
+                small_blind: 10_000,
+                big_blind: 20_000,
+                ante: 0,
+                hands: 8,
+            }],
+            payout_percentages: vec![100],
+            no_debt: false,
+        };
+        two_seven::table::Table::new(
+            format!("Rung {buy_in}"),
+            two_seven::table::Stakes::NoLimit {
+                small_blind: 10_000,
+                big_blind: 20_000,
+            },
+            two_seven::table::TableMode::Tournament(two_seven::table::TournamentState {
+                config: config.clone(),
+                current_level: 0,
+                hands_at_level: 0,
+                finish_order: Vec::new(),
+                registered: 0,
+                started: false,
+                prize_pool: 0,
+                finished: false,
+                paid_out: false,
+            }),
+            config.seat_count,
+            config.buy_in,
+        )
+    };
+    let seat = |id: Uuid, kind: &'static str, cookie_value: String| {
+        t.router.clone().oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/tables/{id}/bot"))
+                .header(header::COOKIE, cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!(r#"{{"kind":"{kind}"}}"#)))
+                .unwrap(),
+        )
+    };
+    // Below the no-fish rung every kind is still welcome.
+    let soft = t.tables.insert(tournament(20_000).await).await.unwrap();
+    for kind in ["fish", "rock", "grinder", "shark"] {
+        assert_eq!(
+            seat(soft, kind, cookie_value.clone())
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK,
+            "a {kind} belongs at a $200 tournament"
+        );
+    }
+    // At the no-fish rung the fish are turned away and everyone else is not.
+    let middling = t.tables.insert(tournament(100_000).await).await.unwrap();
+    assert_eq!(
+        seat(middling, "fish", cookie_value.clone())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::BAD_REQUEST
+    );
+    for kind in ["rock", "grinder", "shark"] {
+        assert_eq!(
+            seat(middling, kind, cookie_value.clone())
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK,
+            "a {kind} belongs at a $1,000 tournament"
+        );
+    }
+    // From the shark-only rung up, nobody but a shark gets a seat.
+    let dear = t.tables.insert(tournament(500_000).await).await.unwrap();
+    for kind in ["fish", "rock", "grinder"] {
+        assert_eq!(
+            seat(dear, kind, cookie_value.clone())
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST,
+            "a {kind} is out of their depth at a $5,000 tournament"
+        );
+    }
+    assert_eq!(
+        seat(dear, "shark", cookie_value.clone())
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+}
+
 #[tokio::test]
 async fn tournament_create_requires_affordable_cash_ladder_buy_in() {
     let t = appx().await;

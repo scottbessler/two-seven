@@ -199,6 +199,19 @@ One shared bank account per bot kind. Difficulty ladder:
 | `Grinder` | Tight-aggressive: hand strength buckets + pot odds, bets/raises with strong made hands and draws, folds marginal spots. |
 | `Shark` | Parameterized position- and stack-aware Monte Carlo policy with action-weighted ranges, draw-aware semi-bluffs, implied-odds calls, intent-based sizing, and opponent-read adjustments; commits short or near-all-in stacks rather than leaving dust. |
 
+Each kind has five regulars with their own name and bankroll, except sharks,
+who have nine -- enough to fill the largest table (a nine-seat tournament) on
+their own. The nine sharks run one policy with nine tunings: a three-by-three
+grid of looseness (opening and defending thresholds) against aggression (bet
+edges, bluff frequencies, and value sizing), so no two of them play the same
+(`SharkParams::for_regular`). Regular 0 is the reference build, `DEFAULT`.
+
+Who the house will sit follows from the stakes, at a cash table and at a
+tournament alike (§V62): below $1,000 anyone, from $1,000 up no fish, from
+$5,000 up sharks only. The cash-ladder mix runs 60/20/10/10 fish/grinder/rock/
+shark at the cheapest rung, drops the fish at $1,000, and is all sharks from
+$5,000.
+
 Bots see only what a player in that seat legitimately sees (their own hole cards
 and the board) — the same redacted view a human gets (§V3).
 
@@ -252,7 +265,8 @@ HTML routes return an escaped error page (`AppError`); JSON routes return
 - Config: buy-in, seat count, starting chips, blind schedule (level = list of
   `{small_blind, big_blind, ante, hands}`), payout percentages.
 - Registering charges the buy-in from the bank (respecting `no_debt` if set) and
-  seats the player. Bots can fill the remaining seats.
+  seats the player. Bots can fill the remaining seats, subject to the same
+  stakes constraint the cash ladder applies (§V62).
 - Blinds go up after the configured number of hands per level.
 - A player is eliminated at zero chips; finishing position is recorded and
   prizes are paid into the bank when the tournament ends.
@@ -537,6 +551,12 @@ Mark each milestone done here as it lands.
   only — the ladder-rung check & every buy-in charge stand. `see_bot_cards`
   exposes bot seats' hole cards ⟺ ∄ seated human, viewer included; any human
   sitting down ⇒ face down again for everyone.
+- **V62** The buy-in decides which house players may be seated, at a cash table
+  and at a tournament alike: no `Fish` from $1,000 up, nothing but `Shark` from
+  $5,000 up. The standing tables' mix and every seat they fill obey it, a bot
+  seating request that breaks it is refused, a saved table still holding
+  somebody the rung no longer allows stands them up at startup, and no two of
+  the nine sharks play with the same tuning.
 - **V61** Other-player seats → compact dark tiles across desktop/tablet/portrait/
   landscape; stable identity+role, stack, cards/state, wager rows; existing
   acting/leading/winner/champion/folded/all-in semantics remain distinct;

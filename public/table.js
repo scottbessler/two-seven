@@ -590,6 +590,17 @@ function TableCommands({ state, openSeats, refresh }) {
   return commands.map((command) => html`<${TableCommand} ...${command} buyIn=${state.buy_in} refresh=${refresh} />`);
 }
 
+// The stakes decide who the house will sit: no fish from $1,000 up, sharks
+// only from $5,000 up. The server enforces it; this keeps the offer honest.
+const NO_FISH_FROM = 100_000;
+const SHARKS_ONLY_FROM = 500_000;
+
+function botKindsFor(buyIn) {
+  if (buyIn >= SHARKS_ONLY_FROM) return ["shark"];
+  if (buyIn >= NO_FISH_FROM) return ["rock", "grinder", "shark"];
+  return ["fish", "rock", "grinder", "shark"];
+}
+
 function SeatBot({ state, openSeats, refresh }) {
   if (openSeats.length === 0 || state.tournament?.started) return null;
   const [pending, run] = usePending();
@@ -600,7 +611,7 @@ function SeatBot({ state, openSeats, refresh }) {
     } else document.getElementById("table-error").textContent = await responseError(response);
   });
   return html`<span class="seat-bot" aria-label="Seat a bot">
-    ${["fish", "rock", "grinder", "shark"].map((kind) => html`<button class=${pending === kind ? "pending" : ""} type="button" disabled=${pending != null} aria-busy=${pending === kind} onClick=${() => submit(kind)}>Seat ${kind}</button>`)}
+    ${botKindsFor(state.buy_in).map((kind) => html`<button class=${pending === kind ? "pending" : ""} type="button" disabled=${pending != null} aria-busy=${pending === kind} onClick=${() => submit(kind)}>Seat ${kind}</button>`)}
   </span>`;
 }
 
