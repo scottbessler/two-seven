@@ -15,17 +15,32 @@ function readTrainerSettings() {
   return Object.fromEntries(Object.entries(TRAINER_KEYS).map(([name, key]) => [name, localStorage.getItem(key) === "on"]));
 }
 
-function Hand({ title, cards, score, hidden }) {
+function DealerHand({ cards, score, hidden }) {
   // A hand keeps drawing until it stands or busts, so the card count is not a
   // constant the stylesheet can assume. `--card-count` hands it to CSS, which
   // divides the hand's width by it and keeps a long hand on screen.
   const count = cards.length + (hidden ? 1 : 0);
-  return html`<section class="blackjack-hand">
-    <h2>${title}${score == null ? "" : ` · ${score}`}</h2>
+  return html`<section class="blackjack-hand blackjack-dealer-hand" aria-label=${`Dealer${score == null ? "" : `, ${score}`}`}>
     <div class="board" style=${`--card-count:${count}`}>
       ${cards.map((card) => html`<${Card} value=${card} interactive=${true} />`)}
       ${hidden ? html`<${Card} hidden=${true} interactive=${true} />` : null}
+      ${score == null ? null : html`<strong class="blackjack-hand-score">${score}</strong>`}
     </div>
+  </section>`;
+}
+
+function PlayerHand({ hand, index, count, active, bet, deadline, duration }) {
+  const name = count > 1 ? `Hand ${index + 1}` : "You";
+  return html`<section class=${`blackjack-player-hand${active ? " active" : ""}`} aria-label=${`${name}, ${hand.score}${active ? ", your turn" : ""}`}>
+    <div class="board" style=${`--card-count:${hand.cards.length}`}>
+      ${hand.cards.map((card) => html`<${Card} value=${card} interactive=${true} />`)}
+    </div>
+    <div class="blackjack-player-summary">
+      <span>${name}</span>
+      <strong>${hand.score}</strong>
+      ${bet == null ? null : html`<small>Bet ${money(bet)}</small>`}
+    </div>
+    ${active && deadline ? html`<${TurnClock} deadline=${deadline} duration=${duration} />` : null}
   </section>`;
 }
 
@@ -104,12 +119,6 @@ function Seat({ seat, state }) {
     <p class="blackjack-seat-note">${seatNote(seat, state)}</p>
     ${acting && state.deadline ? html`<${TurnClock} deadline=${state.deadline} duration=${state.turn_seconds * 1000} />` : null}
   </article>`;
-}
-
-function ownHandTitle(state, index, count) {
-  const active = state.phase === "playing" && state.current_seat === state.viewer_seat && state.current_hand === index;
-  const name = count > 1 ? `Hand ${index + 1}` : "Your hand";
-  return `${name}${active ? " · Active" : ""}`;
 }
 
 function App() {
@@ -208,17 +217,17 @@ function App() {
       </div>
       <${ShoeVisualization} shoe=${state.shoe} />
       <div class="blackjack-play-area">
-        <${Hand} title="Dealer" cards=${state.dealer} score=${state.dealer_score} hidden=${state.dealer_hidden} />
+        <${DealerHand} cards=${state.dealer} score=${state.dealer_score} hidden=${state.dealer_hidden} />
         ${others.length > 0 ? html`<div class="blackjack-seats" aria-label="Other players">${others.map((seat) => html`<${Seat} seat=${seat} state=${state} />`)}</div>` : null}
         <div class="blackjack-own-hands" data-hand-count=${viewer?.hands.length || 0}>
           ${viewer?.hands.length
-            ? viewer.hands.map((hand, index) => html`<${Hand} title=${ownHandTitle(state, index, viewer.hands.length)} cards=${hand.cards} score=${hand.score} />`)
+            ? viewer.hands.map((hand, index) => html`<${PlayerHand} hand=${hand} index=${index} count=${viewer.hands.length} active=${myTurn && state.current_hand === index} bet=${viewer.bet} deadline=${state.deadline} duration=${turnDuration} />`)
             : html`<p class="blackjack-own-note">${!seated ? "Watching the table" : viewer.result ? viewer.result : viewer.waiting && state.phase !== "betting" ? "Sitting this round out" : "Place a bet to be dealt in"}</p>`}
         </div>
       </div>
       <div class="blackjack-feedback">
-        <p class="blitz-feedback">${message}</p>
-        ${onTheClock ? html`<${TurnClock} deadline=${state.deadline} duration=${turnDuration} />` : null}
+        <p class=${`blitz-feedback${myTurn ? " blackjack-turn-announcement" : ""}`}>${message}</p>
+        ${onTheClock && !myTurn ? html`<${TurnClock} deadline=${state.deadline} duration=${turnDuration} />` : null}
       </div>
       <${TrainerPanel} trainer=${state.trainer} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
       <div class="actions blackjack-actions" style=${`--action-count:${Math.max(1, actions.length)}`}>${actions}</div>
