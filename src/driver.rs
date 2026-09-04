@@ -293,6 +293,49 @@ pub async fn retire_custom_cash_tables(state: &AppState) -> Result<(), anyhow::E
 
 /// The standing cash tables always exist. Called once at startup; the tick
 /// keeps their seats full from there.
+/// How long an unregistered tournament is left standing before it is swept.
+/// Long enough that one just created, and being looked at, is never touched.
+pub const ABANDONED_TOURNAMENT_HOURS: i64 = 24;
+
+/// Forget tournaments nobody ever entered.
+///
+/// Creating a tournament is one press, and the ones nobody registers for never
+/// start, never finish and never get cleared, so they pile up: the lobby lists
+/// every one of them and the driver walks every one of them on every tick. A
+/// table with a registered player is somebody's money and is left alone —
+/// only an empty one past its grace period is swept, so nothing is refunded
+/// here and nothing can be lost (§V64).
+pub async fn retire_abandoned_tournaments(state: &AppState) -> Result<(), anyhow::Error> {
+    let cutoff = Utc::now() - Duration::hours(ABANDONED_TOURNAMENT_HOURS);
+    let mut swept = 0;
+    for id in state.tables.ids().await {
+        let Some(table) = state.tables.get(id).await else {
+            continue;
+        };
+        let abandoned = {
+            let table = table.lock().await;
+            match &table.mode {
+                TableMode::Tournament(tournament) => {
+                    !tournament.started
+                        && !tournament.finished
+                        && tournament.registered == 0
+                        && tournament.prize_pool == 0
+                        && table.updated_at < cutoff
+                }
+                TableMode::Cash { .. } => false,
+            }
+        };
+        if abandoned {
+            state.tables.remove(id).await?;
+            swept += 1;
+        }
+    }
+    if swept > 0 {
+        tracing::info!(swept, "retired tournaments nobody entered");
+    }
+    Ok(())
+}
+
 pub async fn ensure_cash_ladder(state: &AppState) -> Result<(), anyhow::Error> {
     let mut present = std::collections::BTreeSet::new();
     for id in state.tables.ids().await {
@@ -799,6 +842,89 @@ mod tests {
     use axum_extra::extract::cookie::Key;
     use std::sync::Arc;
     use uuid::Uuid;
+
+    /// An unstarted tournament nobody entered is swept once it is old enough;
+    /// one somebody has paid into, and one only just made, are left standing
+    /// (§V64).
+    #[tokio::test]
+    async fn only_stale_tournaments_nobody_entered_are_swept() {
+        let root = std::env::temp_dir().join(format!("two-seven-sweep-{}", Uuid::new_v4()));
+        let tables = TableStore::load(&root).await.unwrap();
+        let state = AppState {
+            users: Arc::new(UserStore::load(&root).await.unwrap()),
+            bank: BankStore::load(&root).await.unwrap(),
+            blackjack: crate::blackjack::BlackjackStore::new(),
+            blackjack_stats: crate::blackjack_stats::BlackjackStatsStore::new(),
+            blitz: BlitzStore::load(&root).await.unwrap(),
+            tables: tables.clone(),
+            history: crate::history::HistoryStore::load(&root).await.unwrap(),
+            stats: crate::stats::StatsStore::load(&root).await.unwrap(),
+            admin_password: Arc::new("test-admin-password".into()),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+
+        let empty_tournament = |registered: usize, prize_pool: crate::money::Cents| {
+            Table::new(
+                "tournament".into(),
+                Stakes::NoLimit {
+                    small_blind: 1,
+                    big_blind: 2,
+                },
+                TableMode::Tournament(TournamentState {
+                    config: TournamentConfig {
+                        buy_in: 100,
+                        seat_count: 6,
+                        starting_chips: 100,
+                        levels: vec![BlindLevel {
+                            small_blind: 1,
+                            big_blind: 2,
+                            ante: 0,
+                            hands: 10,
+                        }],
+                        payout_percentages: vec![100],
+                        no_debt: false,
+                    },
+                    current_level: 0,
+                    hands_at_level: 0,
+                    finish_order: Vec::new(),
+                    registered,
+                    started: false,
+                    prize_pool,
+                    finished: false,
+                    paid_out: false,
+                }),
+                6,
+                100,
+            )
+        };
+        let stale = tables.insert(empty_tournament(0, 0)).await.unwrap();
+        let entered = tables.insert(empty_tournament(1, 100)).await.unwrap();
+        let fresh = tables.insert(empty_tournament(0, 0)).await.unwrap();
+        // Age the two that are meant to be old enough to sweep; `fresh` keeps
+        // the timestamp `insert` just gave it. `TableStore::update` stamps
+        // `updated_at` with the current time itself, so this reaches past it.
+        let long_ago = Utc::now() - Duration::hours(ABANDONED_TOURNAMENT_HOURS + 1);
+        for id in [stale, entered] {
+            tables.get(id).await.unwrap().lock().await.updated_at = long_ago;
+        }
+
+        retire_abandoned_tournaments(&state).await.unwrap();
+
+        assert!(
+            tables.get(stale).await.is_none(),
+            "an old tournament nobody entered is forgotten"
+        );
+        assert!(
+            tables.get(entered).await.is_some(),
+            "somebody's money is still in this one"
+        );
+        assert!(
+            tables.get(fresh).await.is_some(),
+            "one just created is still being looked at"
+        );
+    }
 
     #[tokio::test]
     async fn a_doubled_up_house_player_banks_the_buy_in() {

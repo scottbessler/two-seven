@@ -45,6 +45,40 @@ pub struct LedgerEntry {
     pub balance_after: Cents,
     pub memo: String,
 }
+/// How many ledger lines a table seat is shown. The seat only ever renders
+/// the last few under a player's name, and the ledger behind them is
+/// append-only and never compacted — the house's oldest accounts are
+/// thousands of lines deep — so a seat takes the tail and never the book
+/// (§V64).
+pub const SEAT_LEDGER_LINES: usize = 3;
+
+/// What a table seat needs of an account: the balance, and the last few
+/// ledger lines shown beneath it. Everything a table view knows about
+/// somebody's money comes through here, so the book itself never reaches a
+/// state read or the SSE push behind it.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct SeatBank {
+    pub balance: Cents,
+    pub recent: Vec<LedgerEntry>,
+}
+
+/// Where an account stands, without the ledger behind it. The standings rank
+/// on balance and loans alone, so this is what they read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Standing {
+    pub owner: AccountOwner,
+    pub balance: Cents,
+    pub loan_count: u64,
+}
+impl Standing {
+    pub fn loan_debt(&self) -> Cents {
+        self.loan_count as Cents * BankStore::RE_UP_AMOUNT
+    }
+    pub fn net_balance(&self) -> Cents {
+        self.balance - self.loan_debt()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Account {
     pub owner: AccountOwner,
@@ -56,6 +90,23 @@ pub struct Account {
     pub updated_at: DateTime<Utc>,
 }
 impl Account {
+    /// The seat-sized view of this account: the balance, and the tail of the
+    /// ledger rather than all of it.
+    pub fn seat_bank(&self) -> SeatBank {
+        let from = self.entries.len().saturating_sub(SEAT_LEDGER_LINES);
+        SeatBank {
+            balance: self.balance,
+            recent: self.entries[from..].to_vec(),
+        }
+    }
+    /// Where this account stands, without its ledger.
+    pub fn standing(&self) -> Standing {
+        Standing {
+            owner: self.owner.clone(),
+            balance: self.balance,
+            loan_count: self.loan_count,
+        }
+    }
     pub fn loan_debt(&self) -> Cents {
         self.loan_count as Cents * BankStore::RE_UP_AMOUNT
     }
@@ -144,6 +195,10 @@ struct Inner {
 #[derive(Clone)]
 pub struct BankStore {
     inner: Arc<Mutex<Inner>>,
+    /// Claimed while the books are still locked and held across the file
+    /// write, so writes keep the order their accounts were changed in without
+    /// the books being locked for the duration. See `persist_unlocked`.
+    writes: Arc<Mutex<()>>,
     dir: PathBuf,
 }
 impl BankStore {
@@ -217,6 +272,7 @@ impl BankStore {
         Ok((
             Self {
                 inner: Arc::new(Mutex::new(Inner { accounts })),
+                writes: Arc::new(Mutex::new(())),
                 dir,
             },
             reset_house,
@@ -224,16 +280,47 @@ impl BankStore {
     }
     pub async fn account(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
         let mut guard = self.inner.lock().await;
-        if !guard.accounts.contains_key(&owner) {
-            Self::ensure_account_locked(&mut guard.accounts, &owner);
-            self.persist(guard.accounts.get(&owner).expect("inserted"))
-                .await?;
+        if let Some(account) = guard.accounts.get(&owner) {
+            return Ok(account.clone());
         }
-        Ok(guard.accounts.get(&owner).expect("account").clone())
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
+        let created = guard.accounts.get(&owner).expect("inserted").clone();
+        self.persist_unlocked(guard, std::slice::from_ref(&created))
+            .await?;
+        Ok(created)
     }
-    /// Every account on the books, for the leaderboard.
+    /// What a table seat needs of an account, which is never its whole ledger.
+    ///
+    /// Every seat of every table view goes through here, and a view is rebuilt
+    /// for each subscriber on every table change, so this is the hottest read
+    /// the bank serves. Cloning the account to read two fields off it meant
+    /// copying an unbounded book each time (§V64).
+    pub async fn seat_bank(&self, owner: AccountOwner) -> Result<SeatBank, anyhow::Error> {
+        let mut guard = self.inner.lock().await;
+        if let Some(account) = guard.accounts.get(&owner) {
+            return Ok(account.seat_bank());
+        }
+        Self::ensure_account_locked(&mut guard.accounts, &owner);
+        let created = guard.accounts.get(&owner).expect("inserted").clone();
+        let seat = created.seat_bank();
+        self.persist_unlocked(guard, std::slice::from_ref(&created))
+            .await?;
+        Ok(seat)
+    }
+    /// Every account on the books, ledgers and all. Only a walk that reads the
+    /// entries wants this; the standings want `standings`.
     pub async fn accounts(&self) -> Vec<Account> {
         self.inner.lock().await.accounts.values().cloned().collect()
+    }
+    /// Where every account stands, without the ledgers behind them.
+    pub async fn standings(&self) -> Vec<Standing> {
+        self.inner
+            .lock()
+            .await
+            .accounts
+            .values()
+            .map(Account::standing)
+            .collect()
     }
 
     pub async fn forgive_bot_loans(&self) -> Result<BotLoanForgivenessReport, anyhow::Error> {
@@ -248,9 +335,7 @@ impl BankStore {
                 changed.push(account.clone());
             }
         }
-        for account in &changed {
-            self.persist(account).await?;
-        }
+        self.persist_unlocked(guard, &changed).await?;
         Ok(BotLoanForgivenessReport {
             accounts: changed.len(),
             loans,
@@ -297,7 +382,8 @@ impl BankStore {
             memo,
         });
         let result = account.clone();
-        self.persist(&result).await?;
+        self.persist_unlocked(guard, std::slice::from_ref(&result))
+            .await?;
         Ok(result)
     }
     pub async fn buy_in(
@@ -355,7 +441,8 @@ impl BankStore {
             0,
         );
         let result = account.clone();
-        self.persist(&result).await?;
+        self.persist_unlocked(guard, std::slice::from_ref(&result))
+            .await?;
         Ok(result)
     }
     pub async fn re_up(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
@@ -373,7 +460,8 @@ impl BankStore {
             1,
         );
         let result = account.clone();
-        self.persist(&result).await?;
+        self.persist_unlocked(guard, std::slice::from_ref(&result))
+            .await?;
         Ok(result)
     }
     pub async fn repay_loan(&self, owner: AccountOwner) -> Result<Account, anyhow::Error> {
@@ -395,7 +483,8 @@ impl BankStore {
             0,
         );
         let result = account.clone();
-        self.persist(&result).await?;
+        self.persist_unlocked(guard, std::slice::from_ref(&result))
+            .await?;
         Ok(result)
     }
     /// Clear as much debt as the balance covers, in one go. Repaying loan by
@@ -425,7 +514,8 @@ impl BankStore {
             0,
         );
         let result = account.clone();
-        self.persist(&result).await?;
+        self.persist_unlocked(guard, std::slice::from_ref(&result))
+            .await?;
         Ok(result)
     }
     pub async fn cash_out(
@@ -473,7 +563,8 @@ impl BankStore {
             }
         }
         let result = account.clone();
-        self.persist(&result).await?;
+        self.persist_unlocked(guard, std::slice::from_ref(&result))
+            .await?;
         Ok(result)
     }
     pub async fn hand_blitz_buy_in(
@@ -625,9 +716,32 @@ impl BankStore {
         );
         let sender = guard.accounts[&from].clone();
         let recipient = guard.accounts[&to].clone();
-        self.persist(&sender).await?;
-        self.persist(&recipient).await?;
+        self.persist_unlocked(guard, &[sender.clone(), recipient.clone()])
+            .await?;
         Ok((sender, recipient))
+    }
+    /// Write accounts out with the books released.
+    ///
+    /// Once memory is updated the only thing left is durability, and it is the
+    /// slow half: `persist` serializes and rewrites a whole account file, and
+    /// every table view asks the bank about its seats, so holding the books
+    /// across that write queued every reader behind a disk write.
+    ///
+    /// Order still has to hold — a slow write must not land an older balance
+    /// on top of a newer one — so the write slot is claimed while the books
+    /// are still locked and only then are they let go. Writers keep the order
+    /// they mutated in; readers stop waiting on them.
+    async fn persist_unlocked(
+        &self,
+        guard: tokio::sync::MutexGuard<'_, Inner>,
+        accounts: &[Account],
+    ) -> Result<(), anyhow::Error> {
+        let _slot = self.writes.clone().lock_owned().await;
+        drop(guard);
+        for account in accounts {
+            self.persist(account).await?;
+        }
+        Ok(())
     }
     async fn persist(&self, account: &Account) -> Result<(), anyhow::Error> {
         let name = match account.owner {
@@ -681,6 +795,104 @@ pub struct BotLoanForgivenessReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A seat is shown the tail of a ledger, never the book behind it, however
+    /// deep that book gets (§V64).
+    #[tokio::test]
+    async fn a_seat_sees_the_last_few_ledger_lines_and_no_more() {
+        let root = std::env::temp_dir().join(format!("two-seven-seat-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(owner.clone()).await.unwrap();
+        for line in 0..40 {
+            bank.append(
+                owner.clone(),
+                LedgerKind::Adjustment,
+                1,
+                format!("line {line}"),
+            )
+            .await
+            .unwrap();
+        }
+
+        let account = bank.account(owner.clone()).await.unwrap();
+        let seat = bank.seat_bank(owner).await.unwrap();
+
+        assert_eq!(
+            account.entries.len(),
+            41,
+            "the book itself keeps every line"
+        );
+        assert_eq!(seat.recent.len(), SEAT_LEDGER_LINES);
+        assert_eq!(seat.balance, account.balance);
+        assert_eq!(
+            seat.recent,
+            account.entries[account.entries.len() - SEAT_LEDGER_LINES..],
+            "the tail, oldest first, exactly as the table renders it"
+        );
+    }
+
+    /// A shorter ledger than the seat shows is handed over whole rather than
+    /// panicking on the slice.
+    #[tokio::test]
+    async fn a_short_ledger_reaches_the_seat_intact() {
+        let root = std::env::temp_dir().join(format!("two-seven-short-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+
+        let fresh = bank.seat_bank(owner.clone()).await.unwrap();
+        assert!(fresh.recent.is_empty(), "a new account has no lines");
+        assert_eq!(fresh.balance, 0);
+
+        bank.re_up(owner.clone()).await.unwrap();
+        let seat = bank.seat_bank(owner).await.unwrap();
+        assert_eq!(seat.recent.len(), 1);
+        assert_eq!(seat.balance, BankStore::RE_UP_AMOUNT);
+    }
+
+    /// The standings read balance and loans without the ledgers behind them.
+    #[tokio::test]
+    async fn standings_carry_the_money_without_the_book() {
+        let root = std::env::temp_dir().join(format!("two-seven-standing-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let owner = AccountOwner::User(Uuid::new_v4());
+        bank.re_up(owner.clone()).await.unwrap();
+
+        let standings = bank.standings().await;
+
+        assert_eq!(standings.len(), 1);
+        let standing = &standings[0];
+        assert_eq!(standing.owner, owner);
+        assert_eq!(standing.balance, BankStore::RE_UP_AMOUNT);
+        assert_eq!(standing.loan_count, 1);
+        assert_eq!(standing.net_balance(), 0, "the loan is still owed");
+    }
+
+    /// Writing with the books released must not lose or reorder a write: what
+    /// is on disk after a run of changes is what is in memory.
+    #[tokio::test]
+    async fn the_file_ends_where_the_books_end() {
+        let root = std::env::temp_dir().join(format!("two-seven-order-{}", Uuid::new_v4()));
+        let owner = AccountOwner::User(Uuid::new_v4());
+        let expected = {
+            let bank = BankStore::load(&root).await.unwrap();
+            bank.re_up(owner.clone()).await.unwrap();
+            for line in 0..25 {
+                bank.append(owner.clone(), LedgerKind::Adjustment, 7, format!("{line}"))
+                    .await
+                    .unwrap();
+            }
+            bank.account(owner.clone()).await.unwrap()
+        };
+
+        // Reloading reads the files back, so this compares disk with memory.
+        let reloaded = BankStore::load(&root).await.unwrap();
+        let landed = reloaded.account(owner).await.unwrap();
+
+        assert_eq!(landed.balance, expected.balance);
+        assert_eq!(landed.entries, expected.entries);
+    }
+
     #[tokio::test]
     async fn the_house_starts_over_but_people_keep_their_money() {
         let root = std::env::temp_dir().join(format!("two-seven-reset-{}", Uuid::new_v4()));

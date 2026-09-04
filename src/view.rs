@@ -1,5 +1,5 @@
 use crate::{
-    bank::Account,
+    bank::{SEAT_LEDGER_LINES, SeatBank},
     cards::Card,
     holdem::{Hand, HandEvent, HandSummary, LegalActions},
     money::Cents,
@@ -24,6 +24,8 @@ pub struct SeatView {
     pub sitting_out: bool,
     pub hole_cards: Option<Vec<Card>>,
     pub bank_balance: Option<Cents>,
+    /// The tail of the seat's ledger, never the whole book — at most
+    /// `SEAT_LEDGER_LINES`, which is what the table renders (§V64).
     pub bank_entries: Vec<crate::bank::LedgerEntry>,
 }
 #[derive(Clone, Debug, Serialize)]
@@ -319,7 +321,7 @@ pub fn table_view_with_banks(
     viewer: Option<usize>,
     viewer_id: Option<uuid::Uuid>,
     bank_balance: Option<Cents>,
-    banks: &std::collections::HashMap<usize, Account>,
+    banks: &std::collections::HashMap<usize, SeatBank>,
     names: &std::collections::HashMap<usize, String>,
     see_bot_cards: bool,
 ) -> TableView {
@@ -469,7 +471,7 @@ fn terminal_tournament_result_pending(table: &Table) -> bool {
 fn seat_view(
     index: usize,
     seat: &Seat,
-    account: Option<&Account>,
+    bank: Option<&SeatBank>,
     display_name: Option<&String>,
 ) -> SeatView {
     SeatView {
@@ -491,8 +493,14 @@ fn seat_view(
         display_name: display_name.cloned(),
         sitting_out: seat.sitting_out,
         hole_cards: None,
-        bank_balance: account.map(|account| account.balance),
-        bank_entries: account.map_or_else(Vec::new, |account| account.entries.clone()),
+        bank_balance: bank.map(|bank| bank.balance),
+        // The bank already hands over a tail, but the bound belongs to the
+        // wire: this is the boundary the payload has to hold at, whatever it
+        // is given (§V64).
+        bank_entries: bank.map_or_else(Vec::new, |bank| {
+            let from = bank.recent.len().saturating_sub(SEAT_LEDGER_LINES);
+            bank.recent[from..].to_vec()
+        }),
     }
 }
 
@@ -611,6 +619,58 @@ mod tests {
             .as_ref()
             .and_then(|hand| hand.seats.iter().find(|value| value.index == seat))
             .and_then(|value| value.hole_cards.clone())
+    }
+
+    /// §V64: a seat carries the tail of its ledger and never the book. This is
+    /// the payload bound the whole table view rests on — a state read is
+    /// rebuilt for every subscriber on every table change, so an unbounded
+    /// field here is an unbounded push to every watcher.
+    #[test]
+    fn a_seat_never_carries_more_than_a_few_ledger_lines() {
+        let table = all_bot_table();
+        let deep = crate::bank::SeatBank {
+            balance: 10_000,
+            // A seat is handed a `SeatBank`, which the bank builds from the
+            // tail; the view must not widen that however much it is given.
+            recent: (0..500)
+                .map(|line| crate::bank::LedgerEntry {
+                    id: uuid::Uuid::new_v4(),
+                    at: Utc::now(),
+                    kind: crate::bank::LedgerKind::Adjustment,
+                    delta: 1,
+                    balance_after: line,
+                    memo: format!("line {line}"),
+                })
+                .collect(),
+        };
+        let banks = std::collections::HashMap::from([(0, deep)]);
+
+        let view = table_view_with_banks(
+            &table,
+            None,
+            Some(uuid::Uuid::new_v4()),
+            None,
+            &banks,
+            &std::collections::HashMap::new(),
+            false,
+        );
+
+        let seat = view
+            .seats
+            .iter()
+            .find(|seat| seat.index == 0)
+            .expect("seat");
+        assert!(
+            seat.bank_entries.len() <= crate::bank::SEAT_LEDGER_LINES,
+            "a seat carried {} ledger lines; the table only ever shows {}",
+            seat.bank_entries.len(),
+            crate::bank::SEAT_LEDGER_LINES
+        );
+        assert_eq!(
+            seat.bank_entries.last().map(|entry| entry.balance_after),
+            Some(499),
+            "and they are the newest lines, in the order the table reads them"
+        );
     }
 
     #[test]

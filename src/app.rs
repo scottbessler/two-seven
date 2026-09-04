@@ -1,18 +1,19 @@
 use crate::{
     auth, bank::BankStore, blackjack::BlackjackStore, blackjack_stats::BlackjackStatsStore,
-    blitz::BlitzStore, driver, history::HistoryStore, render, routes, session::MaybeUser,
-    stats::StatsStore, store::TableStore, users::UserStore,
+    blitz::BlitzStore, driver, history::HistoryStore, render, routes, session, stats::StatsStore,
+    store::TableStore, users::UserStore,
 };
 use anyhow::{Context, Result};
 use axum::{
     Router,
+    body::HttpBody as _,
     extract::{FromRef, Request, State},
     http::{HeaderValue, header::CACHE_CONTROL},
     middleware::{Next, from_fn, from_fn_with_state},
     response::Response,
     routing::get,
 };
-use axum_extra::extract::cookie::Key;
+use axum_extra::extract::cookie::{Key, SignedCookieJar};
 use std::{env, io, sync::Arc, time::Instant};
 use tokio::net::TcpListener;
 use tower_http::{services::ServeDir, trace::TraceLayer};
@@ -198,19 +199,40 @@ async fn cache_control(req: Request, next: Next) -> Response {
         .insert(CACHE_CONTROL, HeaderValue::from_static(directive));
     r
 }
+/// A response past this is worth a WARN of its own, so a slow path is visible
+/// in the logs without anybody going looking for it.
+const SLOW_REQUEST_MS: u128 = 250;
+/// So is an oversized one. A table view is a couple of KB; anything near a
+/// megabyte is a payload that grew without being noticed, which is exactly how
+/// the seat ledgers got out (§V64).
+const LARGE_RESPONSE_BYTES: u64 = 256 * 1024;
+
 async fn log_request(State(s): State<AppState>, req: Request, next: Next) -> Response {
     let method = req.method().clone();
     let path = req.uri().path().to_string();
+    // Who is asking, read the same way every handler reads it. Static files
+    // are served to anybody and never carry a session worth resolving.
+    let user = if path.starts_with("/public/") {
+        None
+    } else {
+        SignedCookieJar::<Key>::from_headers(req.headers(), Key::from_ref(&s))
+            .get(session::SESSION_COOKIE)
+            .and_then(|cookie| cookie.value().parse::<uuid::Uuid>().ok())
+    };
     let start = Instant::now();
     let r = next.run(req).await;
-    let user: String = if path.starts_with("/public/") {
-        "-".to_string()
-    } else {
-        let _ = &s;
-        let _ = MaybeUser(None);
-        "-".to_string()
-    };
-    tracing::info!(%method,path,status=r.status().as_u16(),user,elapsed_ms=start.elapsed().as_millis(),"request");
+    let elapsed_ms = start.elapsed().as_millis();
+    // Present on a buffered response, absent on a stream like SSE — which is
+    // the honest answer for one, since its size is not known here.
+    let bytes = r.body().size_hint().exact();
+    let user = user.map_or_else(|| "-".to_string(), |id| id.to_string());
+    tracing::info!(%method,path,status=r.status().as_u16(),user,bytes,elapsed_ms,"request");
+    if elapsed_ms >= SLOW_REQUEST_MS {
+        tracing::warn!(%method, path, elapsed_ms, "slow request");
+    }
+    if bytes.is_some_and(|bytes| bytes >= LARGE_RESPONSE_BYTES) {
+        tracing::warn!(%method, path, bytes, "large response");
+    }
     r
 }
 pub async fn run() -> Result<()> {
@@ -273,6 +295,7 @@ pub async fn run() -> Result<()> {
         passkey_disabled: env_flag("PASSKEY_DISABLED"),
     };
     driver::retire_custom_cash_tables(&state).await?;
+    driver::retire_abandoned_tournaments(&state).await?;
     driver::ensure_cash_ladder(&state).await?;
     driver::spawn(state.clone());
     let app = router(state);

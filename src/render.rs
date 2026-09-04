@@ -575,6 +575,10 @@ fn gifts_panel(is_own_page: bool, name: &str, peers: &[GiftPeer]) -> String {
     )
 }
 
+/// The most points the finance chart ever plots — about one per pixel of the
+/// 592px plot area, past which the polyline only adds bytes.
+const CHART_POINTS: usize = 600;
+
 fn finance_chart(account: &crate::bank::Account) -> String {
     let mut series = Vec::new();
     if let Some(first) = account.entries.first() {
@@ -605,9 +609,17 @@ fn finance_chart(account: &crate::bank::Account) -> String {
     let height = 220.0;
     let pad = 24.0;
     let denom = (series.len().saturating_sub(1)).max(1) as f64;
+    // A ledger is append-only and unbounded, and the plot is 592px wide, so a
+    // long-lived account is strided down to what the chart can actually draw
+    // rather than emitting a point per entry. `min`/`max` above are read off
+    // the whole series, so the caption still names the real low and high, and
+    // the last point is always kept so the line ends on today's balance.
+    let last = series.len() - 1;
+    let stride = series.len().div_ceil(CHART_POINTS).max(1);
     let points = series
         .iter()
         .enumerate()
+        .filter(|(index, _)| index % stride == 0 || *index == last)
         .map(|(index, (_, value))| {
             let x = pad + (width - pad * 2.0) * index as f64 / denom;
             let y = height - pad - (height - pad * 2.0) * (*value - min) as f64 / span;

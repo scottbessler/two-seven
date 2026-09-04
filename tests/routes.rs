@@ -3444,3 +3444,105 @@ async fn the_admin_page_can_clear_a_blackjack_record() {
     assert!(String::from_utf8_lossy(&body).contains("Reset blackjack stats for 1 players."));
     assert_eq!(t.state.blackjack_stats.of(user).await.rounds, 0);
 }
+
+/// §V64: the payload bound, checked where the bug actually lived — on the
+/// wire. A seat's ledger is append-only and never compacted, and this response
+/// is rebuilt for every subscriber on every table change, so a deep account
+/// must not make a bigger response than a shallow one.
+#[tokio::test]
+async fn a_table_state_response_never_carries_a_whole_ledger() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "deepledger".into(),
+            display_name: "Deep Ledger".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    // The cheapest standing table, once the house has filled its seats.
+    let id = {
+        let mut found = None;
+        for id in t.tables.ids().await {
+            let table = t.tables.get(id).await.unwrap();
+            if table.lock().await.cash_tier == Some(0) {
+                found = Some(id);
+            }
+        }
+        found.expect("the cheapest table")
+    };
+    for _ in 0..(two_seven::cash::SEATS + 2) {
+        two_seven::driver::tick_once(&t.state).await.unwrap();
+    }
+
+    let read_state = || {
+        let router = t.router.clone();
+        let cookie_value = cookie_value.clone();
+        async move {
+            let response = router
+                .oneshot(
+                    Request::builder()
+                        .uri(format!("/tables/{id}/state"))
+                        .header(header::COOKIE, &cookie_value)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            to_bytes(response.into_body(), usize::MAX).await.unwrap()
+        }
+    };
+
+    let before = read_state().await.len();
+
+    // Give one seated account a deep book — far more than any table shows.
+    let seated = {
+        let table = t.tables.get(id).await.unwrap();
+        let table = table.lock().await;
+        table
+            .seats
+            .iter()
+            .find_map(|seat| seat.occupant.as_bot())
+            .expect("the house filled the table")
+    };
+    for line in 0..400 {
+        t.bank
+            .append(
+                AccountOwner::Bot(seated),
+                two_seven::bank::LedgerKind::Adjustment,
+                1,
+                format!("line {line}"),
+            )
+            .await
+            .unwrap();
+    }
+
+    let body = read_state().await;
+    let state: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    for seat in state["seats"].as_array().expect("seats") {
+        let lines = seat["bank_entries"].as_array().expect("entries").len();
+        assert!(
+            lines <= two_seven::bank::SEAT_LEDGER_LINES,
+            "seat {} carried {lines} ledger lines; the table shows {}",
+            seat["index"],
+            two_seven::bank::SEAT_LEDGER_LINES
+        );
+    }
+    // 400 entries went into one account and the response did not grow with
+    // them. Some slack for the balances themselves changing width.
+    assert!(
+        body.len() < before + 512,
+        "the response grew from {before} to {} bytes on a ledger nobody reads",
+        body.len()
+    );
+}
