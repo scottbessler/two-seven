@@ -590,10 +590,10 @@ function TableCommands({ state, openSeats, refresh }) {
   return commands.map((command) => html`<${TableCommand} ...${command} buyIn=${state.buy_in} refresh=${refresh} />`);
 }
 
-// The stakes decide who the house will sit: no fish from $1,000 up, sharks
-// only from $5,000 up. The server enforces it; this keeps the offer honest.
-const NO_FISH_FROM = 100_000;
-const SHARKS_ONLY_FROM = 500_000;
+// The stakes decide who the house will sit: no fish from $100,000 up, sharks
+// only from $500,000 up. The server enforces it; this keeps the offer honest.
+const NO_FISH_FROM = 10_000_000;
+const SHARKS_ONLY_FROM = 50_000_000;
 
 function botKindsFor(buyIn) {
   if (buyIn >= SHARKS_ONLY_FROM) return ["shark"];

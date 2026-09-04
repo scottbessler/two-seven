@@ -1572,7 +1572,7 @@ async fn tournament_bot_seating_follows_the_cash_ladder_constraints() {
         );
     }
     // At the no-fish rung the fish are turned away and everyone else is not.
-    let middling = t.tables.insert(tournament(100_000).await).await.unwrap();
+    let middling = t.tables.insert(tournament(10_000_000).await).await.unwrap();
     assert_eq!(
         seat(middling, "fish", cookie_value.clone())
             .await
@@ -1587,11 +1587,11 @@ async fn tournament_bot_seating_follows_the_cash_ladder_constraints() {
                 .unwrap()
                 .status(),
             StatusCode::OK,
-            "a {kind} belongs at a $1,000 tournament"
+            "a {kind} belongs at a $100,000 tournament"
         );
     }
     // From the shark-only rung up, nobody but a shark gets a seat.
-    let dear = t.tables.insert(tournament(500_000).await).await.unwrap();
+    let dear = t.tables.insert(tournament(50_000_000).await).await.unwrap();
     for kind in ["fish", "rock", "grinder"] {
         assert_eq!(
             seat(dear, kind, cookie_value.clone())
@@ -1599,7 +1599,7 @@ async fn tournament_bot_seating_follows_the_cash_ladder_constraints() {
                 .unwrap()
                 .status(),
             StatusCode::BAD_REQUEST,
-            "a {kind} is out of their depth at a $5,000 tournament"
+            "a {kind} is out of their depth at a $500,000 tournament"
         );
     }
     assert_eq!(

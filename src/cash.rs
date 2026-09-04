@@ -28,10 +28,10 @@ pub const SEATS: usize = 6;
 
 /// From this rung up the house sits no fish: the stakes are past the point
 /// where a player who calls at random belongs in the game (§V62).
-pub const NO_FISH_FROM: Cents = 100_000;
+pub const NO_FISH_FROM: Cents = 10_000_000;
 
 /// From this rung up the house sits nothing but sharks (§V62).
-pub const SHARKS_ONLY_FROM: Cents = 500_000;
+pub const SHARKS_ONLY_FROM: Cents = 50_000_000;
 
 /// Whether a kind may be seated at a game of this size. The rule is the buy-in,
 /// not the ladder index, so a tournament at a rung answers the same as the cash
@@ -80,9 +80,10 @@ pub fn name(buy_in: Cents) -> String {
 /// How the house fills a table, as percentages in roster order. The cheap
 /// tables are mostly fish; the dearest is nothing but sharks.
 pub fn bot_mix(tier: usize) -> [u32; 4] {
-    // Below the no-fish rung the game is soft; from there to the shark-only
-    // rung the fish are gone and the sharks take their share; above it there
-    // is nobody else at the table.
+    // Three bands, each an even slide between its endpoints: soft up to the
+    // no-fish rung, fish-free from there to the shark-only rung, and nobody
+    // but sharks above it. The sharks take whatever the others give up, which
+    // keeps the mix at exactly a hundred.
     const CHEAPEST: [u32; 4] = [60, 20, 10, 10];
     const NO_FISH: [u32; 4] = [0, 40, 30, 30];
     const SHARKS_ONLY: [u32; 4] = [0, 0, 0, 100];
@@ -90,25 +91,43 @@ pub fn bot_mix(tier: usize) -> [u32; 4] {
     if buy_in >= SHARKS_ONLY_FROM {
         return SHARKS_ONLY;
     }
-    if buy_in < NO_FISH_FROM {
-        return CHEAPEST;
-    }
-    // The rungs between the two thresholds thin the softer players out at an
-    // even rate; the sharks take whatever the others give up, which keeps the
-    // mix at exactly a hundred.
-    let rungs = TIERS
-        .iter()
-        .filter(|entry| **entry >= NO_FISH_FROM && **entry < SHARKS_ONLY_FROM)
-        .count();
-    let step = TIERS[..tier]
-        .iter()
-        .filter(|entry| **entry >= NO_FISH_FROM)
-        .count() as u32;
-    let span = rungs as u32;
+    let rungs = |from: Cents, to: Cents| {
+        TIERS
+            .iter()
+            .filter(|entry| **entry >= from && **entry < to)
+            .count()
+    };
+    let (start, end, step, span) = if buy_in >= NO_FISH_FROM {
+        // Between the thresholds the fish are already gone and the rest thin
+        // out until only sharks are left at the top of the band.
+        let step = TIERS[..tier]
+            .iter()
+            .filter(|entry| **entry >= NO_FISH_FROM)
+            .count();
+        (
+            NO_FISH,
+            SHARKS_ONLY,
+            step,
+            rungs(NO_FISH_FROM, SHARKS_ONLY_FROM),
+        )
+    } else {
+        // Below the threshold the fish thin out over the whole band, so the
+        // last soft rung hands over to a table that has none.
+        (
+            CHEAPEST,
+            NO_FISH,
+            tier,
+            rungs(0, NO_FISH_FROM).saturating_sub(1),
+        )
+    };
+    let span = span.max(1);
     let mut mix = SHARKS_ONLY;
     let mut given = 0;
     for index in 0..3 {
-        mix[index] = NO_FISH[index] - (NO_FISH[index] * step) / span;
+        let from = i64::from(start[index]);
+        let to = i64::from(end[index]);
+        let moved = (to - from) * step.min(span) as i64 / span as i64;
+        mix[index] = (from + moved) as u32;
         given += mix[index];
     }
     mix[3] = 100 - given;
@@ -229,8 +248,18 @@ mod tests {
     #[test]
     fn the_mix_slides_from_mostly_fish_to_all_sharks() {
         assert_eq!(bot_mix(0), [60, 20, 10, 10]);
-        assert_eq!(bot_mix(1), [0, 40, 30, 30]);
+        // The fish thin out over the soft band and are gone by the rung below
+        // the no-fish threshold; the last two rungs are sharks alone.
+        assert_eq!(bot_mix(1), [50, 23, 13, 14]);
+        assert_eq!(bot_mix(6), [0, 40, 30, 30]);
         assert_eq!(bot_mix(TIERS.len() - 1), [0, 0, 0, 100]);
+        for (tier, buy_in) in TIERS.into_iter().enumerate() {
+            assert_eq!(
+                bot_mix(tier)[0] == 0,
+                buy_in >= 5_000_000,
+                "fish belong below the $50,000 rung and nowhere above it: tier {tier}"
+            );
+        }
         for tier in 0..TIERS.len() {
             let mix = bot_mix(tier);
             assert_eq!(mix.iter().sum::<u32>(), 100, "tier {tier} must total 100");
@@ -243,7 +272,8 @@ mod tests {
 
     #[test]
     fn the_stakes_decide_who_the_house_will_sit() {
-        // Fish are gone from the $1,000 rung up; above $5,000 it is sharks only.
+        // Fish are gone from the $100,000 rung up; from $500,000 it is sharks
+        // only.
         assert_eq!(kinds_allowed(20_000), BotKind::ALL.to_vec());
         assert_eq!(
             kinds_allowed(NO_FISH_FROM),
@@ -287,8 +317,7 @@ mod tests {
                 .all(|kind| *kind == BotKind::Shark),
             "the dearest table is nothing but sharks"
         );
-        // Only the cheapest table has fish at all, and every seat above the
-        // shark-only rung is a shark (§V62).
+        // Nobody is seated at a table their kind is not allowed at (§V62).
         for (tier, buy_in) in TIERS.into_iter().enumerate() {
             let order = seating_order(tier);
             for kind in &order {
