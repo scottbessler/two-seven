@@ -79,5 +79,9 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   and the preload in `src/render.rs` together. Card faces share `--font-ui`;
   only their glyph size is derived from the card's own width, which is why
   `04-cards.css` is the one file exempt from the type scale.
+- Game state is moving from the JSON tree under `DATA_PATH` to SQLite in
+  `DATA_PATH/two-seven.db` — see `STORAGE.md` for why, and for which stores
+  have crossed over. Schema changes are appended to `MIGRATIONS` in
+  `src/db.rs`; a migration that has shipped is never edited.
 - `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
   invariants against a `DATA_PATH` tree.
