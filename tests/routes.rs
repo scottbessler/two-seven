@@ -2175,6 +2175,119 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
 }
 
 #[tokio::test]
+async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "blackjack-table".into(),
+            display_name: "Blackjack Table".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank.re_up(AccountOwner::User(user)).await.unwrap();
+    let cookie_value = cookie(&t.key, user);
+    let table = two_seven::blackjack::TABLE_IDS[0];
+    let other_table = two_seven::blackjack::TABLE_IDS[1];
+
+    let join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/blackjack/tables/{table}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(join.status(), StatusCode::OK);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert!(account.entries.iter().any(|entry| {
+        matches!(entry.kind, LedgerKind::BlackjackBuyIn { table: id } if id == table)
+            && entry.delta == -100_000
+    }));
+
+    let invalid_bet = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/blackjack/tables/{table}/bet"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"amount":99}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid_bet.status(), StatusCode::BAD_REQUEST);
+    let state = t.state.blackjack.view(table, Some(user), 0).await.unwrap();
+    assert_eq!(state.seats[0].stack, 100_000);
+
+    let second_join = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/blackjack/tables/{other_table}/join"))
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_join.status(), StatusCode::BAD_REQUEST);
+
+    let leave = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/blackjack/tables/{table}/leave"))
+                .header(header::COOKIE, &cookie_value)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(leave.status(), StatusCode::OK);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert!(account.entries.iter().any(|entry| {
+        matches!(entry.kind, LedgerKind::BlackjackCashOut { table: id } if id == table)
+            && entry.delta == 100_000
+    }));
+
+    let unauthenticated = t
+        .router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/blackjack/tables/{table}/action"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"kind":"hit"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        unauthenticated.status() == StatusCode::UNAUTHORIZED
+            || unauthenticated.status().is_redirection()
+    );
+}
+
+#[tokio::test]
 async fn tournament_registration_uses_configured_buy_in_and_first_open_seat() {
     let t = appx().await;
     let user = Uuid::new_v4();
