@@ -46,6 +46,11 @@
    sideways on its own so a wide one never drags the page with it. */
 .leaderboard{display:grid;gap:1.6rem;padding-bottom:2rem}
 .standings-board{display:grid;gap:.5rem}
+.house-toggle{display:inline-flex;gap:.35rem;align-items:center;color:var(--muted);font-size:var(--text-small);white-space:nowrap}
+.leaderboard .rank-people{display:none}
+.leaderboard.hide-house .rank-all{display:none}
+.leaderboard.hide-house .rank-people{display:inline}
+.leaderboard.hide-house tr.house-row{display:none}
 .standings-board>header{display:grid;gap:.15rem;padding-bottom:.35rem;border-bottom:1px solid var(--line-legacy)}
 .standings-board h2{margin:0;font-size:var(--text-action)}
 .standings-board>header p{margin:0;max-width:70ch;color:var(--muted);font-size:var(--text-small)}
