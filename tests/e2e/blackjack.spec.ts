@@ -77,6 +77,17 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   if (await page.getByRole("button", { name: "No insurance" }).count()) await page.getByRole("button", { name: "No insurance" }).click();
   if (await page.getByRole("button", { name: "Stand" }).count()) await expect(page.locator(".blackjack-player-hand.active")).toBeVisible();
   await expect(page.locator(".blackjack-player-summary")).toContainText("You");
+  const playerLayout = await page.locator(".blackjack-player-hand").evaluate((hand) => {
+    const tray = hand.getBoundingClientRect();
+    const cards = hand.querySelector<HTMLElement>(".board")!.getBoundingClientRect();
+    const summary = hand.querySelector<HTMLElement>(".blackjack-player-summary")!.getBoundingClientRect();
+    return {
+      centerDelta: Math.abs((cards.left + summary.right - tray.left - tray.right) / 2),
+      gap: summary.left - cards.right,
+    };
+  });
+  expect(playerLayout.centerDelta, "cards and player info should be centered together").toBeLessThanOrEqual(2);
+  expect(playerLayout.gap, "player info should sit directly beside the cards").toBeLessThanOrEqual(16);
   await expect(page.getByText("Your turn", { exact: true })).toHaveCSS("opacity", "0");
   await expect(page.locator(".blackjack-dealer-hand")).toHaveAttribute("aria-label", /Dealer/);
   await shot(page, "player-tray");
