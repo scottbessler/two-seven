@@ -72,6 +72,11 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   const stateUrl = `${url}/state`;
   await expect.poll(async () => (await (await page.request.get(stateUrl)).json()).phase !== "betting", { timeout: 5_000 }).toBe(true);
   if (await page.getByRole("button", { name: "No insurance" }).count()) await page.getByRole("button", { name: "No insurance" }).click();
+  if (await page.getByRole("button", { name: "Stand" }).count()) await expect(page.locator(".blackjack-player-hand.active")).toBeVisible();
+  await expect(page.locator(".blackjack-player-summary")).toContainText("You");
+  await expect(page.getByText("Your turn", { exact: true })).toHaveCSS("opacity", "0");
+  await expect(page.locator(".blackjack-dealer-hand")).toHaveAttribute("aria-label", /Dealer/);
+  await shot(page, "player-tray");
   await finishRound(page, url);
   await page.getByRole("button", { name: "Leave table" }).click();
 });
