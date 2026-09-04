@@ -1,7 +1,10 @@
 use crate::{
     app::AppState,
     bank::AccountOwner,
-    blackjack::{BlackjackError, max_starting_bet},
+    blackjack::{
+        Action as BlackjackAction, BlackjackError, BlackjackTableView, BlackjackTrainerSettings,
+        max_starting_bet,
+    },
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
     holdem::Action,
@@ -43,8 +46,207 @@ pub async fn service_worker() -> impl IntoResponse {
 pub async fn card_test() -> Html<String> {
     Html(render::card_test())
 }
-pub async fn blackjack(AuthUser(_user): AuthUser) -> Html<String> {
-    Html(render::blackjack())
+pub async fn blackjack(MaybeUser(user): MaybeUser, State(s): State<AppState>) -> Html<String> {
+    Html(render::blackjack_lobby(&s.blackjack.lobby(user).await))
+}
+
+pub async fn blackjack_table_page(
+    AuthUser(_user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Html<String>, AppError> {
+    s.blackjack
+        .get_view(id, None)
+        .await
+        .map_err(blackjack_error)?;
+    Ok(Html(render::blackjack_table(id)))
+}
+
+async fn blackjack_view(
+    s: &AppState,
+    user: Option<Uuid>,
+    id: Uuid,
+) -> Result<BlackjackTableView, AppError> {
+    let balance = match user {
+        Some(user) => balance_of(s, user).await,
+        None => 0,
+    };
+    let mut view = s
+        .blackjack
+        .view_with_balance(id, user, balance)
+        .await
+        .map_err(blackjack_error)?;
+    for seat in &mut view.seats {
+        if let Some(player) = s.users.get(seat.user).await {
+            seat.display_name = player.display_name;
+        }
+    }
+    Ok(view)
+}
+
+pub async fn blackjack_table_state(
+    MaybeUser(user): MaybeUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    Ok(Json(blackjack_view(&s, user, id).await?))
+}
+
+pub async fn blackjack_table_events(
+    MaybeUser(user): MaybeUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, AppError> {
+    let snapshot =
+        serde_json::to_string(&blackjack_view(&s, user, id).await?).map_err(AppError::internal)?;
+    let rx = s.blackjack.subscribe();
+    let state = s.clone();
+    let events = stream::unfold((Some(snapshot), rx), move |(first, mut rx)| {
+        let state = state.clone();
+        async move {
+            if let Some(snapshot) = first {
+                return Some((
+                    Ok(Event::default().event("state").data(snapshot)),
+                    (None, rx),
+                ));
+            }
+            loop {
+                match rx.recv().await {
+                    Ok(changed) if changed == id => {
+                        let data = blackjack_view(&state, user, id)
+                            .await
+                            .and_then(|view| {
+                                serde_json::to_string(&view).map_err(AppError::internal)
+                            })
+                            .unwrap_or_else(|_| "{}".into());
+                        return Some((Ok(Event::default().event("state").data(data)), (None, rx)));
+                    }
+                    Ok(_) => continue,
+                    Err(_) => return None,
+                }
+            }
+        }
+    });
+    Ok(Sse::new(events)
+        .keep_alive(axum::response::sse::KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+#[derive(Deserialize, Default)]
+pub struct BlackjackSettingsRequest {
+    #[serde(flatten)]
+    #[serde(default)]
+    pub settings: BlackjackTrainerSettings,
+}
+
+#[derive(Deserialize)]
+pub struct BlackjackBetRequest {
+    pub amount: i64,
+}
+
+#[derive(Deserialize)]
+pub struct BlackjackTableActionRequest {
+    pub kind: String,
+}
+
+pub async fn blackjack_join(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<BlackjackSettingsRequest>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    s.blackjack
+        .join(id, user, input.settings, &s.bank)
+        .await
+        .map_err(blackjack_error)?;
+    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+}
+
+pub async fn blackjack_leave(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    s.blackjack
+        .leave(id, user, &s.bank)
+        .await
+        .map_err(blackjack_error)?;
+    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+}
+
+pub async fn blackjack_rebuy(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    s.blackjack
+        .rebuy(id, user, &s.bank)
+        .await
+        .map_err(blackjack_error)?;
+    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+}
+
+pub async fn blackjack_bet(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<BlackjackBetRequest>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    s.blackjack
+        .bet(
+            id,
+            user,
+            input.amount,
+            Utc::now(),
+            &s.bank,
+            &s.blackjack_stats,
+        )
+        .await
+        .map_err(blackjack_error)?;
+    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+}
+
+pub async fn blackjack_action(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<BlackjackTableActionRequest>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    let kind = input.kind.to_ascii_lowercase();
+    if kind == "insure" {
+        s.blackjack
+            .insure_table(id, user, Utc::now(), &s.bank, &s.blackjack_stats)
+            .await
+    } else if kind == "decline" {
+        s.blackjack
+            .decline(id, user, Utc::now(), &s.bank, &s.blackjack_stats)
+            .await
+    } else {
+        let action = match kind.as_str() {
+            "hit" => BlackjackAction::Hit,
+            "stand" => BlackjackAction::Stand,
+            "double" => BlackjackAction::Double,
+            "split" => BlackjackAction::Split,
+            _ => return Err(AppError::bad_request("unknown blackjack action")),
+        };
+        s.blackjack
+            .act(id, user, action, Utc::now(), &s.bank, &s.blackjack_stats)
+            .await
+    }
+    .map_err(blackjack_error)?;
+    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+}
+
+pub async fn blackjack_settings(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<BlackjackSettingsRequest>,
+) -> Result<Json<BlackjackTableView>, AppError> {
+    s.blackjack
+        .update_settings(id, user, input.settings)
+        .await
+        .map_err(blackjack_error)?;
+    Ok(Json(blackjack_view(&s, Some(user), id).await?))
 }
 
 pub async fn admin_page(State(_s): State<AppState>) -> Html<String> {

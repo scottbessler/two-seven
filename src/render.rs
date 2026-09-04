@@ -260,6 +260,44 @@ pub fn blackjack() -> String {
     )
 }
 
+pub fn blackjack_lobby(tables: &[crate::blackjack::BlackjackLobbyView]) -> String {
+    let rows = tables.iter().map(|table| {
+        format!(
+            r#"<li><a href="/blackjack/tables/{}">Tier {} — max bet {} — buy-in {}</a> <span>{}/{} seats</span></li>"#,
+            table.id,
+            table.tier + 1,
+            format_cents(table.max_bet),
+            format_cents(table.buy_in),
+            table.occupied,
+            table.seat_count
+        )
+    }).collect::<String>();
+    layout_with_header(
+        "Blackjack",
+        &format!(
+            r#"<section class="card lobby"><h1>Blackjack tables</h1><ul>{rows}</ul></section>"#
+        ),
+        "",
+        Some("Blackjack"),
+        "",
+    )
+}
+
+pub fn blackjack_table(id: uuid::Uuid) -> String {
+    layout_with_header(
+        "Blackjack",
+        &format!(
+            r#"<section class="blackjack-shell"><div id="blackjack-app" data-table-id="{id}"><section class="blackjack-table"><div class="actions blackjack-actions"><span class="deal-broke">Loading table…</span></div></section></div></section>"#
+        ),
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/blackjack.js")
+        ),
+        Some("Blackjack"),
+        r#"<button class="table-config-button" type="button" title="Card display settings" aria-label="Card display settings" commandfor="card-config" command="show-modal">⚙</button>"#,
+    )
+}
+
 pub fn admin(error: Option<&str>, message: Option<&str>) -> String {
     let notice = message.map_or_else(String::new, |value| {
         format!(

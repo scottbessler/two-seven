@@ -28,6 +28,10 @@ pub async fn tick_once(state: &AppState) -> Result<(), anyhow::Error> {
 
 pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), anyhow::Error> {
     state.blitz.expire(now).await;
+    state
+        .blackjack
+        .tick(now, &state.bank, &state.blackjack_stats)
+        .await;
     let mut ids = state.tables.ids().await;
     ids.sort();
     for id in ids {
