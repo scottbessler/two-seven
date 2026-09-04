@@ -459,7 +459,7 @@ fn blackjack_island_has_game_contracts() {
         "blackjack-seats",
         "blackjack-seat",
         "blackjack-turn-clock",
-        "Sit down",
+        "blackjack-own-hands",
     ] {
         assert!(
             BLACKJACK_JS.contains(literal),
@@ -473,8 +473,8 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-analysis",
         ".blackjack-play-area",
         "justify-content:center",
-        ".blackjack-play-area .blackjack-hand:first-child",
-        ".blackjack-play-area .blackjack-hand:nth-child(2):last-child",
+        ".blackjack-play-area>.blackjack-hand:first-child",
+        ".blackjack-own-hands",
         ".blackjack-status-row",
         ".blackjack-shoe",
         ".blackjack-shoe-bar",

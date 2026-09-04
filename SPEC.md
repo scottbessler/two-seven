@@ -135,12 +135,23 @@ your account, and redraws both the summary and the ledger once it lands.
   modelled (irrelevant with a shuffled deck).
 - Actions: `fold`, `check`, `call`, `bet`, `raise`, plus implicit all-in when a
   player cannot cover.
-- **Blackjack:** Starting-bet options use whole-dollar amounts, with the
-  smallest option capped at $100, and are capped at half the player's
-  spendable bankroll (rounded down to whole dollars), except rolls below $2 may
-  bet their full balance. Double and split require another bet of the active
-  hand to remain available; insurance requires half that bet. The same
-  affordability rules govern displayed action flags and server validation.
+- **Blackjack:** Four fixed shared tables with max bets $100 / $1,000 /
+  $10,000 / $100,000; the buy-in is 10× the max bet and comes out of the bank
+  as one `BlackjackBuyIn` ledger row (cash-out returns the seat stack as one
+  `BlackjackCashOut`). Each table offers exactly four wagers — ¼, ½, ¾ and
+  the max bet — and up to five human seats; a user holds at most one blackjack
+  seat at a time. The shoe and dealer hand are shared: everyone who has bet
+  when the round starts is dealt in from the same shoe against the same dealer.
+  A lone seated player is dealt as soon as they bet; with two or more seated
+  players the first bet starts a betting clock, and seats that have not bet when
+  it expires sit that round out. Insurance and hand actions run on the poker
+  turn clock; a timed-out insurance decision declines and a timed-out hand
+  stands. Double and split require another bet of the active hand to remain
+  in the seat stack; insurance requires half that bet. The same affordability
+  rules govern displayed action flags and server validation. Results stay on
+  the table for a short pause before the next betting round. Seated players can
+  Add chips (another buy-in) or Leave; with a live bet both wait for settlement
+  and the seat visibly remains Leaving until then.
 - **Limit** stakes (`small_bet`/`big_bet`): blinds are `small_bet/2` and
   `small_bet`; bets are `small_bet` preflop and on the flop, `big_bet` on turn
   and river; at most 4 wagers per street (bet + 3 raises).
@@ -409,12 +420,18 @@ Mark each milestone done here as it lands.
 - **V26** Blackjack peeks at deal time unless an ace-up hand has a real
   insurance decision; ace-up decisions peek immediately after insurance or any
   other action, player/dealer naturals push, and insurance pays 3× its stake.
-- **V27** Each user has at most one live blackjack game; finished games are
-  pruned on a new start and a live game is resumable.
+- **V27** Each user holds at most one blackjack seat across the four tables;
+  a live bet defers leave/rebuy until settlement, and a seated player's stack
+  is the only money a table can win or lose for them.
+- **V63** Blackjack tables are shared: one shoe and one dealer hand per round,
+  every seat that bet is dealt from it, the betting clock exists only with two
+  or more seated players, unbet seats sit the round out, and betting/insurance/
+  action deadlines are enforced by the driver (decline insurance, stand).
 - **V28** Blackjack and Hand Blitz islands render only legal controls and show
   server error text; shared island helpers remain behavior-compatible.
-- **V24** Live blackjack games survive process restart through atomic JSON
-  persistence; finished games are not restored.
+- **V24** Blackjack tables (seats, stacks, shoe) survive process restart
+  through atomic JSON persistence; an interrupted round is not restored — live
+  bets are refunded to the seat stack and the table reopens for betting.
 - **V25** Hand Blitz runs expire server-side after their round deadline (with a
   small request grace), each user has at most one live run, and completed runs
   are eventually pruned; starts charge only after successful creation.
@@ -615,6 +632,7 @@ T41|x|net out gifts per counterparty on the player page|V58
 T42|x|give the viewer's own hand a panel: cards left, name/stack/wager beside them|V15,V16,V48
 T43|x|hold the table's shape as cards, metrics and results come and go|V48,V53
 T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,V53,V54,V61
+T45|x|replace the personal blackjack game with four shared fixed-stake tables, quarter-step wagers, multi-seat play and turn clocks|V24,V27,V63
 
 ## §B Bug log
 

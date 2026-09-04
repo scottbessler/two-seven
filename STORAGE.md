@@ -6,7 +6,8 @@ Tigris. This document says why, and what is still on the JSON tree.
 ## Where it started
 
 Seven stores each loaded a directory of JSON at boot and rewrote a whole file
-on every change: tables, users, bank accounts, blackjack games and shoes,
+on every change: tables, users, bank accounts, shared Blackjack tables
+(`blackjack/tables.json`),
 blitz stats, player stats, and hand history. It worked, and for a single
 machine it was fast, but three things were wrong with it.
 

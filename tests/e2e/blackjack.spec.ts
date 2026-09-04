@@ -1,4 +1,5 @@
 import { expect, test } from "./fixtures";
+import type { Page } from "@playwright/test";
 
 let account = 0;
 async function signIn(page, name: string) {
@@ -31,13 +32,35 @@ test("blackjack lobby lists all four fixed tiers", async ({ page }) => {
   await shot(page, "lobby");
 });
 
-test("a solo player sees fixed wagers and deals immediately", async ({ page }) => {
+// The four blackjack tables are fixed and shared by every signed-in user, so
+// the table tests run once, in one project, to keep them from seating each
+// other's players mid-round. The lobby test is read-only and runs everywhere.
+// Plays the viewer's hands to completion — declining insurance and standing —
+// until the table has settled and reopened for betting.
+async function finishRound(page: Page, url: string): Promise<void> {
+  const stateUrl = `${url}/state`;
+  await expect.poll(async () => {
+    const state = await (await page.request.get(stateUrl)).json();
+    if (state.phase === "betting") return true;
+    const decline = page.getByRole("button", { name: "No insurance" });
+    const stand = page.getByRole("button", { name: "Stand" });
+    if (await decline.count()) await decline.first().click();
+    else if (await stand.count()) await stand.first().click();
+    return false;
+  }, { timeout: 20_000, intervals: [250] }).toBe(true);
+}
+
+const tableTests = test.extend({});
+tableTests.skip(({ isMobile }) => Boolean(isMobile), "shared tables are exercised once, on desktop");
+
+tableTests("a solo player sees fixed wagers and deals immediately", async ({ page }) => {
   await signIn(page, "Solo");
   await page.request.post("/api/bank", { data: {} });
   const url = await tableUrl(page, 0);
   await page.goto(url!);
   await page.getByRole("button", { name: /Sit down · \$1,000/ }).click();
-  await expect(page.getByText("Your chips")).toBeVisible();
+  await expect(page.getByText("your chips")).toBeVisible();
+  await expect(page.locator(".turn-clock")).toHaveCount(0);
   await shot(page, "betting");
   /* oxlint-disable no-await-in-loop */
   for (const label of ["Bet $25", "Bet $50", "Bet $75", "Bet $100"]) await expect(page.getByRole("button", { name: label })).toBeVisible();
@@ -48,17 +71,12 @@ test("a solo player sees fixed wagers and deals immediately", async ({ page }) =
   ]);
   const stateUrl = `${url}/state`;
   await expect.poll(async () => (await (await page.request.get(stateUrl)).json()).phase !== "betting", { timeout: 5_000 }).toBe(true);
-  await expect(page.locator(".turn-clock")).toHaveCount(0);
   if (await page.getByRole("button", { name: "No insurance" }).count()) await page.getByRole("button", { name: "No insurance" }).click();
-  await expect.poll(async () => (await page.getByRole("button", { name: /Hit|Stand/ }).count()) > 0 || (await (await page.request.get(stateUrl)).json()).phase === "settled", { timeout: 12_000 }).toBe(true);
-  await page.goto(url);
-  if (await page.getByRole("button", { name: "Stand" }).count()) await page.getByRole("button", { name: "Stand" }).click();
-  await expect.poll(async () => (await (await page.request.get(stateUrl)).json()).phase === "betting", { timeout: 12_000 }).toBe(true);
-  await page.goto(url);
+  await finishRound(page, url);
   await page.getByRole("button", { name: "Leave table" }).click();
 });
 
-test("two players share a table and the unbet player sits out", async ({ browser }) => {
+tableTests("two players share a table and the unbet player sits out", async ({ browser }) => {
   const first = await browser.newPage();
   const second = await browser.newPage();
   await signIn(first, "Alice");
@@ -69,7 +87,7 @@ test("two players share a table and the unbet player sits out", async ({ browser
   await first.goto(url!); await second.goto(url!);
   await first.getByRole("button", { name: /Sit down/ }).click();
   await second.getByRole("button", { name: /Sit down/ }).click();
-  await expect(second.locator(".blackjack-seat").filter({ hasText: "Alice" })).toBeVisible();
+  await expect(second.locator(".blackjack-seat").filter({ hasText: "Alice" }).first()).toBeVisible();
   await first.getByRole("button", { name: "Bet $25" }).click();
   await expect(second.locator(".turn-clock")).toBeVisible();
   await shot(second, "mid-round-two-player");
@@ -77,20 +95,17 @@ test("two players share a table and the unbet player sits out", async ({ browser
   await expect.poll(async () => {
     const response = await second.request.get(stateUrl);
     const state = await response.json();
-    return state.seats.some((seat: { user: string; waiting: boolean }) => seat.waiting);
+    return state.phase !== "betting" && state.seats.some((seat: { waiting: boolean }) => seat.waiting);
   }, { timeout: 16_000 }).toBe(true);
-  await expect.poll(async () => (await second.locator("body").innerText()).includes("Sitting out"), { timeout: 16_000 }).toBe(true);
-  await first.goto(url);
-  await first.getByRole("button", { name: "Stand" }).click();
-  await expect.poll(async () => (await (await first.request.get(stateUrl)).json()).phase === "betting", { timeout: 12_000 }).toBe(true);
-  await first.goto(url);
+  await expect(second.locator(".blackjack-own-note")).toHaveText("Sitting this round out");
+  await finishRound(first, url);
   await first.getByRole("button", { name: "Leave table" }).click();
   await second.goto(url);
   await second.getByRole("button", { name: "Leave table" }).click();
   await first.close(); await second.close();
 });
 
-test("leaving a blackjack table returns to the lobby", async ({ page }) => {
+tableTests("leaving a blackjack table returns to the lobby", async ({ page }) => {
   await signIn(page, "Leaving");
   await page.request.post("/api/bank", { data: {} });
   const url = await tableUrl(page, 0);
@@ -101,7 +116,7 @@ test("leaving a blackjack table returns to the lobby", async ({ page }) => {
   await expect(page.locator(".lobby")).toBeVisible();
 });
 
-test("blackjack mobile keeps the shared table inside the viewport", async ({ page }) => {
+tableTests("blackjack mobile keeps the shared table inside the viewport", async ({ page }) => {
   await page.setViewportSize({ width: 412, height: 915 });
   await signIn(page, "Mobile");
   await page.request.post("/api/bank", { data: {} });

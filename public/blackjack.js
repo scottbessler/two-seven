@@ -5,72 +5,230 @@ import { money, refreshBank, responseError, usePending, useResultClock, wholeDol
 
 const root = document.getElementById("blackjack-app");
 const tableId = root?.dataset.tableId;
-const keys = { counting_tutor: "blackjack-counting-tutor", counting_quiz: "blackjack-counting-quiz", bet_analyzer: "blackjack-bet-analyzer" };
-const storedSettings = () => Object.fromEntries(Object.entries(keys).map(([name, key]) => [name, localStorage.getItem(key) === "on"]));
+const TRAINER_KEYS = {
+  counting_tutor: "blackjack-counting-tutor",
+  counting_quiz: "blackjack-counting-quiz",
+  bet_analyzer: "blackjack-bet-analyzer",
+};
 
-function Hand({ title, cards, score, hidden, compact }) {
-  return html`<section class=${`blackjack-hand${compact ? " compact" : ""}`}><h2>${title}${score == null ? "" : ` · ${score}`}</h2><div class="board">${(cards || []).map((value) => html`<${Card} value=${value} />`)}${hidden && html`<${Card} hidden=${true} />`}</div></section>`;
+function readTrainerSettings() {
+  return Object.fromEntries(Object.entries(TRAINER_KEYS).map(([name, key]) => [name, localStorage.getItem(key) === "on"]));
 }
-function ShoeVisualization({ shoe }) {
-  return html`<section class="blackjack-shoe"><div class="blackjack-shoe-bar"><i style=${{ width: `${100 * shoe.dealt_cards / shoe.total_cards}%` }}></i></div><p>${shoe.decks} decks · ${shoe.dealt_cards} dealt · ${shoe.remaining_cards} remaining</p></section>`;
+
+function Hand({ title, cards, score, hidden }) {
+  // A hand keeps drawing until it stands or busts, so the card count is not a
+  // constant the stylesheet can assume. `--card-count` hands it to CSS, which
+  // divides the hand's width by it and keeps a long hand on screen.
+  const count = cards.length + (hidden ? 1 : 0);
+  return html`<section class="blackjack-hand">
+    <h2>${title}${score == null ? "" : ` · ${score}`}</h2>
+    <div class="board" style=${`--card-count:${count}`}>
+      ${cards.map((card) => html`<${Card} value=${card} interactive=${true} />`)}
+      ${hidden ? html`<${Card} hidden=${true} interactive=${true} />` : null}
+    </div>
+  </section>`;
 }
-function TrainerPanel({ trainer }) {
-  if (!trainer) return null;
-  return html`<section class="blackjack-trainer">${trainer.count && html`<p class="blackjack-trainer-count">Running count <b>${trainer.count.running}</b> · True count <b>${trainer.count.true_count.toFixed(1)}</b></p>`}${trainer.log?.length && html`<ol class="blackjack-trainer-log">${trainer.log.map((line) => html`<li>${line}</li>`)}</ol>`}${trainer.analysis?.map((line) => html`<p class="blackjack-analysis">${line}</p>`)}${trainer.quiz && html`<section class="blackjack-quiz"><p>${trainer.quiz.prompt}</p>${trainer.quiz.choices.map((choice) => html`<button type="button">${choice}</button>`)}</section>`}</section>`;
-}
+
 function TurnClock({ deadline, duration }) {
   const remaining = useResultClock(Boolean(deadline), deadline, duration);
-  return html`<span class="turn-clock blackjack-turn-clock"><i style=${{ width: `${100 * remaining / duration}%` }}></i></span>`;
+  return html`<span class=${`turn-clock blackjack-turn-clock${remaining < duration / 4 ? " urgent" : ""}`} role="timer" aria-label="Turn clock">
+    <i style=${`width:${(100 * remaining) / duration}%`}></i>
+  </span>`;
 }
+
+function TrainerSettings({ settings, setSettings, onChange }) {
+  const toggle = (name) => (event) => {
+    const next = { ...settings, [name]: event.currentTarget.checked };
+    localStorage.setItem(TRAINER_KEYS[name], next[name] ? "on" : "off");
+    setSettings(next);
+    onChange(next);
+  };
+  return html`
+    <label class="card-option-toggle"><input name="counting-tutor" type="checkbox" checked=${settings.counting_tutor} onChange=${toggle("counting_tutor")} /><span><b>Card counting tutor</b><small>Show the Hi-Lo running count and card-by-card changes</small></span></label>
+    <label class="card-option-toggle"><input name="counting-quiz" type="checkbox" checked=${settings.counting_quiz} onChange=${toggle("counting_quiz")} /><span><b>Card counting quiz</b><small>Ask for the running count after each round</small></span></label>
+    <label class="card-option-toggle"><input name="bet-analyzer" type="checkbox" checked=${settings.bet_analyzer} onChange=${toggle("bet_analyzer")} /><span><b>Bet analyzer</b><small>Compare your choices with basic strategy</small></span></label>
+  `;
+}
+
+function TrainerPanel({ trainer, quizChoice, setQuizChoice }) {
+  if (!trainer) return null;
+  return html`
+    ${trainer.count ? html`<section class="blackjack-trainer-count" aria-label="Card counting tutor">
+      <span><b>${trainer.count.running}</b> running</span>
+      <span><b>${trainer.count.true_count.toFixed(1)}</b> true</span>
+      <span><b>${trainer.count.penetration_percent}%</b> seen</span>
+    </section>` : null}
+    ${trainer.log?.length ? html`<ol class="blackjack-trainer-log" aria-label="Count log">${trainer.log.map((line) => html`<li>${line}</li>`)}</ol>` : null}
+    ${trainer.analysis?.length ? html`<section class="blackjack-analysis" aria-label="Bet analyzer">${trainer.analysis.map((line) => html`<p>${line}</p>`)}</section>` : null}
+    ${trainer.quiz ? html`<section class="blackjack-quiz" aria-label="Card counting quiz">
+      <p>${trainer.quiz.prompt}</p>
+      <div>
+        ${trainer.quiz.choices.map((choice) => html`<button type="button" class=${quizChoice === choice ? "selected" : ""} onClick=${() => setQuizChoice(choice)}>${choice}</button>`)}
+      </div>
+      ${quizChoice != null ? html`<strong>${quizChoice === trainer.quiz.answer ? "Correct" : `Count was ${trainer.quiz.answer}`}</strong>` : null}
+    </section>` : null}
+  `;
+}
+
+function ShoeVisualization({ shoe }) {
+  const dealtPercent = (shoe.dealt_cards * 100) / Math.max(1, shoe.total_cards);
+  const cutPercent = (shoe.cut_card * 100) / Math.max(1, shoe.total_cards);
+  return html`<section class="blackjack-shoe" aria-label="Shoe visualization">
+    <div class="blackjack-shoe-bar" role="img" aria-label=${`${shoe.dealt_cards} of ${shoe.total_cards} cards dealt; reshuffle at ${shoe.cut_card} cards`}>
+      <span class="blackjack-shoe-dealt" style=${`width:${dealtPercent}%`}></span>
+      <span class="blackjack-shoe-marker" style=${`left:${cutPercent}%`}></span>
+    </div>
+    <p class="blackjack-shoe-text">${shoe.decks} decks · ${shoe.dealt_cards} dealt · reshuffle at ${shoe.cut_card} (${shoe.penetration_percent}%) · ${shoe.remaining_cards} remaining · ${shoe.hands_dealt} rounds this shoe</p>
+    ${shoe.fresh_shuffle ? html`<p class="blackjack-fresh-shuffle">Fresh shuffle.</p>` : null}
+  </section>`;
+}
+
+function seatNote(seat, state) {
+  if (seat.result) return seat.result;
+  if (seat.leaving) return "Leaving";
+  if (seat.waiting) return "Sitting out";
+  if (state.phase === "betting") return seat.bet == null ? "Deciding…" : `Bet ${money(seat.bet)}`;
+  if (state.phase === "insurance") return seat.insurance ? "Insured" : "Insurance?";
+  return seat.bet == null ? "" : `Bet ${money(seat.bet)}`;
+}
+
+// Everybody else at the table: a compact tile per seat with their cards small,
+// so the viewer's own hand keeps the room.
 function Seat({ seat, state }) {
-  const active = state.current_seat === seat.index;
-  return html`<article class=${`blackjack-seat${active ? " acting" : ""}`}><header><b>${seat.display_name}</b><span>${money(seat.stack)} · ${seat.bet == null ? "No bet" : money(seat.bet)}</span></header>${seat.waiting && html`<small>Sitting out</small>`}${seat.leaving && html`<small>Leaving</small>`}${seat.hands.map((hand, index) => html`<${Hand} title=${`Hand ${index + 1}`} cards=${hand.cards} score=${hand.score} compact=${true} />`)}${seat.result && html`<p>${seat.result}</p>`}${active && state.phase === "playing" && html`<${TurnClock} deadline=${state.deadline} duration=${state.turn_seconds * 1000} />`}</article>`;
+  const acting = state.phase === "playing" && state.current_seat === seat.index;
+  return html`<article class=${`blackjack-seat${acting ? " acting" : ""}${seat.waiting ? " waiting" : ""}`} aria-label=${`${seat.display_name}'s seat`}>
+    <header><b>${seat.display_name}</b><span>${money(seat.stack)}</span></header>
+    <div class="blackjack-seat-hands">
+      ${seat.hands.map((hand, index) => html`<div class=${`board${acting && state.current_hand === index ? " active" : ""}`} style=${`--card-count:${hand.cards.length}`}>${hand.cards.map((card) => html`<${Card} value=${card} />`)}<small>${hand.score}</small></div>`)}
+    </div>
+    <p class="blackjack-seat-note">${seatNote(seat, state)}</p>
+    ${acting && state.deadline ? html`<${TurnClock} deadline=${state.deadline} duration=${state.turn_seconds * 1000} />` : null}
+  </article>`;
 }
-function Settings({ value, setValue, change }) {
-  return html`${Object.keys(keys).map((name) => html`<label><input type="checkbox" checked=${value[name]} onChange=${(event) => { const next = { ...value, [name]: event.currentTarget.checked }; setValue(next); localStorage.setItem(keys[name], next[name] ? "on" : "off"); change(next); }} /> ${name.replaceAll("_", " ")}</label>`)}`;
+
+function ownHandTitle(state, index, count) {
+  const active = state.phase === "playing" && state.current_seat === state.viewer_seat && state.current_hand === index;
+  const name = count > 1 ? `Hand ${index + 1}` : "Your hand";
+  return `${name}${active ? " · Active" : ""}`;
 }
+
 function App() {
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
-  const [settings, setSettings] = useState(storedSettings);
+  const [settings, setSettings] = useState(readTrainerSettings);
+  const [quizChoice, setQuizChoice] = useState(null);
   const [pending, run] = usePending();
-  const seated = state?.viewer_seat != null;
-  const viewer = seated ? state.seats.find((seat) => seat.index === state.viewer_seat) : null;
-  const post = (path, body = {}) => run(path, async () => {
-    const response = await fetch(`/blackjack/tables/${tableId}/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (!response.ok) return setError(await responseError(response));
-    setError(""); setState(await response.json()); refreshBank().catch(() => {});
+  const busy = pending != null;
+
+  const post = (path, body = {}, then = null) => run(path, async () => {
+    const response = await fetch(`/blackjack/tables/${tableId}/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      setError(await responseError(response));
+      return;
+    }
+    setError("");
+    setState(await response.json());
+    refreshBank().catch(() => {});
+    if (then) then();
   });
+
   useEffect(() => {
-    const load = () => fetch(`/blackjack/tables/${tableId}/state`).then((response) => response.ok && response.json()).then((next) => next && setState(next)).catch(() => {});
+    const load = () => fetch(`/blackjack/tables/${tableId}/state`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((next) => next && setState(next))
+      .catch(() => {});
     load();
     const events = new EventSource(`/blackjack/tables/${tableId}/events`);
     events.addEventListener("state", (event) => setState(JSON.parse(event.data)));
     events.addEventListener("error", load);
-    const bank = (event) => setState((current) => current && { ...current, bank_balance: event.detail.balance });
-    window.addEventListener("bank:updated", bank); refreshBank().catch(() => {});
-    return () => { events.close(); window.removeEventListener("bank:updated", bank); };
+    const syncBalance = (event) => {
+      if (!event.detail) return;
+      setState((current) => current && { ...current, bank_balance: event.detail.balance });
+    };
+    window.addEventListener("bank:updated", syncBalance);
+    refreshBank().catch(() => {});
+    return () => {
+      events.close();
+      window.removeEventListener("bank:updated", syncBalance);
+    };
   }, []);
-  if (!state) return html`<section class="blackjack-table"><p>Loading table…</p></section>`;
-  const change = (next) => seated && post("settings", next);
-  const actions = [];
-  if (state.can_bet) {
-    for (const amount of state.bet_options) actions.push(html`<button class="deal-action" disabled=${pending || amount > viewer.stack} onClick=${() => post("bet", { amount })}>Bet ${wholeDollarMoney(amount)}</button>`);
-  } else if (state.phase === "insurance" && state.can_insure) {
-    actions.push(html`<button onClick=${() => post("action", { kind: "insure" })}>Insurance</button>`, html`<button onClick=${() => post("action", { kind: "decline" })}>No insurance</button>`);
-  } else if (state.phase === "playing" && state.current_seat === state.viewer_seat) {
-    for (const [kind, label] of [["hit", "Hit"], ["stand", "Stand"], ["double", "Double"], ["split", "Split"]]) {
-      if (state[`can_${kind}`]) actions.push(html`<button onClick=${() => post("action", { kind })}>${label}</button>`);
-    }
-  } else {
-    actions.push(html`<span class="deal-broke">${state.message || "Waiting for the dealer…"}</span>`);
+  useEffect(() => setQuizChoice(null), [state?.phase]);
+
+  const seated = state?.viewer_seat != null;
+  const trainerControls = html`<${TrainerSettings} settings=${settings} setSettings=${setSettings} onChange=${(next) => seated && post("settings", next)} />`;
+  if (!state) {
+    return html`<${CardSettings} interactive=${true} trigger=${false} children=${trainerControls} />
+      <section class="blackjack-table"><div class="actions blackjack-actions"><span class="deal-broke">Loading table…</span></div></section>`;
   }
-  return html`<${CardSettings} trigger=${false}><${Settings} value=${settings} setValue=${setSettings} change=${change} /></${CardSettings}><section class="blackjack-table">
-    <div class="blackjack-status-row"><span>Table max <b>${money(state.max_bet)}</b></span><span>${seated ? "Your chips" : "Bank"} <b>${money(seated ? viewer.stack : state.bank_balance)}</b></span><span>${state.message}</span></div>
-    <${ShoeVisualization} shoe=${state.shoe} /><div class="blackjack-play-area"><${Hand} title="Dealer" cards=${state.dealer} score=${state.dealer_score} hidden=${state.dealer_hidden} /><div class="blackjack-seats">${state.seats.filter((seat) => seat.index !== state.viewer_seat).map((seat) => html`<${Seat} seat=${seat} state=${state} />`)}</div>${viewer?.waiting && html`<p class="deal-broke">Sitting out</p>`}${viewer?.hands.map((hand, index) => html`<${Hand} title=${`Your hand ${index + 1}${state.current_seat === state.viewer_seat && state.current_hand === index ? " · Active" : ""}`} cards=${hand.cards} score=${hand.score} />`)}</div>
-    <p class="blitz-feedback">${state.message}</p><${TrainerPanel} trainer=${state.trainer} /><div class="actions blackjack-actions" style=${`--action-count:${Math.max(1, actions.length)}`}>${state.deadline && ["betting", "insurance"].includes(state.phase) && (state.can_bet || state.can_insure) && html`<${TurnClock} deadline=${state.deadline} duration=${state.turn_seconds * 1000} />`}
-      ${!seated && state.can_join && html`<button class="deal-action" onClick=${() => post("join", settings)}>Sit down · ${wholeDollarMoney(state.buy_in)}</button>`}${!seated && !state.can_join && html`<span class="deal-broke">You're seated at another blackjack table.</span>`}${actions}</div>
-    <div class="table-controls">${seated && html`<button onClick=${async () => { await post("leave"); location.href = "/blackjack"; }}>Leave table</button>`}${state.can_rebuy && html`<button onClick=${() => post("rebuy")}>Add chips</button>`}</div>${error && html`<p class="error">${error}</p>`}
-  </section>`;
+  const viewer = seated ? state.seats.find((seat) => seat.index === state.viewer_seat) : null;
+  const others = state.seats.filter((seat) => seat.index !== state.viewer_seat);
+  const myTurn = state.phase === "playing" && state.current_seat === state.viewer_seat;
+  const onTheClock = Boolean(state.deadline) && (myTurn || (state.phase === "betting" && state.can_bet) || (state.phase === "insurance" && state.can_insure));
+  const turnDuration = 1000 * (state.turn_seconds || 10);
+  const actor = state.phase === "playing" && state.current_seat != null ? state.seats.find((seat) => seat.index === state.current_seat) : null;
+  const waitingOnBets = state.phase === "betting" && seated && viewer.bet != null;
+  const message = actor ? (myTurn ? "Your turn" : `${actor.display_name} to act`) : waitingOnBets ? "Waiting for the other players…" : (state.phase === "settled" && viewer?.result) || state.message;
+  const broke = seated && !state.can_bet && state.phase === "betting" && viewer.bet == null && viewer.stack < state.min_bet;
+
+  let actions;
+  if (!seated) {
+    actions = state.can_join
+      ? [html`<button class="deal-action" type="button" disabled=${busy} aria-busy=${pending === "join"} onClick=${() => post("join", settings)}>Sit down · ${wholeDollarMoney(state.buy_in)}</button>`]
+      : [html`<span class="deal-broke">You're seated at another blackjack table.</span>`];
+  } else if (state.can_bet) {
+    actions = state.bet_options.map((amount) => html`<button class="deal-action" type="button" disabled=${busy || amount > viewer.stack} aria-busy=${pending === "bet"} onClick=${() => post("bet", { amount })}>Bet ${wholeDollarMoney(amount)}</button>`);
+  } else if (broke) {
+    actions = state.can_rebuy
+      ? [html`<button class="deal-action" type="button" disabled=${busy} aria-busy=${pending === "rebuy"} onClick=${() => post("rebuy")}>Add chips · ${wholeDollarMoney(state.buy_in - viewer.stack)}</button>`]
+      : [html`<span class="deal-broke">Not enough chips for the ${wholeDollarMoney(state.min_bet)} minimum.</span>`];
+  } else if (state.phase === "insurance" && state.can_insure) {
+    actions = [
+      html`<button type="button" disabled=${busy} aria-busy=${pending === "action"} onClick=${() => post("action", { kind: "insure" })}>Insurance</button>`,
+      html`<button type="button" disabled=${busy} aria-busy=${pending === "action"} onClick=${() => post("action", { kind: "decline" })}>No insurance</button>`,
+    ];
+  } else if (myTurn) {
+    actions = [["hit", "Hit"], ["stand", "Stand"], ["double", "Double"], ["split", "Split"]]
+      .filter(([kind]) => state[`can_${kind}`])
+      .map(([kind, label]) => html`<button type="button" disabled=${busy} aria-busy=${pending === "action"} onClick=${() => post("action", { kind })}>${label}</button>`);
+  } else {
+    actions = [html`<span class="deal-broke">${state.phase === "playing" ? "Waiting for your turn…" : state.phase === "settled" ? "Next round shortly…" : waitingOnBets ? "Bet placed" : "Waiting for the dealer…"}</span>`];
+  }
+
+  return html`
+    <${CardSettings} interactive=${true} trigger=${false} children=${trainerControls} />
+    <section class="blackjack-table" data-phase=${state.phase}>
+      <div class="blackjack-status-row">
+        <span><b>${money(state.max_bet)}</b> table max</span>
+        <span><b>${money(seated ? viewer.stack : state.bank_balance)}</b> ${seated ? "your chips" : "bank"}</span>
+        <span><b>${viewer?.bet == null ? "—" : money(viewer.bet)}</b> your bet</span>
+      </div>
+      <${ShoeVisualization} shoe=${state.shoe} />
+      <div class="blackjack-play-area">
+        <${Hand} title="Dealer" cards=${state.dealer} score=${state.dealer_score} hidden=${state.dealer_hidden} />
+        ${others.length > 0 ? html`<div class="blackjack-seats" aria-label="Other players">${others.map((seat) => html`<${Seat} seat=${seat} state=${state} />`)}</div>` : null}
+        <div class="blackjack-own-hands" data-hand-count=${viewer?.hands.length || 0}>
+          ${viewer?.hands.length
+            ? viewer.hands.map((hand, index) => html`<${Hand} title=${ownHandTitle(state, index, viewer.hands.length)} cards=${hand.cards} score=${hand.score} />`)
+            : html`<p class="blackjack-own-note">${!seated ? "Watching the table" : viewer.result ? viewer.result : viewer.waiting && state.phase !== "betting" ? "Sitting this round out" : "Place a bet to be dealt in"}</p>`}
+        </div>
+      </div>
+      <div class="blackjack-feedback">
+        <p class="blitz-feedback">${message}</p>
+        ${onTheClock ? html`<${TurnClock} deadline=${state.deadline} duration=${turnDuration} />` : null}
+      </div>
+      <${TrainerPanel} trainer=${state.trainer} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
+      <div class="actions blackjack-actions" style=${`--action-count:${Math.max(1, actions.length)}`}>${actions}</div>
+      <nav class="blackjack-controls">
+        ${error ? html`<p class="error" role="alert">${error}</p>` : html`<span></span>`}
+        ${seated && state.can_rebuy && !broke ? html`<button type="button" disabled=${busy} onClick=${() => post("rebuy")}>Add chips</button>` : null}
+        ${seated ? html`<button type="button" disabled=${busy} onClick=${() => post("leave", {}, () => { location.href = "/blackjack"; })}>${viewer.bet == null ? "Leave table" : "Leave after this round"}</button>` : html`<a href="/blackjack">All tables</a>`}
+      </nav>
+    </section>
+  `;
 }
+
 if (root) render(html`<${App} />`, root);
