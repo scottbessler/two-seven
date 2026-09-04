@@ -81,3 +81,14 @@ export function usePending() {
   };
   return [pending, run];
 }
+
+export function useResultClock(active, deadline, duration) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (!active) return undefined;
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
+  }, [active, deadline]);
+  const dueAt = Date.parse(deadline || "");
+  return Number.isFinite(dueAt) ? Math.min(duration, Math.max(0, dueAt - now)) : duration;
+}

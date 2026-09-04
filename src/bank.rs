@@ -550,8 +550,8 @@ impl BankStore {
         table: Uuid,
         amount: Cents,
     ) -> Result<Account, anyhow::Error> {
-        if !valid_game_amount(amount) {
-            return Err(anyhow::anyhow!("game entry must be between $1 and $10,000"));
+        if amount < 1 {
+            return Err(anyhow::anyhow!("game entry must be positive"));
         }
         self.append(
             owner,

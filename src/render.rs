@@ -262,20 +262,23 @@ pub fn blackjack() -> String {
 
 pub fn blackjack_lobby(tables: &[crate::blackjack::BlackjackLobbyView]) -> String {
     let rows = tables.iter().map(|table| {
+        let your_seat = table
+            .your_seat
+            .map_or(String::new(), |seat| format!(r#" <strong class="lobby-badge">Seat {}</strong>"#, seat + 1));
         format!(
-            r#"<li><a href="/blackjack/tables/{}">Tier {} — max bet {} — buy-in {}</a> <span>{}/{} seats</span></li>"#,
-            table.id,
-            table.tier + 1,
-            format_cents(table.max_bet),
-            format_cents(table.buy_in),
+            r#"<article class="lobby-table-card"><div><h2>Max bet {}</h2><p>Buy-in {} · {}/{} seated{your_seat}</p></div><a class="table-command table-command-link" href="/blackjack/tables/{}">{}</a></article>"#,
+            format_dollars(table.max_bet),
+            format_dollars(table.buy_in),
             table.occupied,
-            table.seat_count
+            table.seat_count,
+            table.id,
+            if table.your_seat.is_some() { "Open table" } else { "Sit down" },
         )
     }).collect::<String>();
     layout_with_header(
         "Blackjack",
         &format!(
-            r#"<section class="card lobby"><h1>Blackjack tables</h1><ul>{rows}</ul></section>"#
+            r#"<section class="card lobby"><h1>Blackjack tables</h1><div class="lobby-table-list">{rows}</div></section>"#
         ),
         "",
         Some("Blackjack"),

@@ -1242,6 +1242,16 @@ impl BlackjackStore {
         Self::default()
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_tables(tables: Vec<BlackjackTable>) -> Self {
+        let (changed, _) = broadcast::channel(32);
+        Self {
+            tables: Arc::new(Mutex::new(tables)),
+            tables_path: None,
+            changed,
+        }
+    }
+
     pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
         let dir = root.as_ref().join("blackjack");
         tokio::fs::create_dir_all(&dir).await?;
@@ -1703,6 +1713,29 @@ fn outcome_for(seat: &BlackjackSeat, returned: Cents) -> crate::blackjack_stats:
 mod shared_table_tests {
     use super::*;
 
+    fn card(rank: crate::cards::Rank) -> Card {
+        Card::new(rank, crate::cards::Suit::Spades)
+    }
+
+    fn seat(user: Uuid, stack: Cents) -> BlackjackSeat {
+        BlackjackSeat {
+            user,
+            stack,
+            bet: None,
+            hands: Vec::new(),
+            insurance: 0,
+            insurance_decided: false,
+            leaving: false,
+            settings: Default::default(),
+            decisions: Vec::new(),
+        }
+    }
+
+    fn rig(table: &mut BlackjackTable, cards: Vec<Card>) {
+        table.shoe.deck = Deck::from_cards(cards);
+        table.shoe.cut_card = usize::MAX;
+    }
+
     #[test]
     fn shared_table_constants_are_stable() {
         assert_eq!(bet_options(10_000), [2_500, 5_000, 7_500, 10_000]);
@@ -1756,5 +1789,322 @@ mod shared_table_tests {
         assert_eq!(table.view(Some(user), 0).seats[0].hands.len(), 1);
         table.finish_pause(Utc::now(), true);
         assert!(table.seats[0].as_ref().expect("seat").hands.is_empty());
+    }
+
+    #[test]
+    fn two_bets_deal_once_with_a_turn_clock() {
+        let users = [Uuid::new_v4(), Uuid::new_v4()];
+        let mut table = BlackjackTable::new(0);
+        table.seats[0] = Some(seat(users[0], 10_000));
+        table.seats[1] = Some(seat(users[1], 10_000));
+        rig(
+            &mut table,
+            vec![
+                card(crate::cards::Rank::Two),
+                card(crate::cards::Rank::Three),
+                card(crate::cards::Rank::Four),
+                card(crate::cards::Rank::Five),
+                card(crate::cards::Rank::Six),
+                card(crate::cards::Rank::Ten),
+            ],
+        );
+        let now = Utc::now();
+        table.place_bet(users[0], 2_500, now).unwrap();
+        table.place_bet(users[1], 2_500, now).unwrap();
+        assert_eq!(table.round_no, 1);
+        assert_eq!(table.phase, Phase::Playing);
+        assert!(table.deadline.is_some());
+    }
+
+    #[test]
+    fn solo_bet_deals_without_a_deadline() {
+        let user = Uuid::new_v4();
+        let mut table = BlackjackTable::new(0);
+        table.seats[0] = Some(seat(user, 10_000));
+        rig(
+            &mut table,
+            vec![
+                card(crate::cards::Rank::Two),
+                card(crate::cards::Rank::Three),
+                card(crate::cards::Rank::Six),
+                card(crate::cards::Rank::Ten),
+            ],
+        );
+        table.place_bet(user, 2_500, Utc::now()).unwrap();
+        assert_eq!(table.round_no, 1);
+        assert!(table.deadline.is_none());
+    }
+
+    #[test]
+    fn betting_timeout_sits_out_unbet_seat() {
+        let users = [Uuid::new_v4(), Uuid::new_v4()];
+        let mut table = BlackjackTable::new(0);
+        table.seats[0] = Some(seat(users[0], 10_000));
+        table.seats[1] = Some(seat(users[1], 10_000));
+        rig(
+            &mut table,
+            vec![
+                card(crate::cards::Rank::Two),
+                card(crate::cards::Rank::Three),
+                card(crate::cards::Rank::Six),
+                card(crate::cards::Rank::Ten),
+            ],
+        );
+        let now = Utc::now();
+        table.place_bet(users[0], 2_500, now).unwrap();
+        let deadline = table.deadline.unwrap();
+        table.tick(deadline + Duration::seconds(1)).unwrap();
+        assert_eq!(table.round_no, 1);
+        assert!(table.view(Some(users[1]), 0).seats[1].waiting);
+    }
+
+    #[test]
+    fn only_current_seat_may_act_and_timeout_advances_turn() {
+        let users = [Uuid::new_v4(), Uuid::new_v4()];
+        let mut table = BlackjackTable::new(0);
+        table.seats[0] = Some(seat(users[0], 10_000));
+        table.seats[1] = Some(seat(users[1], 10_000));
+        rig(
+            &mut table,
+            vec![
+                card(crate::cards::Rank::Two),
+                card(crate::cards::Rank::Three),
+                card(crate::cards::Rank::Four),
+                card(crate::cards::Rank::Five),
+                card(crate::cards::Rank::Six),
+                card(crate::cards::Rank::Ten),
+            ],
+        );
+        let now = Utc::now();
+        table.place_bet(users[0], 2_500, now).unwrap();
+        table.place_bet(users[1], 2_500, now).unwrap();
+        assert!(table.act(users[1], Action::Hit, now).is_err());
+        let deadline = table.deadline.unwrap();
+        table.tick(deadline + Duration::seconds(1)).unwrap();
+        assert_eq!(
+            table.seats[0].as_ref().unwrap().hands[0].status,
+            BlackjackHandStatus::Stand
+        );
+        assert_eq!(table.current, Some((1, 0)));
+    }
+
+    #[test]
+    fn settlement_pays_win_push_and_natural_then_clears_after_pause() {
+        let users = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let mut table = BlackjackTable::new(0);
+        for (index, user) in users.into_iter().enumerate() {
+            let mut player = seat(user, 7_500);
+            player.bet = Some(2_500);
+            player.hands = vec![BlackjackHand {
+                cards: if index == 2 {
+                    vec![
+                        card(crate::cards::Rank::Ace),
+                        card(crate::cards::Rank::King),
+                    ]
+                } else if index == 0 {
+                    vec![
+                        card(crate::cards::Rank::Ten),
+                        card(crate::cards::Rank::Eight),
+                    ]
+                } else {
+                    vec![
+                        card(crate::cards::Rank::Ten),
+                        card(crate::cards::Rank::Seven),
+                    ]
+                },
+                bet: 2_500,
+                status: if index == 2 {
+                    BlackjackHandStatus::Blackjack
+                } else {
+                    BlackjackHandStatus::Stand
+                },
+                split: false,
+                split_aces: false,
+                doubled: false,
+            }];
+            table.seats[index] = Some(player);
+        }
+        table.dealer = vec![
+            card(crate::cards::Rank::Ten),
+            card(crate::cards::Rank::Seven),
+        ];
+        table.phase = Phase::Playing;
+        let now = Utc::now();
+        table.settle(now).unwrap();
+        assert_eq!(table.seats[0].as_ref().unwrap().stack, 12_500);
+        assert_eq!(table.seats[1].as_ref().unwrap().stack, 10_000);
+        assert_eq!(table.seats[2].as_ref().unwrap().stack, 13_750);
+        assert_eq!(table.phase, Phase::Settled);
+        let deadline = table.deadline.unwrap();
+        table.tick(deadline + Duration::seconds(1)).unwrap();
+        assert_eq!(table.phase, Phase::Betting);
+        assert!(
+            table
+                .seats
+                .iter()
+                .flatten()
+                .all(|seat| seat.hands.is_empty())
+        );
+    }
+
+    #[test]
+    fn action_flags_require_stack_for_double_and_split() {
+        let user = Uuid::new_v4();
+        let mut table = BlackjackTable::new(0);
+        let mut player = seat(user, 2_499);
+        player.bet = Some(2_500);
+        player.hands = vec![BlackjackHand {
+            cards: vec![
+                card(crate::cards::Rank::Eight),
+                card(crate::cards::Rank::Eight),
+            ],
+            bet: 2_500,
+            status: BlackjackHandStatus::Playing,
+            split: false,
+            split_aces: false,
+            doubled: false,
+        }];
+        table.seats[0] = Some(player);
+        table.phase = Phase::Playing;
+        table.current = Some((0, 0));
+        let (_, _, can_double, can_split, _, _, _, _) = table.action_flags(user);
+        assert!(!can_double);
+        assert!(!can_split);
+    }
+
+    #[tokio::test]
+    async fn store_leave_after_a_live_round_cash_out_is_recorded() {
+        let root = std::env::temp_dir().join(format!("blackjack-leave-{}", Uuid::new_v4()));
+        let bank = crate::bank::BankStore::load(&root).await.unwrap();
+        let stats = crate::blackjack_stats::BlackjackStatsStore::new();
+        let user = Uuid::new_v4();
+        let mut table = BlackjackTable::new(0);
+        table.seats[0] = Some(BlackjackSeat {
+            user,
+            stack: 7_500,
+            bet: Some(2_500),
+            hands: vec![BlackjackHand {
+                cards: vec![
+                    card(crate::cards::Rank::Ten),
+                    card(crate::cards::Rank::Eight),
+                ],
+                bet: 2_500,
+                status: BlackjackHandStatus::Playing,
+                split: false,
+                split_aces: false,
+                doubled: false,
+            }],
+            insurance: 0,
+            insurance_decided: false,
+            leaving: false,
+            settings: Default::default(),
+            decisions: Vec::new(),
+        });
+        table.phase = Phase::Playing;
+        table.current = Some((0, 0));
+        let store = BlackjackStore::from_tables(vec![table]);
+        let now = Utc::now();
+        let table = store.view(table_id(0), Some(user), 0).await.unwrap();
+        assert!(table.seats[0].bet.is_some());
+        store.leave(table_id(0), user, &bank).await.unwrap();
+        let table = store.view(table_id(0), Some(user), 0).await.unwrap();
+        assert!(table.seats[0].leaving);
+        store
+            .act(table_id(0), user, Action::Stand, now, &bank, &stats)
+            .await
+            .unwrap();
+        assert!(
+            store
+                .view(table_id(0), Some(user), 0)
+                .await
+                .unwrap()
+                .seats
+                .iter()
+                .all(|seat| seat.user != user)
+        );
+        let account = bank
+            .account(crate::bank::AccountOwner::User(user))
+            .await
+            .unwrap();
+        assert!(account.entries.iter().any(|entry| {
+            entry.kind == crate::bank::LedgerKind::BlackjackCashOut { table: table_id(0) }
+        }));
+    }
+
+    #[tokio::test]
+    async fn high_tier_buy_in_and_mid_round_persistence_refund() {
+        let root = std::env::temp_dir().join(format!("blackjack-persist-{}", Uuid::new_v4()));
+        let bank = crate::bank::BankStore::load(&root).await.unwrap();
+        let user = Uuid::new_v4();
+        bank.append(
+            crate::bank::AccountOwner::User(user),
+            crate::bank::LedgerKind::Adjustment,
+            100_000_000,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+        bank.blackjack_buy_in(
+            crate::bank::AccountOwner::User(user),
+            table_id(3),
+            buy_in_for(10_000_000),
+        )
+        .await
+        .unwrap();
+        let account = bank
+            .account(crate::bank::AccountOwner::User(user))
+            .await
+            .unwrap();
+        assert_eq!(account.balance, 0);
+
+        let table = BlackjackTable {
+            id: table_id(0),
+            tier: 0,
+            max_bet: 10_000,
+            seats: vec![
+                Some(BlackjackSeat {
+                    user,
+                    stack: 7_500,
+                    bet: Some(2_500),
+                    hands: vec![BlackjackHand {
+                        cards: vec![card(crate::cards::Rank::Ten)],
+                        bet: 2_500,
+                        status: BlackjackHandStatus::Playing,
+                        split: false,
+                        split_aces: false,
+                        doubled: false,
+                    }],
+                    insurance: 1_250,
+                    insurance_decided: true,
+                    leaving: false,
+                    settings: Default::default(),
+                    decisions: Vec::new(),
+                });
+                SEAT_COUNT
+            ],
+            shoe: BlackjackShoe::table_default(),
+            phase: Phase::Playing,
+            dealer: vec![card(crate::cards::Rank::Ace)],
+            dealer_peeked: false,
+            current: Some((0, 0)),
+            deadline: Some(Utc::now() + Duration::seconds(10)),
+            round_no: 1,
+            last_results: Vec::new(),
+            updated_at: Utc::now(),
+        };
+        let dir = root.join("blackjack");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(
+            dir.join("tables.json"),
+            serde_json::to_vec(&vec![table]).unwrap(),
+        )
+        .await
+        .unwrap();
+        let loaded = BlackjackStore::load(&root).await.unwrap();
+        let view = loaded.view(table_id(0), Some(user), 0).await.unwrap();
+        assert_eq!(view.phase, Phase::Betting);
+        assert_eq!(view.seats[0].stack, 11_250);
+        assert!(view.seats[0].hands.is_empty());
+        assert_eq!(view.seats[0].insurance, 0);
     }
 }
