@@ -28,6 +28,10 @@ pub async fn tick_once(state: &AppState) -> Result<(), anyhow::Error> {
 
 pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), anyhow::Error> {
     state.blitz.expire(now).await;
+    state
+        .blackjack
+        .tick(now, &state.bank, &state.blackjack_stats)
+        .await;
     let mut ids = state.tables.ids().await;
     ids.sort();
     for id in ids {
@@ -1003,6 +1007,86 @@ mod tests {
         assert!(
             state.history.recent(id, 10).await.len() == 1,
             "the hand it ended is written to history",
+        );
+    }
+
+    #[tokio::test]
+    async fn blackjack_driver_stands_the_current_hand_after_its_deadline() {
+        let root =
+            std::env::temp_dir().join(format!("two-seven-blackjack-clock-{}", Uuid::new_v4()));
+        let bank = BankStore::load(&root).await.unwrap();
+        let blackjack_stats = crate::blackjack_stats::BlackjackStatsStore::new();
+        let users = Arc::new(UserStore::load(&root).await.unwrap());
+        let user_a = Uuid::new_v4();
+        let user_b = Uuid::new_v4();
+        let now = Utc::now();
+        let mut table = crate::blackjack::BlackjackTable::new(0);
+        for (index, user) in [user_a, user_b].into_iter().enumerate() {
+            table.seats[index] = Some(crate::blackjack::BlackjackSeat {
+                user,
+                stack: 7_500,
+                bet: Some(2_500),
+                hands: vec![crate::blackjack::BlackjackHand {
+                    cards: vec![
+                        crate::cards::Card::new(
+                            crate::cards::Rank::Eight,
+                            crate::cards::Suit::Spades,
+                        ),
+                        crate::cards::Card::new(
+                            crate::cards::Rank::Seven,
+                            crate::cards::Suit::Hearts,
+                        ),
+                    ],
+                    bet: 2_500,
+                    status: crate::blackjack::BlackjackHandStatus::Playing,
+                    split: false,
+                    split_aces: false,
+                    doubled: false,
+                }],
+                insurance: 0,
+                insurance_decided: false,
+                leaving: false,
+                settings: Default::default(),
+                decisions: Vec::new(),
+            });
+        }
+        table.phase = crate::blackjack::Phase::Playing;
+        table.current = Some((0, 0));
+        table.deadline = Some(now + Duration::seconds(10));
+        let blackjack = crate::blackjack::BlackjackStore::from_tables(vec![table]);
+        let state = AppState {
+            users,
+            bank: bank.clone(),
+            blackjack: blackjack.clone(),
+            blackjack_stats: blackjack_stats.clone(),
+            blitz: BlitzStore::load(&root).await.unwrap(),
+            tables: TableStore::load(&root).await.unwrap(),
+            history: crate::history::HistoryStore::load(&root).await.unwrap(),
+            stats: crate::stats::StatsStore::load(&root).await.unwrap(),
+            admin_password: Arc::new("test-admin-password".into()),
+            webauthn: Arc::new(build_webauthn().unwrap()),
+            key: Key::generate(),
+            passkey_disabled: true,
+        };
+        let before = blackjack
+            .view(crate::blackjack::table_id(0), Some(user_a), 0)
+            .await
+            .unwrap();
+        let (seat, hand) = (
+            before.current_seat.expect("current seat"),
+            before.current_hand.expect("current hand"),
+        );
+        let deadline = before.deadline.expect("playing deadline");
+        tick_once_at(&state, deadline + Duration::seconds(1))
+            .await
+            .unwrap();
+        let after = blackjack
+            .view(crate::blackjack::table_id(0), Some(user_a), 0)
+            .await
+            .unwrap();
+        assert_eq!(
+            after.seats[seat].hands[hand].status,
+            crate::blackjack::BlackjackHandStatus::Stand
         );
     }
 

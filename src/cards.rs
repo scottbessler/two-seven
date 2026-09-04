@@ -169,6 +169,11 @@ pub struct Deck {
     next: usize,
 }
 impl Deck {
+    #[cfg(test)]
+    pub fn from_cards(cards: Vec<Card>) -> Self {
+        Self { cards, next: 0 }
+    }
+
     pub fn seeded(seed: u64) -> Self {
         Self::shoe_seeded(seed, 1)
     }

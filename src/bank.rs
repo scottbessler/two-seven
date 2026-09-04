@@ -31,6 +31,8 @@ pub enum LedgerKind {
     HandBlitzWin { run: Uuid },
     BlackjackBet { game: Uuid },
     BlackjackPayout { game: Uuid },
+    BlackjackBuyIn { table: Uuid },
+    BlackjackCashOut { table: Uuid },
     Gift { peer: AccountOwner },
     Adjustment,
 }
@@ -539,6 +541,43 @@ impl BankStore {
             LedgerKind::BlackjackPayout { game },
             amount,
             "blackjack payout".into(),
+        )
+        .await
+    }
+    pub async fn blackjack_buy_in(
+        &self,
+        owner: AccountOwner,
+        table: Uuid,
+        amount: Cents,
+    ) -> Result<Account, anyhow::Error> {
+        if amount < 1 {
+            return Err(anyhow::anyhow!("game entry must be positive"));
+        }
+        self.append(
+            owner,
+            LedgerKind::BlackjackBuyIn { table },
+            -amount,
+            "blackjack table buy-in".into(),
+        )
+        .await
+    }
+    pub async fn blackjack_cash_out(
+        &self,
+        owner: AccountOwner,
+        table: Uuid,
+        amount: Cents,
+    ) -> Result<Account, anyhow::Error> {
+        if amount < 0 {
+            return Err(anyhow::anyhow!("cash-out amount cannot be negative"));
+        }
+        if amount == 0 {
+            return self.account(owner).await;
+        }
+        self.append(
+            owner,
+            LedgerKind::BlackjackCashOut { table },
+            amount,
+            "blackjack table cash-out".into(),
         )
         .await
     }
