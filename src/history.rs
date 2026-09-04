@@ -88,6 +88,34 @@ impl HistoryStore {
         hands
     }
 
+    /// Every hand every table has ever played, oldest first, for a one-off
+    /// walk over the whole record. Ordered in SQL rather than in memory, and
+    /// only the record books' backfill ever asks for it. A row that fails to
+    /// parse is skipped rather than losing the walk.
+    pub async fn every_hand(&self) -> Vec<HandRecord> {
+        let rows = self
+            .db
+            .call(move |conn| {
+                let mut statement =
+                    conn.prepare("SELECT record FROM hands ORDER BY at ASC, hand_no ASC")?;
+                let rows = statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await;
+        match rows {
+            Ok(rows) => rows
+                .iter()
+                .filter_map(|json| serde_json::from_str(json).ok())
+                .collect(),
+            Err(error) => {
+                tracing::error!(%error, "failed to read the whole hand history");
+                Vec::new()
+            }
+        }
+    }
+
     /// How many hands the table has on record.
     pub async fn count(&self, table: Uuid) -> usize {
         let table = table.to_string();

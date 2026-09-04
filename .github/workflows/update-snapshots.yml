@@ -80,7 +80,11 @@ jobs:
                 # could push it themselves get to ask for one.
                 echo "::warning::$COMMENT_ROLE cannot write to this repository; ignoring."
               else
-                branch=$(gh pr view "$PR_NUMBER" --json headRefName -q .headRefName)
+                # Named explicitly: this job never checks the repository out,
+                # so `gh` has no git remote to infer the repository from and
+                # exits with "not a git repository" instead of a branch.
+                branch=$(gh pr view "$PR_NUMBER" -R "$GITHUB_REPOSITORY" \
+                  --json headRefName -q .headRefName)
                 echo "Asked for on PR #$PR_NUMBER; regenerating on $branch."
                 echo "branch=$branch" >> "$GITHUB_OUTPUT"
                 # Say out loud that the comment landed: the run itself takes

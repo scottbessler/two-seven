@@ -190,6 +190,9 @@ struct BlackjackHand {
     status: BlackjackHandStatus,
     split: bool,
     split_aces: bool,
+    /// Doubled down: the stake was raised and exactly one card taken.
+    #[serde(default)]
+    doubled: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -213,6 +216,10 @@ struct BlackjackGame {
     base_exposed_cards: usize,
     #[serde(default)]
     fresh_shuffle: bool,
+    /// Set once this round has been folded into the player's record, so an
+    /// action taken against an already-settled game cannot count it twice.
+    #[serde(default)]
+    recorded: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -398,10 +405,12 @@ impl BlackjackStore {
                 },
                 split: false,
                 split_aces: false,
+                doubled: false,
             }],
             base_count,
             base_exposed_cards,
             fresh_shuffle,
+            recorded: false,
         };
         if !game.can_insure(balance) {
             game.peek();
@@ -489,6 +498,7 @@ impl BlackjackStore {
         }
         let i = game.active_index();
         game.hands[i].bet += wager;
+        game.hands[i].doubled = true;
         let card = game.deal_card();
         game.hands[i].cards.push(card);
         game.hands[i].status = if score(&game.hands[i].cards).0 > 21 {
@@ -530,6 +540,7 @@ impl BlackjackStore {
             status: BlackjackHandStatus::Playing,
             split: true,
             split_aces,
+            doubled: false,
         };
         game.hands[i].split = true;
         game.hands[i].split_aces = split_aces;
@@ -636,6 +647,64 @@ fn cut_card(total_cards: usize, penetration_percent: u8) -> usize {
 fn settle_game(shoes: &mut HashMap<Uuid, BlackjackShoe>, game: &BlackjackGame) {
     if let Some(shoe) = shoes.get_mut(&game.user) {
         shoe.settle(game);
+    }
+}
+
+impl BlackjackStore {
+    /// The outcome of a finished round, once and only once.
+    ///
+    /// Called by every route that can end a hand. Settlement happens deep
+    /// inside the game rather than at one seam, so rather than thread a return
+    /// value through six methods, the round is claimed here and flagged as
+    /// counted.
+    pub async fn take_settlement(
+        &self,
+        user: Uuid,
+        id: Uuid,
+    ) -> Option<crate::blackjack_stats::RoundOutcome> {
+        let mut guard = self.inner.lock().await;
+        let game = guard.get_mut(&id)?;
+        if game.user != user || game.recorded || game.status == BlackjackStatus::Playing {
+            return None;
+        }
+        game.recorded = true;
+        Some(game.outcome())
+    }
+}
+
+impl BlackjackGame {
+    /// What this round cost and paid, and how it got there.
+    fn outcome(&self) -> crate::blackjack_stats::RoundOutcome {
+        let mut outcome = crate::blackjack_stats::RoundOutcome {
+            hands: self.hands.len() as u64,
+            // The first hand is dealt, not split; every one after it is.
+            splits: self.hands.len().saturating_sub(1) as u64,
+            insured: self.insurance > 0,
+            wagered: self.hands.iter().map(|hand| hand.bet).sum::<Cents>() + self.insurance,
+            returned: self.payout,
+            ..Default::default()
+        };
+        for hand in &self.hands {
+            match hand.status {
+                BlackjackHandStatus::Blackjack => {
+                    outcome.won += 1;
+                    outcome.naturals += 1;
+                }
+                BlackjackHandStatus::Win => outcome.won += 1,
+                BlackjackHandStatus::Push => outcome.push += 1,
+                BlackjackHandStatus::Bust => {
+                    outcome.lost += 1;
+                    outcome.busts += 1;
+                }
+                _ => outcome.lost += 1,
+            }
+            // A doubled hand carries twice the stake it was dealt with, and
+            // is the only way a hand of three cards can stop on its own.
+            if hand.doubled {
+                outcome.doubles += 1;
+            }
+        }
+        outcome
     }
 }
 
@@ -1165,6 +1234,7 @@ mod tests {
             status,
             split: false,
             split_aces: false,
+            doubled: false,
         }
     }
 
@@ -1184,6 +1254,7 @@ mod tests {
             base_count: 0,
             base_exposed_cards: 0,
             fresh_shuffle: false,
+            recorded: false,
         }
     }
 

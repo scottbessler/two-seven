@@ -94,6 +94,14 @@ pub async fn admin_action(
             let removed = s.blitz.reset_stats().await.map_err(AppError::internal)?;
             format!("Reset blitz stats for {removed} players.")
         }
+        "blackjack" => {
+            let removed = s
+                .blackjack_stats
+                .reset_all()
+                .await
+                .map_err(AppError::internal)?;
+            format!("Reset blackjack stats for {removed} players.")
+        }
         _ => return Err(AppError::bad_request("unknown admin action")),
     };
     Ok(Html(render::admin(None, Some(&message))))
@@ -481,6 +489,22 @@ pub struct BlackjackStartRequest {
     pub settings: crate::blackjack::BlackjackTrainerSettings,
 }
 
+/// Fold a finished round into the player's blackjack record.
+///
+/// Every route that can end a hand calls this; the store hands the round back
+/// exactly once, so calling it after an action that changed nothing, or twice
+/// for the same game, counts nothing. A record that fails to write is not
+/// worth failing the player's hand over — the money is already settled in the
+/// ledger, which is what the backfill reads.
+async fn record_blackjack_round(s: &AppState, user: Uuid, id: Uuid) {
+    let Some(outcome) = s.blackjack.take_settlement(user, id).await else {
+        return;
+    };
+    if let Err(error) = s.blackjack_stats.record(user, outcome).await {
+        tracing::warn!(%error, "could not record a blackjack round");
+    }
+}
+
 pub async fn blackjack_start(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
@@ -510,6 +534,7 @@ pub async fn blackjack_start(
             .await
             .map_err(AppError::internal)?;
     }
+    record_blackjack_round(&s, user, id).await;
     s.blackjack.persist().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!(view)))
 }
@@ -543,6 +568,7 @@ pub async fn blackjack_hit(
             .await
             .map_err(AppError::internal)?;
     }
+    record_blackjack_round(&s, user, input.id).await;
     s.blackjack.persist().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!(view)))
 }
@@ -564,6 +590,7 @@ pub async fn blackjack_stand(
             .await
             .map_err(AppError::internal)?;
     }
+    record_blackjack_round(&s, user, input.id).await;
     s.blackjack.persist().await.map_err(AppError::internal)?;
     Ok(Json(serde_json::json!(view)))
 }
@@ -588,6 +615,7 @@ pub async fn blackjack_double(
                     .await
                     .map_err(AppError::internal)?;
             }
+            record_blackjack_round(&s, user, input.id).await;
             s.blackjack.persist().await.map_err(AppError::internal)?;
             Ok(Json(serde_json::json!(view)))
         }
@@ -615,6 +643,7 @@ pub async fn blackjack_split(
                     .await
                     .map_err(AppError::internal)?;
             }
+            record_blackjack_round(&s, user, input.id).await;
             s.blackjack.persist().await.map_err(AppError::internal)?;
             Ok(Json(serde_json::json!(view)))
         }
@@ -640,6 +669,7 @@ pub async fn blackjack_insurance(
                     .await
                     .map_err(AppError::internal)?;
             }
+            record_blackjack_round(&s, user, input.id).await;
             s.blackjack.persist().await.map_err(AppError::internal)?;
             Ok(Json(serde_json::json!(view)))
         }
@@ -906,14 +936,139 @@ fn free_bot(table: &Table, kind: BotKind) -> Option<crate::table::Bot> {
         })
 }
 
+/// How many entries each record book shows.
+pub const RECORD_BOOK_SIZE: usize = 10;
+
+/// A stored owner key back into a name for the record books.
+///
+/// The books keep the bank's key rather than a name so a rename carries
+/// through, which means every read has to resolve it. A key that no longer
+/// resolves — a deleted account, a regular the house has forgotten — keeps its
+/// place in the book rather than dropping the hand off it.
+fn resolve_owner(
+    key: &str,
+    users: &std::collections::HashMap<Uuid, String>,
+) -> (String, Option<Uuid>, bool) {
+    if let Some(id) = key.strip_prefix("user:")
+        && let Ok(id) = id.parse::<Uuid>()
+    {
+        return (
+            users.get(&id).cloned().unwrap_or_else(|| "Unknown".into()),
+            Some(id),
+            false,
+        );
+    }
+    if let Some(bot) = key.strip_prefix("bot:")
+        && let Ok(bot) = bot.parse::<crate::table::Bot>()
+    {
+        return (bot.name().to_string(), None, true);
+    }
+    ("Unknown".to_string(), None, false)
+}
+
 pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -> Html<String> {
     let accounts = s.bank.accounts().await;
     let blitz = s.blitz.all_stats().await;
     let poker = s.stats.all().await;
+    let blackjack = s.blackjack_stats.all().await;
     let mut users: std::collections::HashMap<Uuid, String> = std::collections::HashMap::new();
     for user in s.users.all().await {
         users.insert(user.id, user.display_name);
     }
+
+    // Quads and better, best hand first — the store has already ordered them.
+    let big_hands: Vec<crate::view::LeaderboardBigHand> = s
+        .stats
+        .big_hands()
+        .await
+        .into_iter()
+        .enumerate()
+        .map(|(index, hand)| {
+            let (name, player_id, house) = resolve_owner(&hand.owner, &users);
+            crate::view::LeaderboardBigHand {
+                rank: index + 1,
+                name,
+                player_id,
+                house,
+                royal: hand.royal,
+                label: hand.label,
+                cards: hand.cards,
+                won: hand.won,
+                at: hand.at,
+            }
+        })
+        .collect();
+    let (straight_flushes, quads): (Vec<_>, Vec<_>) = big_hands
+        .into_iter()
+        .partition(|hand| hand.label.starts_with("Straight flush"));
+    // Each book numbers itself, so the split has to renumber.
+    let renumber = |hands: Vec<crate::view::LeaderboardBigHand>, limit: usize| {
+        hands
+            .into_iter()
+            .take(limit)
+            .enumerate()
+            .map(|(index, mut hand)| {
+                hand.rank = index + 1;
+                hand
+            })
+            .collect::<Vec<_>>()
+    };
+    // A straight flush may never happen again, so every one ever made is
+    // listed; quads are common enough to want a cut-off.
+    let straight_flushes = renumber(straight_flushes, usize::MAX);
+    let quads = renumber(quads, RECORD_BOOK_SIZE * 2);
+
+    let beats = s.stats.beats().await;
+    let to_view = |beat: &crate::stats::Beat, rank: usize| {
+        let (loser, loser_id, loser_house) = resolve_owner(&beat.loser, &users);
+        let (winner, winner_id, winner_house) = resolve_owner(&beat.winner, &users);
+        crate::view::LeaderboardBeat {
+            rank,
+            loser,
+            loser_id,
+            loser_house,
+            loser_equity_permille: beat.loser_equity_permille,
+            loser_label: beat.loser_label.clone(),
+            winner,
+            winner_id,
+            winner_house,
+            winner_equity_permille: beat.winner_equity_permille,
+            winner_label: beat.winner_label.clone(),
+            pot: beat.pot,
+            at: beat.at,
+        }
+    };
+    // The unluckiest losses: whoever was furthest ahead and still lost.
+    let mut by_odds = beats.clone();
+    by_odds.sort_by(|left, right| {
+        right
+            .loser_equity_permille
+            .cmp(&left.loser_equity_permille)
+            .then(right.pot.cmp(&left.pot))
+    });
+    let bad_beats: Vec<_> = by_odds
+        .iter()
+        .take(RECORD_BOOK_SIZE)
+        .enumerate()
+        .map(|(index, beat)| to_view(beat, index + 1))
+        .collect();
+    // The costliest: the biggest pots lost while a cooler-sized favourite.
+    let mut by_money: Vec<_> = beats
+        .into_iter()
+        .filter(|beat| beat.loser_equity_permille >= crate::stats::COOLER_PERMILLE)
+        .collect();
+    by_money.sort_by(|left, right| {
+        right
+            .pot
+            .cmp(&left.pot)
+            .then(right.loser_equity_permille.cmp(&left.loser_equity_permille))
+    });
+    let worst_beats: Vec<_> = by_money
+        .iter()
+        .take(RECORD_BOOK_SIZE)
+        .enumerate()
+        .map(|(index, beat)| to_view(beat, index + 1))
+        .collect();
     let mut ranked: Vec<(crate::bank::AccountOwner, crate::bank::Account)> = accounts
         .into_iter()
         .map(|account| (account.owner.clone(), account))
@@ -949,7 +1104,7 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
                     crate::bank::AccountOwner::User(id) => format!("user:{id}"),
                     crate::bank::AccountOwner::Bot(bot) => format!("bot:{bot}"),
                 })
-                .copied()
+                .cloned()
                 .unwrap_or_default();
             crate::view::LeaderboardRow {
                 rank: index + 1,
@@ -963,6 +1118,13 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
                 net_balance: account.net_balance(),
                 loan_count: account.loan_count,
                 poker,
+                // Only people play blackjack; the house has no table there.
+                blackjack: match &owner {
+                    crate::bank::AccountOwner::User(id) => {
+                        blackjack.get(id).copied().unwrap_or_default()
+                    }
+                    crate::bank::AccountOwner::Bot(_) => Default::default(),
+                },
                 blitz: crate::blitz::BlitzDifficulty::ALL
                     .iter()
                     .map(|difficulty| {
@@ -978,7 +1140,13 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
             }
         })
         .collect::<Vec<_>>();
-    Html(render::leaderboard(&rows))
+    Html(render::leaderboard(
+        &rows,
+        &straight_flushes,
+        &quads,
+        &bad_beats,
+        &worst_beats,
+    ))
 }
 
 pub async fn table_history(

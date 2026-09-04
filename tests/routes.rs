@@ -5,10 +5,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::Key;
 use cookie::{Cookie as RawCookie, CookieJar};
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
-};
+use std::sync::Arc;
 use tower::ServiceExt;
 use two_seven::{
     app,
@@ -28,13 +25,12 @@ struct T {
     state: app::AppState,
 }
 async fn appx() -> T {
-    let dir = std::env::temp_dir().join(format!(
-        "two-seven-{}",
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
+    // Tests run in parallel and the clock is not fine-grained enough to keep
+    // them apart: two harnesses landing in the same nanosecond shared a data
+    // directory, and so opened one SQLite file twice and ran its migrations
+    // twice. A fresh id per harness is the only thing that actually collides
+    // never.
+    let dir = std::env::temp_dir().join(format!("two-seven-{}", Uuid::new_v4()));
     let users = Arc::new(UserStore::load(&dir).await.unwrap());
     let bank = two_seven::bank::BankStore::load(&dir).await.unwrap();
     let blitz = two_seven::blitz::BlitzStore::load(&dir).await.unwrap();
@@ -47,6 +43,9 @@ async fn appx() -> T {
         users: users.clone(),
         bank: bank.clone(),
         blackjack: two_seven::blackjack::BlackjackStore::load(&dir)
+            .await
+            .unwrap(),
+        blackjack_stats: two_seven::blackjack_stats::BlackjackStatsStore::load(&dir)
             .await
             .unwrap(),
         blitz,
@@ -66,12 +65,6 @@ async fn appx() -> T {
         bank,
         tables: table_store,
     }
-}
-fn blitz_labels() -> Vec<&'static str> {
-    two_seven::blitz::BlitzDifficulty::ALL
-        .iter()
-        .map(|difficulty| difficulty.config().label)
-        .collect()
 }
 /// Cash tables are not created by players any more, so tests that need a
 /// particular shape of table put one in the store directly.
@@ -1030,11 +1023,12 @@ async fn the_leaderboard_ranks_by_net_balance_then_by_fewer_loans() {
         place("Poorest") < place("Borrower"),
         "a better net balance outranks"
     );
-    // Every difficulty gets its own accuracy and streak columns.
-    for difficulty in blitz_labels() {
-        assert!(html.contains(difficulty), "missing {difficulty} columns");
-    }
-    assert_eq!(html.matches("<th>Accuracy</th><th>Streak</th>").count(), 3);
+    // Each game gets its own board now, and a board nobody has played says so
+    // rather than showing a bare header. The column structure itself is
+    // covered in render's own tests, where a board can be given rows.
+    assert!(html.contains("Nobody has played a run yet."));
+    assert!(html.contains("Nobody has sat down at the blackjack table yet."));
+    assert!(html.contains("Nobody has made one yet."));
     // Bots bankroll themselves and are not in the running.
     assert!(!html.contains("fish"));
 }
@@ -3425,4 +3419,43 @@ async fn gifts_move_whole_thousands_between_players() {
         500_000,
         "a refused gift leaves the money where it is"
     );
+}
+
+#[tokio::test]
+async fn the_admin_page_can_clear_a_blackjack_record() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.state
+        .blackjack_stats
+        .record(
+            user,
+            two_seven::blackjack_stats::RoundOutcome {
+                hands: 1,
+                won: 1,
+                wagered: 1_000,
+                returned: 2_000,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(t.state.blackjack_stats.of(user).await.rounds, 1);
+
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/admin")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("password=test-admin-password&action=blackjack"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert!(String::from_utf8_lossy(&body).contains("Reset blackjack stats for 1 players."));
+    assert_eq!(t.state.blackjack_stats.of(user).await.rounds, 0);
 }
