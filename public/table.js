@@ -15,6 +15,14 @@ const RUNOUT_STEP_MS = 5_000;
 const RUNOUT_FLOOR_MS = 1_200;
 // The last stretch of somebody's turn, when the bar turns urgent.
 const URGENT_TURN_MS = 3_000;
+const EMOTE_LIFETIME_MS = 1_800;
+const EMOTES = [
+  { kind: "cry", glyph: "😭", label: "Cry" },
+  { kind: "joy", glyph: "🤩", label: "Joy" },
+  { kind: "laugh", glyph: "😂", label: "Laugh" },
+  { kind: "poop", glyph: "💩", label: "Poop" },
+  { kind: "shock", glyph: "😱", label: "Shock" },
+];
 
 // An all-in board runs out on the server, a street per advance, while the hand
 // is still live (SPEC V59). The client renders what is on the table; it no
@@ -63,7 +71,7 @@ function TurnClock({ remaining, duration, className, announce }) {
   ><i style=${{ width: `${left * 100}%` }}></i></span>`;
 }
 
-function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock }) {
+function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock, emotes }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
@@ -93,7 +101,7 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
   const checked = Boolean(player && street && events.some((event) => event.seat === seat.index && event.street === street && event.kind === "Check"));
   const wager = html`<span class=${`seat-wager ${player?.street_contribution > 0 || player?.all_in || checked ? "" : "no-wager"} ${checked ? "checked-wager" : ""}`}>${player?.all_in ? "ALL IN" : checked ? "CHECKED" : money(player?.street_contribution || 0)}</span>`;
   const positionBadges = html`<span class="seat-corner-badges">${seat.index === button && html`<i class="seat-role button-role">D</i>`}${role && html`<i class="seat-role">${role}</i>`}</span>`;
-  return html`<article class=${classes}>
+  return html`<article class=${classes} data-seat-index=${seat.index}>
     ${viewer
       ? html`${positionBadges}<span class="viewer-summary">${playerInfo}${stackLabel}${wager}</span>`
       : html`<span class="opponent-heading">${playerInfo}${positionBadges}</span>${stackLabel}`}
@@ -109,7 +117,25 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
     ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     ${clock && html`<${TurnClock} ...${clock} className="seat-clock" announce=${viewer} />`}
+    ${emotes.length > 0 && html`<span class="seat-emotes" aria-live="polite">${emotes.map((emote) => {
+      const choice = EMOTES.find((candidate) => candidate.kind === emote.kind);
+      return choice && html`<i key=${emote.id} class="seat-emote" role="img" aria-label=${`${choice.label} from ${label}`}>${choice.glyph}</i>`;
+    })}</span>`}
   </article>`;
+}
+
+function EmoteControls() {
+  const send = async (kind) => {
+    const response = await fetch(`/tables/${tableId}/emote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind }),
+    });
+    if (!response.ok) document.getElementById("table-error").textContent = await responseError(response);
+  };
+  return html`<span class="emote-controls" role="group" aria-label="Emotes">
+    ${EMOTES.map((emote) => html`<button key=${emote.kind} type="button" title=${emote.label} aria-label=${emote.label} onClick=${() => send(emote.kind)}>${emote.glyph}</button>`)}
+  </span>`;
 }
 
 // The compact layout, matching the breakpoint 05-table.css switches on. The
@@ -605,14 +631,29 @@ function SeatBot({ state, openSeats, refresh }) {
 
 function TableApp() {
   const [state, setState] = useState(null);
+  const [emotes, setEmotes] = useState([]);
+  const emoteTimers = useRef(new Set());
   const [settings, setSettings] = useCardSettings();
   const refresh = () => fetchState().then(setState).catch(() => {});
   useEffect(() => {
     refresh();
     const events = new EventSource(`/tables/${tableId}/events`);
     events.addEventListener("state", (event) => setState(JSON.parse(event.data)));
+    events.addEventListener("emote", (event) => {
+      const emote = JSON.parse(event.data);
+      setEmotes((current) => [...current, emote]);
+      const timer = setTimeout(() => {
+        emoteTimers.current.delete(timer);
+        setEmotes((current) => current.filter((candidate) => candidate.id !== emote.id));
+      }, EMOTE_LIFETIME_MS);
+      emoteTimers.current.add(timer);
+    });
     events.addEventListener("error", refresh);
-    return () => events.close();
+    return () => {
+      events.close();
+      for (const timer of emoteTimers.current) clearTimeout(timer);
+      emoteTimers.current.clear();
+    };
   }, []);
   useEffect(() => {
     const syncBalance = (event) => {
@@ -675,7 +716,7 @@ function TableApp() {
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const turnClock = state.turn_deadline ? { remaining: turnRemaining, duration: turnDuration } : null;
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} />`;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
@@ -712,7 +753,7 @@ function TableApp() {
           : null}</section>
     <aside class="table-side-rail">
       <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} status=${status} />
-      <nav class="table-controls"><p id="table-error" class="error" role="alert"></p><a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
+      <nav class="table-controls"><p id="table-error" class="error" role="alert"></p>${state.viewer_seat != null && html`<${EmoteControls} />`}<a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
     </aside>
   </div>`;
 }

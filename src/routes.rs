@@ -10,6 +10,7 @@ use crate::{
     money::{valid_game_amount, valid_optional_game_amount},
     render,
     session::{AuthUser, MaybeUser},
+    store::EmoteKind,
     table::{
         BlindLevel, BotKind, SeatOccupant, Stakes, Table, TableMode, TournamentConfig,
         TournamentState, maybe_start_hand, run_turn_clock, settle_finished_hand,
@@ -19,7 +20,7 @@ use crate::{
 use axum::{
     Form, Json,
     extract::{Path, State},
-    http::{HeaderValue, header},
+    http::{HeaderValue, StatusCode, header},
     response::{
         Html, IntoResponse,
         sse::{Event, Sse},
@@ -1292,54 +1293,97 @@ pub async fn table_events(
         .map_err(AppError::internal)?
     };
     let rx = s.tables.subscribe();
+    let emotes = s.tables.subscribe_emotes();
     let tables = s.tables.clone();
     let state = s.clone();
-    let events = stream::unfold((Some(snapshot), rx), move |(first, mut rx)| {
-        let tables = tables.clone();
-        let state = state.clone();
-        async move {
-            if let Some(snapshot) = first {
-                return Some((
-                    Ok(Event::default().event("state").data(snapshot)),
-                    (None, rx),
-                ));
-            }
-            loop {
-                match rx.recv().await {
-                    Ok(changed) if changed == id => {
-                        if let Some(table) = tables.get(id).await {
-                            let bank_balance = match user {
-                                Some(uid) => Some(balance_of(&state, uid).await),
-                                None => None,
-                            };
-                            let table = table.lock().await;
-                            let viewer = user.and_then(|uid| table.human_seat(uid));
-                            let banks = seat_banks(&state, &table).await;
-                            let names = seat_names(&state, &table).await;
-                            let data = serde_json::to_string(&table_view_with_banks(
-                                &table,
-                                viewer,
-                                user,
-                                bank_balance,
-                                &banks,
-                                &names,
-                                see_bot_cards,
-                            ))
-                            .unwrap_or_else(|_| "{}".into());
-                            return Some((
-                                Ok(Event::default().event("state").data(data)),
-                                (None, rx),
-                            ));
-                        }
+    let events = stream::unfold(
+        (Some(snapshot), rx, emotes),
+        move |(first, mut rx, mut emotes)| {
+            let tables = tables.clone();
+            let state = state.clone();
+            async move {
+                if let Some(snapshot) = first {
+                    return Some((
+                        Ok(Event::default().event("state").data(snapshot)),
+                        (None, rx, emotes),
+                    ));
+                }
+                loop {
+                    tokio::select! {
+                        changed = rx.recv() => match changed {
+                            Ok(changed) if changed == id => {
+                                if let Some(table) = tables.get(id).await {
+                                    let bank_balance = match user {
+                                        Some(uid) => Some(balance_of(&state, uid).await),
+                                        None => None,
+                                    };
+                                    let table = table.lock().await;
+                                    let viewer = user.and_then(|uid| table.human_seat(uid));
+                                    let banks = seat_banks(&state, &table).await;
+                                    let names = seat_names(&state, &table).await;
+                                    let data = serde_json::to_string(&table_view_with_banks(
+                                        &table,
+                                        viewer,
+                                        user,
+                                        bank_balance,
+                                        &banks,
+                                        &names,
+                                        see_bot_cards,
+                                    ))
+                                    .unwrap_or_else(|_| "{}".into());
+                                    return Some((
+                                        Ok(Event::default().event("state").data(data)),
+                                        (None, rx, emotes),
+                                    ));
+                                }
+                            }
+                            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+                        },
+                        emote = emotes.recv() => match emote {
+                            Ok(emote) if emote.table_id == id => {
+                                let data = serde_json::to_string(&emote).unwrap_or_else(|_| "{}".into());
+                                return Some((
+                                    Ok(Event::default().event("emote").data(data)),
+                                    (None, rx, emotes),
+                                ));
+                            }
+                            Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => return None,
+                        },
                     }
-                    Ok(_) => continue,
-                    Err(_) => return None,
                 }
             }
-        }
-    });
+        },
+    );
     Ok(Sse::new(events)
         .keep_alive(axum::response::sse::KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmoteRequest {
+    kind: EmoteKind,
+}
+
+pub async fn emote_table(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<EmoteRequest>,
+) -> Result<StatusCode, AppError> {
+    let table = s
+        .tables
+        .get(id)
+        .await
+        .ok_or_else(|| AppError::not_found("table not found"))?;
+    let seat = table
+        .lock()
+        .await
+        .human_seat(user)
+        .ok_or_else(|| AppError::conflict("you must be seated to emote"))?;
+    s.tables.emit(id, seat, input.kind);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]

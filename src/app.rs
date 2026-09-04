@@ -122,6 +122,10 @@ pub fn router(s: AppState) -> Router {
             axum::routing::post(routes::deal_bot_hand),
         )
         .route("/tables/{id}/events", get(routes::table_events))
+        .route(
+            "/tables/{id}/emote",
+            axum::routing::post(routes::emote_table),
+        )
         .route("/tables/{id}/join", axum::routing::post(routes::join_table))
         .route(
             "/tables/{id}/leave",

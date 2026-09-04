@@ -141,14 +141,18 @@ const tournamentCompleteRailState = {
   },
 };
 
-async function mountTable(page, state) {
+async function mountTable(page, state, sseEvents = []) {
   await page.unroute("**/tables/mock/state");
   await page.unroute("**/tables/mock/events");
   await page.route("**/tables/mock/state", (route) => route.fulfill({ json: state }));
   await page.route("**/tables/mock/events", (route) =>
     route.fulfill({
       contentType: "text/event-stream",
-      body: `event: state\ndata: ${JSON.stringify(state)}\n\n`,
+      body: sseEvents.length === 0
+        ? `event: state\ndata: ${JSON.stringify(state)}\n\n`
+        : [state, ...sseEvents]
+          .map((event, index) => `event: ${index === 0 ? "state" : "emote"}\ndata: ${JSON.stringify(event)}\n\n`)
+          .join(""),
     }),
   );
   await page.goto("/card-test");
@@ -164,6 +168,31 @@ async function mountTable(page, state) {
   });
   await page.evaluate(() => import(`/public/table.js?e2e=${Date.now()}`));
 }
+
+test("seated humans can bubble every emote from a player seat", async ({ page }) => {
+  const submitted = [];
+  await page.route("**/tables/mock/emote", async (route) => {
+    submitted.push(route.request().postDataJSON().kind);
+    await route.fulfill({ status: 204 });
+  });
+  await mountTable(page, tableState, [
+    { id: "cry-1", seat: 0, kind: "cry" },
+    { id: "cry-2", seat: 0, kind: "cry" },
+    { id: "joy-1", seat: 2, kind: "joy" },
+  ]);
+
+  const controls = page.getByRole("group", { name: "Emotes" });
+  await expect(controls.getByRole("button")).toHaveCount(5);
+  const opponent = page.locator('[data-seat-index="0"]');
+  await expect(opponent.locator('.seat-emote[aria-label="Cry from Dev"]')).toHaveCount(2);
+  await expect(page.locator('[data-seat-index="2"] .seat-emote[aria-label="Joy from You"]')).toHaveCount(1);
+  await expect(opponent.locator(".seat-emotes")).toHaveCSS("position", "absolute");
+
+  await controls.getByRole("button").evaluateAll((buttons) => {
+    for (const button of buttons) button.click();
+  });
+  await expect.poll(() => submitted.toSorted()).toEqual(["cry", "joy", "laugh", "poop", "shock"]);
+});
 
 let accounts = 0;
 
@@ -2241,4 +2270,3 @@ test("keeps your own hand in one place as cards and winnings come and go", async
   expect(between, `V53: an empty hand must not move your own panel ${JSON.stringify({ live, between })}`).toEqual(live);
   expect(won, `V53: a result that pays you must not move your own panel ${JSON.stringify({ live, won })}`).toEqual(live);
 });
-
