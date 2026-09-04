@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures";
-import type { Page, TestInfo } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 let account = 0;
 async function signIn(page, name: string) {
@@ -17,11 +17,13 @@ async function tableUrl(page, index = 0) {
 }
 // A look at the table for whoever is reading the run, filed with the rest of
 // the run's artifacts rather than at a path from the machine it was written on.
-async function shot(page, name: string, testInfo: TestInfo) {
-  await page.screenshot({ path: testInfo.outputPath(`blackjack-${name}.png`), fullPage: true });
+// The path comes from `test.info()` rather than a threaded parameter: a helper
+// every test calls should not make each of them remember to pass something.
+async function shot(page, name: string) {
+  await page.screenshot({ path: test.info().outputPath(`blackjack-${name}.png`), fullPage: true });
 }
 
-test("blackjack lobby lists all four fixed tiers", async ({ page }, testInfo) => {
+test("blackjack lobby lists all four fixed tiers", async ({ page }) => {
   await signIn(page, "Lobby");
   await page.goto("/blackjack");
   /* oxlint-disable no-await-in-loop */
@@ -30,7 +32,7 @@ test("blackjack lobby lists all four fixed tiers", async ({ page }, testInfo) =>
   }
   /* oxlint-enable no-await-in-loop */
   await expect(page.locator('a[href^="/blackjack/tables/"]')).toHaveCount(4);
-  await shot(page, "lobby", testInfo);
+  await shot(page, "lobby");
 });
 
 // The four blackjack tables are fixed and shared by every signed-in user, so
@@ -54,7 +56,7 @@ async function finishRound(page: Page, url: string): Promise<void> {
 const tableTests = test.extend({});
 tableTests.skip(({ isMobile }) => Boolean(isMobile), "shared tables are exercised once, on desktop");
 
-tableTests("a solo player sees fixed wagers and deals immediately", async ({ page }, testInfo) => {
+tableTests("a solo player sees fixed wagers and deals immediately", async ({ page }) => {
   await signIn(page, "Solo");
   await page.request.post("/api/bank", { data: {} });
   const url = await tableUrl(page, 0);
@@ -62,7 +64,7 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   await page.getByRole("button", { name: /Sit down · \$1,000/ }).click();
   await expect(page.getByText("your chips")).toBeVisible();
   await expect(page.locator(".turn-clock")).toHaveCount(0);
-  await shot(page, "betting", testInfo);
+  await shot(page, "betting");
   /* oxlint-disable no-await-in-loop */
   for (const label of ["Bet $25", "Bet $50", "Bet $75", "Bet $100"]) await expect(page.getByRole("button", { name: label })).toBeVisible();
   /* oxlint-enable no-await-in-loop */
@@ -82,7 +84,7 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   await page.getByRole("button", { name: "Leave table" }).click();
 });
 
-tableTests("two players share a table and the unbet player sits out", async ({ browser }, testInfo) => {
+tableTests("two players share a table and the unbet player sits out", async ({ browser }) => {
   const first = await browser.newPage();
   const second = await browser.newPage();
   await signIn(first, "Alice");
@@ -96,7 +98,7 @@ tableTests("two players share a table and the unbet player sits out", async ({ b
   await expect(second.locator(".blackjack-seat").filter({ hasText: "Alice" }).first()).toBeVisible();
   await first.getByRole("button", { name: "Bet $25" }).click();
   await expect(second.locator(".turn-clock")).toBeVisible();
-  await shot(second, "mid-round-two-player", testInfo);
+  await shot(second, "mid-round-two-player");
   const stateUrl = `${url}/state`;
   await expect.poll(async () => {
     const response = await second.request.get(stateUrl);
