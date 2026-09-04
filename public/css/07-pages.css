@@ -162,7 +162,9 @@
   body{padding-bottom:5.5rem}
   body:has(.blackjack-shell){padding-bottom:0}
   body:has(.blitz-shell){padding-bottom:0}
-  body:has(.blitz-shell) .page{height:100vh;overflow:hidden;padding-bottom:0}
+  /* A fixed shell owns the whole screen, so it -- not the body's scroll gutter
+     -- is what keeps the answer buttons above the home indicator. */
+  body:has(.blitz-shell) .page{height:100vh;overflow:hidden;padding-bottom:var(--safe-bottom)}
   .blitz-shell{min-height:0;overflow:hidden}
   /* Two hands stack in portrait, so the cards answer to the height budget as
      well as the width one; without the height term a 793pt iPhone overlaps them. */

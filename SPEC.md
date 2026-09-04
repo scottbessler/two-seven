@@ -480,7 +480,10 @@ Mark each milestone done here as it lands.
   one height/font and keep labels contained, and blackjack cards remain readable.
   A blackjack hand fits its cards inside its own width however many it holds,
   and every hand on the table — split hands included — gets an equal share of
-  the play area.
+  the play area. Fitting is ⊥ scroll *and* ⊥ clip: a box whose content exceeds
+  it under `overflow:hidden` has not fitted, it has hidden the difference, so
+  the test reads `scrollHeight` against `clientHeight` per box rather than
+  asking the document whether it scrolls.
 - **V43** Completed desktop showdowns reserve stable clearance for outside
   outcome badges; seats, cards, and badges never overlap center table content.
 - **V44** Action bars distribute their visible buttons across the full available
@@ -494,7 +497,9 @@ Mark each milestone done here as it lands.
 - **V46** Interactive controls use one responsive size contract: buttons keep
   shared heights, contained single-line labels, and usable tap targets across
   mobile and narrow desktop surfaces; blackjack actions remain readable within
-  the dense action-row contract.
+  the dense action-row contract. Every control on a row answers to that row's
+  tier — the emote taps included: a square target at the tier's own control
+  height, never a smaller one beside a full-sized neighbour.
 - **V47** Poker action bar = Fold edge + ≤5 equal middle actions + right edge;
   every edge action is ≤ 1/7 of the bar. The right edge carries All In and, when
   the wager range allows one, the custom wager beside it (V56);
@@ -509,7 +514,8 @@ Mark each milestone done here as it lands.
 - **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
   existing controls, successful mutation closes menu, closed panel paints ⊥.
 - **V50** Portrait poker action-band excess ≤ 1rem; non-bottom actions receive
-  safe-area padding ⊥; page bottom padding ≤ .25rem; footer reaches viewport edge.
+  safe-area padding ⊥; page bottom padding ≤ .25rem + `--safe-bottom` (the
+  inset is reserved once, by the page); footer reaches viewport edge.
 - **V51** No-limit streets never cap wager count. Fixed-limit cap state may
   remove wager actions but renders no action-bar status row; visible buttons
   remain on one aligned row. Raising needs a live opponent: once every other
@@ -525,9 +531,14 @@ Mark each milestone done here as it lands.
   its vertical position; protected controls suppress native selection. Bot
   raises ≤3 per betting street.
 - **V54** Mobile e2e emulation matches the shipped target: an iPhone with a
-  Dynamic Island running the installed PWA (393x793 portrait, 852x393 landscape,
-  375x647 short portrait), with safe-area insets pinned rather than left at
-  Chromium's zero. Every game surface stays fit-to-viewport across that set:
+  Dynamic Island running the installed PWA (393x852 portrait, 430x932 Max,
+  852x393 landscape, 375x667 short portrait), with safe-area insets pinned
+  rather than left at Chromium's zero. ∄ mobile layout test on a viewport
+  whose insets are zero — a notchless phone nobody owns proves nothing (B9).
+  The insets are an app-wide contract, ⊥ a table one: ∀ page, the `.page`
+  gutter reserves `--safe-left`/`--safe-right`/`--safe-bottom`, so ∄ control
+  behind the Dynamic Island in landscape or under the home indicator, and a
+  shell that wants a tighter budget overrides the gutter tokens, ⊥ the rule. Every game surface stays fit-to-viewport across that set:
   viewer and blackjack card heights answer to the height actually available, not
   to a fixed breakpoint. `viewport-fit=cover` ships with `maximum-scale=1` and
   `user-scalable=no`, insets reach layout only through `--safe-*` custom
@@ -642,6 +653,7 @@ T43|x|hold the table's shape as cards, metrics and results come and go|V48,V53
 T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,V53,V54,V61
 T45|x|add live table emotes|V3,V30,V42,V53,V61,V63
 T46|x|replace the personal blackjack game with four shared fixed-stake tables, quarter-step wagers, multi-seat play and turn clocks|V24,V27,V63
+T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,V46,V50,V54
 
 ## §B Bug log
 
@@ -791,3 +803,8 @@ B19|2026-09-02|the viewer's panel was centred and hugged its contents, so a hand
 B20|2026-09-02|opponent redesign changed card + tile height on reveal, moving table geometry|V53,V61
 B21|2026-09-03|a person's cash-table buy-in and rebuy both passed `no_debt: true` regardless of the table's own mode, so V10's buy-in auto-loan never fired for a human: a balance under the buy-in was refused outright and the lobby filed the $500/$1,000 rungs under "out of reach" instead of lending the shortfall|V5,V10
 B22|2026-09-03|the fix for B21 lent at every rung, so a broke player could borrow their way into the deepest table on the ladder and owe a hundred loans for one buy-in; lending now stops at the $1,000 seat for people, while the house stays staked everywhere|V10,V16
+B23|2026-09-04|the design-system split reintroduced `100dvh` the day after V54 pinned `100vh`, and pinned the tablet stage height on width alone: a landscape phone is >641px wide, so it kept a 522pt stage inside a 321pt shell and `overflow:hidden` swallowed 312px — the viewer's hand, the whole action bar and the footer were all below the fold, and the broken frame shipped as the landscape baseline in the same commit. L4 stayed green throughout because it asked the stage whether it scrolled (it did not; it overflowed its parent) and the document whether it scrolled (it did not; the shell clipped)|V42,V54
+B24|2026-09-04|safe-area insets were only ever wired into the poker table, one bug at a time; every other surface kept the plain 1rem gutter, so a landscape phone put blackjack's bet row, the lobby's rungs and the player page's controls behind the Dynamic Island, and Hand Blitz's fixed shell set `padding-bottom:0` and reserved nothing above the home indicator|V54
+B25|2026-09-04|blackjack's landscape play area stacked dealer, seat strip and your own hands with the strip on an `auto` track, so the strip took the whole area and both hands collapsed to nothing — B14's failure from the other side. It went unseen because the blackjack rewrite made every table test desktop-only and left the phone one 412x915 check with every inset at zero, asserting only that nothing scrolled sideways|V42,V54
+B26|2026-09-04|the emote taps shipped at a fixed 2rem square on the same footer row as 44px History and Leave, below the tap target every other control on that row keeps|V46,V63
+B27|2026-09-04|a revealed opponent hand is taller than a face-down one and the cards carry a `z-index`, so at a showdown an all-in seat's own cards grew down out of their track and over the ALL IN chip in the strip below them; the hit test that would have caught it was only ever run against a live flop, where the cards are small|V45
