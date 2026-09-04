@@ -15,7 +15,10 @@ const RUNOUT_STEP_MS = 5_000;
 const RUNOUT_FLOOR_MS = 1_200;
 // The last stretch of somebody's turn, when the bar turns urgent.
 const URGENT_TURN_MS = 3_000;
-const EMOTE_LIFETIME_MS = 1_800;
+// Animation completion owns normal removal. This longer timer is only a safety
+// net for browsers that suppress animation events while a tab is backgrounded.
+const EMOTE_FALLBACK_MS = 2_400;
+const EMOTE_DRIFTS = ["-2rem", "2rem", "0rem"];
 const EMOTES = [
   { kind: "cry", glyph: "😭", label: "Cry" },
   { kind: "joy", glyph: "🤩", label: "Joy" },
@@ -71,7 +74,7 @@ function TurnClock({ remaining, duration, className, announce }) {
   ><i style=${{ width: `${left * 100}%` }}></i></span>`;
 }
 
-function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock, emotes }) {
+function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock, emotes, dismissEmote }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
   const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
@@ -119,7 +122,14 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
     ${clock && html`<${TurnClock} ...${clock} className="seat-clock" announce=${viewer} />`}
     ${emotes.length > 0 && html`<span class="seat-emotes" aria-live="polite">${emotes.map((emote) => {
       const choice = EMOTES.find((candidate) => candidate.kind === emote.kind);
-      return choice && html`<i key=${emote.id} class="seat-emote" role="img" aria-label=${`${choice.label} from ${label}`}>${choice.glyph}</i>`;
+      return choice && html`<i
+        key=${emote.id}
+        class="seat-emote"
+        role="img"
+        aria-label=${`${choice.label} from ${label}`}
+        style=${{ "--emote-drift": emote.drift }}
+        onAnimationEnd=${() => dismissEmote(emote.id)}
+      >${choice.glyph}</i>`;
     })}</span>`}
   </article>`;
 }
@@ -632,26 +642,34 @@ function SeatBot({ state, openSeats, refresh }) {
 function TableApp() {
   const [state, setState] = useState(null);
   const [emotes, setEmotes] = useState([]);
-  const emoteTimers = useRef(new Set());
+  const emoteTimers = useRef(new Map());
+  const emoteSequence = useRef(0);
   const [settings, setSettings] = useCardSettings();
   const refresh = () => fetchState().then(setState).catch(() => {});
+  const dismissEmote = (id) => {
+    const timer = emoteTimers.current.get(id);
+    if (timer) clearTimeout(timer);
+    emoteTimers.current.delete(id);
+    setEmotes((current) => current.filter((candidate) => candidate.id !== id));
+  };
   useEffect(() => {
     refresh();
     const events = new EventSource(`/tables/${tableId}/events`);
     events.addEventListener("state", (event) => setState(JSON.parse(event.data)));
     events.addEventListener("emote", (event) => {
-      const emote = JSON.parse(event.data);
+      const emote = {
+        ...JSON.parse(event.data),
+        drift: EMOTE_DRIFTS[emoteSequence.current % EMOTE_DRIFTS.length],
+      };
+      emoteSequence.current += 1;
       setEmotes((current) => [...current, emote]);
-      const timer = setTimeout(() => {
-        emoteTimers.current.delete(timer);
-        setEmotes((current) => current.filter((candidate) => candidate.id !== emote.id));
-      }, EMOTE_LIFETIME_MS);
-      emoteTimers.current.add(timer);
+      const timer = setTimeout(() => dismissEmote(emote.id), EMOTE_FALLBACK_MS);
+      emoteTimers.current.set(emote.id, timer);
     });
     events.addEventListener("error", refresh);
     return () => {
       events.close();
-      for (const timer of emoteTimers.current) clearTimeout(timer);
+      for (const timer of emoteTimers.current.values()) clearTimeout(timer);
       emoteTimers.current.clear();
     };
   }, []);
@@ -716,7 +734,7 @@ function TableApp() {
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const turnClock = state.turn_deadline ? { remaining: turnRemaining, duration: turnDuration } : null;
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} />`;
+  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} dismissEmote=${dismissEmote} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
