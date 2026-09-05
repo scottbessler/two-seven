@@ -222,9 +222,20 @@ test("seated humans can bubble every emote from a player seat", async ({ page })
   const controls = page.getByRole("group", { name: "Emotes" });
   await expect(controls.getByRole("button")).toHaveCount(5);
   const opponent = page.locator('[data-seat-index="0"]');
-  await expect(opponent.locator('.seat-emote[aria-label="Cry from Dev"]')).toHaveCount(2);
+  const cries = opponent.locator('.seat-emote[aria-label="Cry from Dev"]');
+  await expect(cries).toHaveCount(2);
   await expect(page.locator('[data-seat-index="2"] .seat-emote[aria-label="Joy from You"]')).toHaveCount(1);
   await expect(opponent.locator(".seat-emotes")).toHaveCSS("position", "absolute");
+
+  // Finishing one bubble must not move the still-rising sibling onto a new
+  // :nth-child lane, and DOM removal waits for the animation's final frame.
+  const survivorPath = await cries.nth(1).getAttribute("style");
+  await cries.first().evaluate((bubble) => bubble.dispatchEvent(new AnimationEvent("animationend", {
+    animationName: "seat-emote-rise",
+    bubbles: true,
+  })));
+  await expect(cries).toHaveCount(1);
+  await expect(cries.first()).toHaveAttribute("style", survivorPath);
 
   await controls.getByRole("button").evaluateAll((buttons) => {
     for (const button of buttons) button.click();
@@ -876,15 +887,15 @@ test("anchors narrow metrics and keeps the result action bar steady", async ({ p
       stageRight: stage.right,
       metricsLeft: metrics.left,
       metricsRight: metrics.right,
-      // V64: at five opponents the metrics anchor in the seat grid instead.
+      // V66: at five opponents the metrics anchor in the seat grid instead.
       regrid: seats.length === 5,
       lastSeatRight: seats.at(-1).right,
       userSelect: getComputedStyle(fold).userSelect,
     };
   });
   if (live.regrid) {
-    expect(live.metricsLeft, "V64: regridded metrics take the cell beside the last seat").toBeGreaterThan(live.lastSeatRight);
-    expect(live.metricsRight, "V64: regridded metrics anchor at the table right edge").toBeGreaterThanOrEqual(live.stageRight - 1);
+    expect(live.metricsLeft, "V66: regridded metrics take the cell beside the last seat").toBeGreaterThan(live.lastSeatRight);
+    expect(live.metricsRight, "V66: regridded metrics anchor at the table right edge").toBeGreaterThanOrEqual(live.stageRight - 1);
   } else {
     expect(live.metricsLeft, "V53: narrow metrics must anchor at the table left edge").toBeLessThanOrEqual(live.stageLeft + 1);
   }
@@ -1977,7 +1988,7 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
         viewerSummaryStacked: viewerSummary.every((node, index) => index === 0 || node.top >= viewerSummary[index - 1].bottom - 1),
         metricsStacked: metricRows.length < 2 || metricRows[1].top >= metricRows[0].bottom,
         metricsLeftOfBoard: metrics.right <= sharedCards.left,
-        // V64: five opponents move the metrics into the seat grid and give the
+        // V66: five opponents move the metrics into the seat grid and give the
         // board the whole stage, so they sit above it rather than beside it.
         regrid: shell.querySelectorAll(".other-seats .seat").length === 5,
         metricsAboveBoard: metrics.bottom <= sharedCards.top,
@@ -1997,8 +2008,8 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
     expect(layout.viewerSummaryStacked, `V48: viewer name, stack, and wager must read down one column at ${JSON.stringify(viewport)}`).toBe(true);
     expect(layout.metricsStacked, `V48: pot and current bet must stack at ${JSON.stringify(viewport)}`).toBe(true);
     if (layout.regrid) {
-      expect(layout.metricsAboveBoard, `V64: regridded metrics must sit above shared cards at ${JSON.stringify(viewport)}`).toBe(true);
-      expect(layout.boardSpansStage, `V64: a regridded board must own the full stage width at ${JSON.stringify(viewport)}`).toBe(true);
+      expect(layout.metricsAboveBoard, `V66: regridded metrics must sit above shared cards at ${JSON.stringify(viewport)}`).toBe(true);
+      expect(layout.boardSpansStage, `V66: a regridded board must own the full stage width at ${JSON.stringify(viewport)}`).toBe(true);
     } else {
       expect(layout.metricsLeftOfBoard, `V48: metrics must sit left of shared cards at ${JSON.stringify(viewport)}`).toBe(true);
     }
@@ -2040,7 +2051,7 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
         boardBottom: board.bottom,
         railLeft: rail.left,
         railTop: rail.top,
-        // V64: the regrid drops the side rail, so the result reads as a
+        // V66: the regrid drops the side rail, so the result reads as a
         // full-width strip below the board rather than a column beside it.
         regrid: stage.querySelectorAll(".other-seats .seat").length === 5,
         resultClipped: result.scrollWidth > result.clientWidth,
@@ -2048,7 +2059,7 @@ test("packs the table into a portrait phone without scrolling", async ({ page })
       };
     });
     if (showdownLayout.regrid) {
-      expect(showdownLayout.railTop, `V64: the result strip must clear the board at ${JSON.stringify(viewport)}`).toBeGreaterThanOrEqual(showdownLayout.boardBottom);
+      expect(showdownLayout.railTop, `V66: the result strip must clear the board at ${JSON.stringify(viewport)}`).toBeGreaterThanOrEqual(showdownLayout.boardBottom);
     } else {
       expect(showdownLayout.boardRight, `V42: five-card showdown board must clear the result rail at ${JSON.stringify(viewport)}`).toBeLessThanOrEqual(showdownLayout.railLeft);
     }
@@ -2170,11 +2181,11 @@ test("runs an all-in board out one street at a time", async ({ page }) => {
     };
   });
   if (revealLayout.regrid && (page.viewportSize()?.width || 0) <= 640) {
-    // V64: the regrid drops the side rail, so the odds read as one full-width
+    // V66: the regrid drops the side rail, so the odds read as one full-width
     // row under the board -- the row the wide screens always had.
-    expect(revealLayout.rowCount, `V64: regridded odds share one row ${JSON.stringify(revealLayout)}`).toBe(1);
-    expect(revealLayout.oddsBelowBoard, `V64: regridded odds sit under the shared cards ${JSON.stringify(revealLayout)}`).toBe(true);
-    expect(revealLayout.oddsWithinBoard, `V64: regridded odds sit across the board's width ${JSON.stringify(revealLayout)}`).toBe(true);
+    expect(revealLayout.rowCount, `V66: regridded odds share one row ${JSON.stringify(revealLayout)}`).toBe(1);
+    expect(revealLayout.oddsBelowBoard, `V66: regridded odds sit under the shared cards ${JSON.stringify(revealLayout)}`).toBe(true);
+    expect(revealLayout.oddsWithinBoard, `V66: regridded odds sit across the board's width ${JSON.stringify(revealLayout)}`).toBe(true);
   } else if ((page.viewportSize()?.width || 0) <= 640) {
     // The phone stacks one box per player inside the reserved right rail.
     expect(revealLayout.rowCount, `V37: rail odds get a row each ${JSON.stringify(revealLayout)}`).toBe(revealLayout.itemCount);
@@ -2356,7 +2367,7 @@ test("keeps your own hand in one place as cards and winnings come and go", async
   expect(won, `V53: a result that pays you must not move your own panel ${JSON.stringify({ live, won })}`).toEqual(live);
 });
 
-test("a five-handed phone table leaves no empty cell and stops feeding the log", async ({ page }) => {
+test("a five-handed phone table fills every cell and spends the surplus on the board", async ({ page }) => {
   // Four columns fit a 393pt phone, so five opponents used to wrap to a lone
   // tile beside three empty ones, and every pixel the table did not spend
   // became another line of history. Three columns divide 3 + 2, the pot chips
@@ -2391,13 +2402,10 @@ test("a five-handed phone table leaves no empty cell and stops feeding the log",
   expect(stage.board.width).toBe(stage.metrics.right - stage.seats[3].x);
   expect(stage.card, "a full-width board earns a bigger community card").toBeGreaterThan(60);
 
-  // The log fills to a cap instead of growing without bound: four lines, not
-  // the nine it used to reach by absorbing everything the table did not spend.
-  const log = await page.locator(".game-log").evaluate((element) => ({
-    height: Math.round(element.getBoundingClientRect().height),
-    cap: Math.round(Number.parseFloat(getComputedStyle(element).maxHeight)),
-  }));
-  expect(log.cap, "V22: the log must not swallow the table's surplus").toBeLessThanOrEqual(100);
-  expect(log.height).toBe(log.cap);
+  // The log still absorbs the surplus (V48), but the regrid leaves less of it:
+  // the board's extra width and height come out of what used to be 155px of
+  // history above a hand at its minimum.
+  const log = await page.locator(".game-log").evaluate((element) => Math.round(element.getBoundingClientRect().height));
+  expect(log, "the regrid takes the surplus the log used to hold").toBeLessThanOrEqual(130);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
 });

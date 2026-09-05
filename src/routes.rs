@@ -907,10 +907,13 @@ async fn seat_names(state: &AppState, table: &Table) -> std::collections::HashMa
     names
 }
 
+/// What each seat's occupant has in the bank, as much of it as a table view
+/// shows: the balance and the last few ledger lines, never the whole book
+/// (§V64).
 async fn seat_banks(
     state: &AppState,
     table: &Table,
-) -> std::collections::HashMap<usize, crate::bank::Account> {
+) -> std::collections::HashMap<usize, crate::bank::SeatBank> {
     let mut banks = std::collections::HashMap::new();
     for (index, seat) in table.seats.iter().enumerate() {
         let owner = match seat.occupant {
@@ -921,9 +924,9 @@ async fn seat_banks(
             SeatOccupant::Empty => None,
         };
         if let Some(owner) = owner
-            && let Ok(account) = state.bank.account(owner).await
+            && let Ok(bank) = state.bank.seat_bank(owner).await
         {
-            banks.insert(index, account);
+            banks.insert(index, bank);
         }
     }
     banks
@@ -981,7 +984,10 @@ fn resolve_owner(
 }
 
 pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -> Html<String> {
-    let accounts = s.bank.accounts().await;
+    // Where everybody stands, without their ledgers: the standings rank on
+    // balance and loans, and cloning every account's book to read two numbers
+    // off each was most of what this page cost (§V64).
+    let accounts = s.bank.standings().await;
     let blitz = s.blitz.all_stats().await;
     let poker = s.stats.all().await;
     let blackjack = s.blackjack_stats.all().await;
@@ -1083,23 +1089,24 @@ pub async fn leaderboard(AuthUser(_user): AuthUser, State(s): State<AppState>) -
         .enumerate()
         .map(|(index, beat)| to_view(beat, index + 1))
         .collect();
-    let mut ranked: Vec<(crate::bank::AccountOwner, crate::bank::Account)> = accounts
-        .into_iter()
-        .map(|account| (account.owner.clone(), account))
-        .collect();
+    let mut ranked = accounts;
     // Highest net worth first; a tie goes to whoever borrowed less to get there.
-    ranked.sort_by(|(left_owner, left), (right_owner, right)| {
+    ranked.sort_by(|left, right| {
         right
             .net_balance()
             .cmp(&left.net_balance())
             .then(left.loan_count.cmp(&right.loan_count))
-            .then_with(|| format!("{left_owner:?}").cmp(&format!("{right_owner:?}")))
+            .then_with(|| {
+                let (left, right) = (&left.owner, &right.owner);
+                format!("{left:?}").cmp(&format!("{right:?}"))
+            })
     });
     let rows = ranked
         .into_iter()
         .take(LEADERBOARD_SIZE)
         .enumerate()
-        .map(|(index, (owner, account))| {
+        .map(|(index, account)| {
+            let owner = account.owner.clone();
             let (name, house, blitz_stats) = match &owner {
                 crate::bank::AccountOwner::User(id) => (
                     users

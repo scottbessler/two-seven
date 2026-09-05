@@ -160,10 +160,8 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .seat .seat-clock{left:.45rem;right:.45rem;bottom:.25rem;height:.2rem;border-radius:var(--radius-chip)}
 .seat .seat-emotes{position:absolute;inset:0;z-index:40;grid-area:1/1/-1/-1;display:block;overflow:visible;pointer-events:none}
 .seat .seat-emotes:empty{display:none}
-.seat .seat-emote{--emote-drift:0rem;position:absolute;left:50%;top:45%;display:block;color:var(--ink);font-family:system-ui,sans-serif;font-size:var(--text-display);font-style:normal;line-height:1;filter:drop-shadow(0 .2rem .25rem var(--shadow-73));animation:seat-emote-rise 1.8s ease-out forwards;will-change:transform,opacity}
-.seat .seat-emote:nth-child(3n+1){--emote-drift:-2rem}
-.seat .seat-emote:nth-child(3n+2){--emote-drift:2rem}
-@keyframes seat-emote-rise{0%{opacity:0;transform:translate(-50%,0) scale(.65)}12%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--emote-drift)),-7rem) scale(1.35)}}
+.seat .seat-emote{--emote-drift:0rem;position:absolute;left:50%;top:45%;display:block;color:var(--ink);font-family:system-ui,sans-serif;font-size:var(--text-display);font-style:normal;line-height:1;text-shadow:0 .2rem .25rem var(--shadow-73);animation:seat-emote-rise 1.8s cubic-bezier(.2,.7,.2,1) forwards;will-change:transform,opacity}
+@keyframes seat-emote-rise{0%{opacity:0;transform:translate(-50%,0) scale(.65)}12%{opacity:1}55%{opacity:1}100%{opacity:0;transform:translate(calc(-50% + var(--emote-drift)),-7rem) scale(1.35)}}
 .showdown-advance{display:flex;justify-content:center;margin:0}
 .showdown-advance button,.showdown-advance.spectator{position:relative;display:grid;place-items:center;width:100%;min-width:8rem;min-height:var(--control-h-primary);padding:.45rem .65rem;overflow:hidden;border-radius:var(--radius-control);border-color:var(--gold);background:var(--felt-800);color:var(--ink);font-size:var(--text-action);line-height:1.1;white-space:nowrap}
 .showdown-advance.spectator{margin-inline:auto;border:1px solid var(--gold);border-radius:var(--radius-control)}
@@ -440,19 +438,6 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
   .table-stage:has(.other-seats[data-seat-total="5"])>:is(.viewer-seats,.card-settings){grid-column:1/-1}
   .table-stage:has(.other-seats[data-seat-total="5"]) .table-center>.table-rail{overflow:visible}
 
-  /* Five-handed is also where the log was most over-fed: it is the only count
-     whose table is cramped, and it was still handed 155px of history -- nine
-     lines -- because the log was the one row that could grow. Cap it at the
-     four lines that get read and let the regrid's wider board have the rest. A one-row table keeps V48's arrangement: it has no hole to
-     fill, so its surplus still belongs to the log.
-
-     The controls drop their auto top margin here because an auto margin
-     swallows free space before flex growth can reach it -- with one, the log
-     would stay short and the surplus would sit as an empty band above the
-     footer (V22). Capped growth pins the footer just as well. */
-  .table-shell:has(.other-seats[data-seat-total="5"]) .table-controls{margin-top:0}
-  .table-shell:has(.other-seats[data-seat-total="5"]) .game-log{--log-row:1.15rem;--log-rows:4;flex:1 1 auto;max-height:calc(var(--log-rows) * var(--log-row) + (var(--log-rows) - 1) * .3rem + .7rem)}
-  .table-shell:has(.other-seats[data-seat-total="5"]) .game-log li{line-height:var(--log-row)}
 }
 /* A tall phone finishes the layout with room to spare: the fixed part of the
    table is shorter than the screen, and the log -- the one flexible row --

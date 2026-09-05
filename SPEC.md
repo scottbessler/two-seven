@@ -458,7 +458,7 @@ Mark each milestone done here as it lands.
 - **V36** All-in showdown summaries expose per-seat equity at reveal and each
   runout street; non-leading players with 1-9 immediate outs expose those cards.
 - **V37** All-in showdown odds expose one box per player until the result is
-  final: stacked in the reserved right rail on phones (V64 places them in a
+  final: stacked in the reserved right rail on phones (V66 places them in a
   full-width row instead), one compact horizontal row on wide screens. Adding
   odds never wraps center content into the viewer card area.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
@@ -510,8 +510,8 @@ Mark each milestone done here as it lands.
   separates the two.
 - **V48** Portrait poker: viewer name + stack + wager share 1 column; Pot + Current
   Bet stack left of shared cards; stage clips ⊥; log absorbs spare height;
-  History/Leave stay at viewport bottom. V64 moves the metrics and caps the log
-  at 5 opponents; the rest holds at every count.
+  History/Leave stay at viewport bottom. V66 moves the metrics at 5 opponents;
+  the rest holds at every count.
 - **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
   existing controls, successful mutation closes menu, closed panel paints ⊥.
 - **V50** Portrait poker action-band excess ≤ 1rem; non-bottom actions receive
@@ -524,7 +524,7 @@ Mark each milestone done here as it lands.
   short all-in when the call already exceeds the actor's stack.
 - **V52** Eliminated tournament seats remain for payout attribution but render
   as spectators after reload: lobby active-seat state + table viewer state ⊥.
-- **V53** Narrow poker metrics anchor left (V64 anchors them in the seat grid's
+- **V53** Narrow poker metrics anchor left (V66 anchors them in the seat grid's
   6th cell at 5 opponents) and keep their box between hands. An
   empty board and a seat between hands both reserve a card's space, the viewer's
   own panel reserving both of its cards and a fixed column for name/stack/wager,
@@ -599,13 +599,32 @@ Mark each milestone done here as it lands.
   accepted tap produces one ephemeral SSE event with a unique id, seat, and
   kind; ⊥ persistence/game-state mutation. Clients animate every event upward
   from that seat, including rapid repeats. Spectators and bots cannot emit.
-- **V64** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
+- **V64** ∀ live emote, drift lane fixed at receipt; sibling expiry ⊥ alter its
+  path. Normal DOM removal follows the final transparent animation frame, with
+  a later timer only as background-tab fallback.
+- **V65** ⊥ hot path carries an unbounded store. A ledger is append-only and
+  never compacted ∴ its length is a clock, not a size, and anything O(ledger)
+  per request grows without limit. Concretely: a seat carries ≤
+  `SEAT_LEDGER_LINES` ledger lines (the tail, oldest first) — the view enforces
+  this at the wire, whatever it is handed, ∵ a table view is rebuilt per
+  subscriber per table change, so an unbounded field is an unbounded push to
+  every watcher. The standings read `Standing` (owner+balance+loans), ⊥ whole
+  accounts. The finance chart plots ≤ `CHART_POINTS`, extremes read off the
+  whole series so the caption stays true. Bank writes serialize & rewrite a
+  whole account file ∴ the books are released before the write, the write slot
+  being claimed under them so writers keep their mutation order. A tournament
+  ⊥ started ∧ ⊥ registered ∧ ⊥ prize pool ∧ older than
+  `ABANDONED_TOURNAMENT_HOURS` is swept — anything holding money is left
+  standing ∴ ⊥ refund happens here. Every response logs `bytes`; past
+  `SLOW_REQUEST_MS` or `LARGE_RESPONSE_BYTES` it also warns, ∵ elapsed time
+  alone never showed the payload that caused this.
+- **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
   fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
-  board then owns the full stage width (no side rails), all-in odds become one
-  full-width row beneath it, and the log caps at 4 lines so the surplus reaches
-  the board and the tiles. Narrows V37, V48, V53 for this count only; every
-  other count keeps them as written. Log ⊥ growth with events (V22) — it fills
-  to its cap, so the footer stays at the viewport bottom with no empty band.
+  board then owns the full stage width (no side rails) and all-in odds become
+  one full-width row beneath it, so the surplus the log used to hold reaches the
+  shared cards instead. Narrows V37, V48, V53 for this count only; every other
+  count keeps them as written — the log still absorbs what is left (V48) and the
+  footer still sits at the viewport bottom.
 
 ## §T Build tasks
 
@@ -663,7 +682,9 @@ T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,
 T45|x|add live table emotes|V3,V30,V42,V53,V61,V63
 T46|x|replace the personal blackjack game with four shared fixed-stake tables, quarter-step wagers, multi-seat play and turn clocks|V24,V27,V63
 T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,V46,V50,V54
-T48|x|fill the five-handed portrait seat grid and cap the phone log|V22,V37,V48,V53,V64
+T48|x|make overlapping emotes keep their paths and finish fading before removal|V63,V64
+T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart points, bank writes, abandoned tournaments, payload logging|V64
+T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
 
 ## §B Bug log
 
@@ -818,3 +839,5 @@ B24|2026-09-04|safe-area insets were only ever wired into the poker table, one b
 B25|2026-09-04|blackjack's landscape play area stacked dealer, seat strip and your own hands with the strip on an `auto` track, so the strip took the whole area and both hands collapsed to nothing — B14's failure from the other side. It went unseen because the blackjack rewrite made every table test desktop-only and left the phone one 412x915 check with every inset at zero, asserting only that nothing scrolled sideways|V42,V54
 B26|2026-09-04|the emote taps shipped at a fixed 2rem square on the same footer row as 44px History and Leave, below the tap target every other control on that row keeps|V46,V63
 B27|2026-09-04|a revealed opponent hand is taller than a face-down one and the cards carry a `z-index`, so at a showdown an all-in seat's own cards grew down out of their track and over the ALL IN chip in the strip below them; the hit test that would have caught it was only ever run against a live flop, where the cards are small|V45
+B28|2026-09-04|emote drift came from live `:nth-child`, so sibling removal jumped bubbles between lanes; JS removal matched CSS duration exactly, so it could delete before the final transparent frame painted|V64
+B29|2026-09-04|every table state read and every SSE push carried each seat's whole bank ledger — the client renders 3 lines, the server sent all of them — so a state read grew a line per hand forever: 228KB in prod (98% ledger), 1.7MB against a table seating the oldest house accounts. `elapsed_ms` never showed it ∵ it stops when the handler returns, ⊥ when the bytes land|V64
