@@ -458,9 +458,9 @@ Mark each milestone done here as it lands.
 - **V36** All-in showdown summaries expose per-seat equity at reveal and each
   runout street; non-leading players with 1-9 immediate outs expose those cards.
 - **V37** All-in showdown odds expose one box per player until the result is
-  final: stacked in the reserved right rail on phones, one compact horizontal
-  row on wide screens. Adding odds never wraps center content into the viewer
-  card area.
+  final: stacked in the reserved right rail on phones (V66 places them in a
+  full-width row instead), one compact horizontal row on wide screens. Adding
+  odds never wraps center content into the viewer card area.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
   shoe choice, percentage-of-shoe cut-card penetration defaulting to 50%,
   visible-card Hi-Lo tutor/log, post-hand running-count quiz, and server-side
@@ -510,7 +510,8 @@ Mark each milestone done here as it lands.
   separates the two.
 - **V48** Portrait poker: viewer name + stack + wager share 1 column; Pot + Current
   Bet stack left of shared cards; stage clips ⊥; log absorbs spare height;
-  History/Leave stay at viewport bottom.
+  History/Leave stay at viewport bottom. V66 moves the metrics at 5 opponents;
+  the rest holds at every count.
 - **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
   existing controls, successful mutation closes menu, closed panel paints ⊥.
 - **V50** Portrait poker action-band excess ≤ 1rem; non-bottom actions receive
@@ -523,7 +524,8 @@ Mark each milestone done here as it lands.
   short all-in when the call already exceeds the actor's stack.
 - **V52** Eliminated tournament seats remain for payout attribution but render
   as spectators after reload: lobby active-seat state + table viewer state ⊥.
-- **V53** Narrow poker metrics anchor left and keep their box between hands. An
+- **V53** Narrow poker metrics anchor left (V66 anchors them in the seat grid's
+  6th cell at 5 opponents) and keep their box between hands. An
   empty board and a seat between hands both reserve a card's space, the viewer's
   own panel reserving both of its cards and a fixed column for name/stack/wager,
   so its box and the hand inside it hold one position whatever the state — live
@@ -616,6 +618,13 @@ Mark each milestone done here as it lands.
   standing ∴ ⊥ refund happens here. Every response logs `bytes`; past
   `SLOW_REQUEST_MS` or `LARGE_RESPONSE_BYTES` it also warns, ∵ elapsed time
   alone never showed the payload that caused this.
+- **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
+  fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
+  board then owns the full stage width (no side rails) and all-in odds become
+  one full-width row beneath it, so the surplus the log used to hold reaches the
+  shared cards instead. Narrows V37, V48, V53 for this count only; every other
+  count keeps them as written — the log still absorbs what is left (V48) and the
+  footer still sits at the viewport bottom.
 
 ## §T Build tasks
 
@@ -675,6 +684,7 @@ T46|x|replace the personal blackjack game with four shared fixed-stake tables, q
 T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,V46,V50,V54
 T48|x|make overlapping emotes keep their paths and finish fading before removal|V63,V64
 T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart points, bank writes, abandoned tournaments, payload logging|V64
+T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
 
 ## §B Bug log
 
