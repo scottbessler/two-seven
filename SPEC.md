@@ -458,9 +458,9 @@ Mark each milestone done here as it lands.
 - **V36** All-in showdown summaries expose per-seat equity at reveal and each
   runout street; non-leading players with 1-9 immediate outs expose those cards.
 - **V37** All-in showdown odds expose one box per player until the result is
-  final: stacked in the reserved right rail on phones, one compact horizontal
-  row on wide screens. Adding odds never wraps center content into the viewer
-  card area.
+  final: stacked in the reserved right rail on phones (V64 places them in a
+  full-width row instead), one compact horizontal row on wide screens. Adding
+  odds never wraps center content into the viewer card area.
 - **V38** Blackjack trainer settings travel with each dealt hand: 1/2/8-deck
   shoe choice, percentage-of-shoe cut-card penetration defaulting to 50%,
   visible-card Hi-Lo tutor/log, post-hand running-count quiz, and server-side
@@ -510,7 +510,8 @@ Mark each milestone done here as it lands.
   separates the two.
 - **V48** Portrait poker: viewer name + stack + wager share 1 column; Pot + Current
   Bet stack left of shared cards; stage clips ⊥; log absorbs spare height;
-  History/Leave stay at viewport bottom.
+  History/Leave stay at viewport bottom. V64 moves the metrics and caps the log
+  at 5 opponents; the rest holds at every count.
 - **V49** Coin menu owns 1 persistent control per bank action; bank updates mutate
   existing controls, successful mutation closes menu, closed panel paints ⊥.
 - **V50** Portrait poker action-band excess ≤ 1rem; non-bottom actions receive
@@ -523,7 +524,8 @@ Mark each milestone done here as it lands.
   short all-in when the call already exceeds the actor's stack.
 - **V52** Eliminated tournament seats remain for payout attribution but render
   as spectators after reload: lobby active-seat state + table viewer state ⊥.
-- **V53** Narrow poker metrics anchor left and keep their box between hands. An
+- **V53** Narrow poker metrics anchor left (V64 anchors them in the seat grid's
+  6th cell at 5 opponents) and keep their box between hands. An
   empty board and a seat between hands both reserve a card's space, the viewer's
   own panel reserving both of its cards and a fixed column for name/stack/wager,
   so its box and the hand inside it hold one position whatever the state — live
@@ -597,6 +599,13 @@ Mark each milestone done here as it lands.
   accepted tap produces one ephemeral SSE event with a unique id, seat, and
   kind; ⊥ persistence/game-state mutation. Clients animate every event upward
   from that seat, including rapid repeats. Spectators and bots cannot emit.
+- **V64** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
+  fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
+  board then owns the full stage width (no side rails), all-in odds become one
+  full-width row beneath it, and the log caps at 4 lines so the surplus reaches
+  the board and the tiles. Narrows V37, V48, V53 for this count only; every
+  other count keeps them as written. Log ⊥ growth with events (V22) — it fills
+  to its cap, so the footer stays at the viewport bottom with no empty band.
 
 ## §T Build tasks
 
@@ -654,6 +663,7 @@ T44|x|redesign other-player seat component across viewports|V14,V20,V43,V44,V45,
 T45|x|add live table emotes|V3,V30,V42,V53,V61,V63
 T46|x|replace the personal blackjack game with four shared fixed-stake tables, quarter-step wagers, multi-seat play and turn clocks|V24,V27,V63
 T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,V46,V50,V54
+T48|x|fill the five-handed portrait seat grid and cap the phone log|V22,V37,V48,V53,V64
 
 ## §B Bug log
 
