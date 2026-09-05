@@ -542,7 +542,7 @@
     "x": 7,
     "y": 642,
     "width": 379,
-    "height": 99,
+    "height": 123,
     "display": "grid",
     "position": "static",
     "fontSize": "16px",
@@ -555,7 +555,7 @@
   },
   ".table-controls": {
     "x": 7,
-    "y": 746,
+    "y": 770,
     "width": 379,
     "height": 44,
     "display": "flex",
