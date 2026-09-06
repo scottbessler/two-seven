@@ -58,8 +58,15 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   pass.
 - Prefer a geometry snapshot to an image one. `expectLayout` in
   `tests/e2e/layout.ts` records boxes and computed styles as JSON that diffs in
-  review and is stable on every platform; images are for what only pixels catch
-  (shadow, radius, gradient, stacking).
+  review; images are for what only pixels catch (shadow, radius, gradient,
+  stacking). **A layout baseline is not host-independent either**: sizes and
+  styles hold everywhere, but a box's absolute `y` moves with the text metrics
+  of everything above it — a heading and a paragraph rendered off-container put
+  a whole page ten pixels down. So regenerate JSON baselines in the container
+  like images, and never run `--update-snapshots` over a spec you are not
+  regenerating: it silently rewrites correct baselines with this host's numbers,
+  and the damage only shows up in CI. `git diff` on a `*-snapshots/json/` file
+  you did not mean to touch is the tell.
 - CI runs the e2e job *inside* the Playwright image and takes the server binary
   from the `server` job, so no Docker daemon is involved.
   `scripts/e2e-docker.sh` is the local-only path: it runs the server on the
