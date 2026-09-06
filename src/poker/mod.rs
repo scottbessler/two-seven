@@ -1,5 +1,9 @@
-//! Texas hold'em hand engine, structured as a statechart of two composed
-//! machines (see STATECHART.md for diagrams and invariants):
+//! The hand engine, shared by every variant a table can deal (see
+//! [`Variant`](crate::table::Variant)). Only the deal size and the showdown
+//! reading differ between them; the machines below are the same either way.
+//!
+//! It is structured as a statechart of two composed machines (see
+//! STATECHART.md for diagrams and invariants):
 //!
 //! * the **hand machine** ([`street`]) owns the top-level lifecycle
 //!   `Preflop -> Flop -> Turn -> River -> Showdown -> Complete`, dealing
@@ -19,9 +23,9 @@ pub use street::StreetTransition;
 
 use crate::{
     cards::{Card, Deck, Rank, Suit},
-    eval::{EvaluatedHand, HandRank, evaluate},
+    eval::{EvaluatedHand, HandRank, evaluate_showdown},
     money::Cents,
-    table::Stakes,
+    table::{Stakes, Variant},
 };
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use serde::{Deserialize, Serialize};
@@ -121,15 +125,15 @@ pub struct HandSummary {
     pub reveal_odds: Vec<ShowdownOdds>,
 }
 
-/// A rough order for two cards with no board out: a pair beats anything else,
-/// then the higher card, then the lower. Equity is more than this, but it says
-/// who would win if the deck stopped here.
-fn hole_strength(cards: &[Card]) -> (u8, u8, u8) {
+/// A rough order for a hand with no board out: a pair beats anything else, then
+/// the cards in descending order. Equity is more than this, but it says who
+/// would win if the deck stopped here. Omaha's four cards are read the same
+/// way, which is why the ranks are a list rather than a high and a low.
+fn hole_strength(cards: &[Card]) -> (u8, Vec<u8>) {
     let mut ranks: Vec<u8> = cards.iter().map(|card| card.rank as u8).collect();
     ranks.sort_unstable_by(|left, right| right.cmp(left));
-    let high = ranks.first().copied().unwrap_or(0);
-    let low = ranks.get(1).copied().unwrap_or(0);
-    (u8::from(high == low && high > 0), high, low)
+    let paired = ranks.windows(2).any(|pair| pair[0] == pair[1]);
+    (u8::from(paired), ranks)
 }
 
 /// One street of an all-in runout: the board as it stands, and who is ahead.
@@ -188,6 +192,10 @@ pub struct LegalActions {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Hand {
     pub seed: u64,
+    /// The game this hand is being dealt. Absent on every hand saved before
+    /// there was a second one, which were all Hold'em.
+    #[serde(default)]
+    pub variant: Variant,
     pub stakes: Stakes,
     pub players: Vec<Player>,
     pub button: usize,
@@ -229,10 +237,24 @@ impl Hand {
         Self::new_with_seats_and_ante(stakes, stacks, button, seed, 0)
     }
 
+    pub fn new_with_seats_and_ante(
+        stakes: Stakes,
+        stacks: &[(usize, Cents)],
+        button: usize,
+        seed: u64,
+        ante: Cents,
+    ) -> Self {
+        Self::new_variant(Variant::Holdem, stakes, stacks, button, seed, ante)
+    }
+
     /// Entry action of the hand machine's initial `Preflop` state: deal hole
     /// cards, post antes and blinds, and hand control to the preflop betting
     /// round with the correct first actor.
-    pub fn new_with_seats_and_ante(
+    ///
+    /// The variant decides one thing here -- how many cards each seat is dealt
+    /// -- and one thing at showdown. Everything between is the same game.
+    pub fn new_variant(
+        variant: Variant,
         stakes: Stakes,
         stacks: &[(usize, Cents)],
         button: usize,
@@ -255,7 +277,7 @@ impl Hand {
                 must_call: false,
             })
             .collect();
-        for _ in 0..2 {
+        for _ in 0..variant.hole_cards() {
             for player in &mut players {
                 player.hole_cards.push(deck.deal().expect("deck has cards"));
             }
@@ -266,6 +288,7 @@ impl Hand {
             .map_or(stacks[0].0, |(seat, _)| *seat);
         let mut hand = Self {
             seed,
+            variant,
             stakes,
             players,
             button,
@@ -483,13 +506,10 @@ impl Hand {
         for player in self.players.iter().filter(|player| !player.folded) {
             results.push(SeatResult {
                 seat: player.seat,
-                hand: Some(evaluate(
-                    &player
-                        .hole_cards
-                        .iter()
-                        .chain(self.board.iter())
-                        .copied()
-                        .collect::<Vec<_>>(),
+                hand: Some(evaluate_showdown(
+                    self.variant,
+                    &player.hole_cards,
+                    &self.board,
                 )),
             });
         }
@@ -654,15 +674,7 @@ impl Hand {
                 .collect::<Vec<_>>();
             let ranks = live
                 .iter()
-                .map(|player| {
-                    let cards = player
-                        .hole_cards
-                        .iter()
-                        .chain(full_board.iter())
-                        .copied()
-                        .collect::<Vec<_>>();
-                    evaluate(&cards).rank
-                })
+                .map(|player| evaluate_showdown(self.variant, &player.hole_cards, &full_board).rank)
                 .collect::<Vec<_>>();
             let best = ranks.iter().max().expect("live ranks");
             let winners = ranks
@@ -727,13 +739,13 @@ impl Hand {
         if from >= 3 {
             return self.leaders_on(&self.board[..from]);
         }
-        let ranked: Vec<(usize, (u8, u8, u8))> = self
+        let ranked: Vec<(usize, (u8, Vec<u8>))> = self
             .players
             .iter()
             .filter(|player| !player.folded)
             .map(|player| (player.seat, hole_strength(&player.hole_cards)))
             .collect();
-        let Some(best) = ranked.iter().map(|(_, rank)| *rank).max() else {
+        let Some(best) = ranked.iter().map(|(_, rank)| rank).max().cloned() else {
             return Vec::new();
         };
         ranked
@@ -750,13 +762,10 @@ impl Hand {
             .iter()
             .filter(|player| !player.folded)
             .map(|player| {
-                let cards: Vec<Card> = player
-                    .hole_cards
-                    .iter()
-                    .chain(board.iter())
-                    .copied()
-                    .collect();
-                (player.seat, evaluate(&cards).rank)
+                (
+                    player.seat,
+                    evaluate_showdown(self.variant, &player.hole_cards, board).rank,
+                )
             })
             .collect();
         let Some(best) = ranked.iter().map(|(_, rank)| rank).max().cloned() else {
@@ -963,5 +972,131 @@ mod tests {
                 .sum::<i64>(),
             4
         );
+    }
+}
+
+#[cfg(test)]
+mod omaha_tests {
+    use super::*;
+    use crate::table::Stakes;
+
+    fn h(s: &str) -> Vec<Card> {
+        s.split_whitespace().map(|x| x.parse().unwrap()).collect()
+    }
+
+    fn omaha(stacks: &[(usize, Cents)], seed: u64) -> Hand {
+        Hand::new_variant(
+            Variant::Omaha,
+            Stakes::NoLimit {
+                small_blind: 100,
+                big_blind: 200,
+            },
+            stacks,
+            0,
+            seed,
+            0,
+        )
+    }
+
+    #[test]
+    fn an_omaha_deal_gives_every_seat_four_cards() {
+        let hand = omaha(&[(0, 20_000), (1, 20_000), (2, 20_000)], 11);
+        assert_eq!(hand.variant, Variant::Omaha);
+        for player in &hand.players {
+            assert_eq!(player.hole_cards.len(), 4, "seat {}", player.seat);
+        }
+        // Nobody is dealt a card anybody else holds, and the board is still to
+        // come out of the same deck.
+        let mut dealt: Vec<Card> = hand
+            .players
+            .iter()
+            .flat_map(|player| player.hole_cards.iter().copied())
+            .collect();
+        let count = dealt.len();
+        dealt.sort_unstable();
+        dealt.dedup();
+        assert_eq!(dealt.len(), count, "no card is dealt twice");
+    }
+
+    /// The largest table there is still fits in one deck: nine seats of four
+    /// plus a five-card board is forty-one cards.
+    #[test]
+    fn a_full_omaha_table_fits_in_one_deck() {
+        let stacks: Vec<(usize, Cents)> = (0..9).map(|seat| (seat, 20_000)).collect();
+        let mut hand = omaha(&stacks, 12);
+        while !hand.complete {
+            if hand.advance_runout() {
+                continue;
+            }
+            let legal = hand.legal_actions().expect("somebody is to act");
+            let action = legal
+                .actions
+                .iter()
+                .copied()
+                .find(|action| matches!(action, Action::Check | Action::Call))
+                .unwrap_or(Action::Fold);
+            hand.apply_action(action).expect("a legal action");
+        }
+        assert_eq!(hand.board.len(), 5);
+    }
+
+    /// A whole hand settles on the Omaha reading: the seat that wins is the one
+    /// whose best two hole cards beat the other's, not the one holding the most
+    /// of a suit (§V67).
+    #[test]
+    fn an_omaha_showdown_is_settled_two_from_the_hand() {
+        let mut hand = omaha(&[(0, 20_000), (1, 20_000)], 13);
+        // Seat 0 holds four hearts against a two-heart board: no flush.
+        // Seat 1 holds a pair, which is the hand that takes it down.
+        hand.players[0].hole_cards = h("Ah Kh Qh Jh");
+        hand.players[1].hole_cards = h("8c 8d 3s 2c");
+        hand.players[0].contribution = 200;
+        hand.players[1].contribution = 200;
+        hand.players[0].stack = 0;
+        hand.players[1].stack = 0;
+        hand.pot = 400;
+        hand.board = h("2h 7h 9s 4c 3d");
+
+        hand.showdown();
+
+        let summary = hand.summary.as_ref().expect("a result");
+        assert_eq!(
+            summary
+                .awards
+                .iter()
+                .map(|award| award.seat)
+                .collect::<Vec<_>>(),
+            vec![1],
+            "two pair beats the hand that only looked like a flush"
+        );
+        let hearts = summary
+            .results
+            .iter()
+            .find(|result| result.seat == 0)
+            .and_then(|result| result.hand.as_ref())
+            .expect("seat 0 was read");
+        assert_eq!(hearts.rank.category, crate::eval::Category::HighCard);
+    }
+
+    /// Who leads before a board is out is still answered for four cards.
+    #[test]
+    fn an_omaha_reveal_names_a_leader_before_the_flop() {
+        let mut hand = omaha(&[(0, 20_000), (1, 20_000)], 14);
+        hand.apply_action(Action::AllIn).unwrap();
+        hand.apply_action(Action::Call).unwrap();
+        assert!(hand.awaits_runout());
+        assert!(!hand.leaders_now().is_empty(), "somebody is ahead already");
+        let odds = hand.odds_now();
+        assert_eq!(odds.len(), 2);
+        // Each share is rounded to a tenth of a percent on its own, so the two
+        // may miss a thousand by one.
+        let total = odds.iter().map(|entry| entry.equity_permille).sum::<u16>();
+        assert!(
+            (999..=1001).contains(&total),
+            "the equity of a two-handed pot adds up: {total}"
+        );
+        while hand.advance_runout() {}
+        assert!(hand.complete);
+        assert_eq!(hand.board.len(), 5);
     }
 }

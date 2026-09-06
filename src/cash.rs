@@ -1,12 +1,13 @@
 //! The standing cash tables.
 //!
-//! Cash games are not created by players any more: eleven tables always exist,
-//! one per entry tier, each seating six for no-limit. Blinds and the mix of
-//! house players both follow from the entry, so a bigger table is a harder one.
+//! Cash games are not created by players any more: eleven tables always exist
+//! per variant, one per entry tier, each seating six for no-limit. Blinds and
+//! the mix of house players both follow from the entry, so a bigger table is a
+//! harder one, and the ladder is the same shape whichever game it deals.
 
 use crate::{
     money::Cents,
-    table::{Bot, BotKind, Seat, SeatOccupant, Stakes, Table, TableMode},
+    table::{Bot, BotKind, Seat, SeatOccupant, Stakes, Table, TableMode, Variant},
 };
 
 /// What it costs to sit down, cheapest first.
@@ -68,10 +69,17 @@ pub fn stakes(buy_in: Cents) -> Stakes {
     }
 }
 
-pub fn name(buy_in: Cents) -> String {
+/// What a rung is called. The stakes lead, because that is what a player picks
+/// a table by; the game is named too, so a hand in the history or the record
+/// books says which one it was.
+pub fn name(variant: Variant, buy_in: Cents) -> String {
     let (small_blind, big_blind) = blinds(buy_in);
+    let suffix = match variant {
+        Variant::Holdem => "No-Limit".to_string(),
+        other => format!("No-Limit {}", other.label()),
+    };
     format!(
-        "{}/{} No-Limit",
+        "{}/{} {suffix}",
         crate::money::format_cents(small_blind),
         crate::money::format_cents(big_blind)
     )
@@ -195,15 +203,16 @@ pub fn seating_order(tier: usize) -> Vec<BotKind> {
 }
 
 /// A table for a tier, with every seat empty; the house fills them.
-pub fn table(tier: usize) -> Table {
+pub fn table(variant: Variant, tier: usize) -> Table {
     let buy_in = TIERS[tier];
     let mut table = Table::new(
-        name(buy_in),
+        name(variant, buy_in),
         stakes(buy_in),
         TableMode::Cash { no_debt: false },
         SEATS,
         buy_in,
-    );
+    )
+    .with_variant(variant);
     table.cash_tier = Some(tier);
     table
 }
@@ -381,7 +390,7 @@ mod tests {
     fn every_tier_can_fill_all_six_seats() {
         // The dearest tables want only sharks, and there are five of them.
         for tier in 0..TIERS.len() {
-            let mut table = table(tier);
+            let mut table = table(Variant::Holdem, tier);
             for seat in 0..SEATS {
                 let bot = house_bot(&table, tier, seat)
                     .unwrap_or_else(|| panic!("tier {tier} seat {seat} found nobody"));
@@ -399,7 +408,7 @@ mod tests {
 
     #[test]
     fn the_house_never_seats_the_same_bot_twice() {
-        let mut table = table(0);
+        let mut table = table(Variant::Holdem, 0);
         for seat in 0..SEATS {
             let bot = house_bot(&table, 0, seat).expect("a free regular");
             table.seats[seat].occupant = SeatOccupant::bot(bot);

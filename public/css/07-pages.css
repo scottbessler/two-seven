@@ -42,6 +42,20 @@
 .blitz-shell{display:grid;gap:1rem}.blitz-top{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem}.blitz-top h1{margin:.2rem 0;font-size:var(--text-display)}.blitz-top p{margin:.2rem 0;color:var(--muted)}.blitz-menu,.blitz-table{display:grid;gap:1rem;padding:1rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-60)}.blitz-stat-grid,.blitz-score{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem}.blitz-stat-grid span,.blitz-score span{display:grid;gap:.15rem;min-height:4rem;padding:.8rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--felt-800);color:var(--muted);text-align:center}.blitz-stat-grid b,.blitz-score b{color:var(--accent);font-size:var(--text-title)}.difficulty-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}.difficulty-grid button{display:grid;gap:.25rem;min-height:5.5rem}.difficulty-grid span{font-weight:500;color:var(--ink-on-difficulty)}.blitz-clock{height:.75rem;overflow:hidden;border-radius:var(--radius-chip);background:var(--surface-dark);border:1px solid var(--line-legacy)}.blitz-clock span{display:block;height:100%;background:var(--accent);transition:width .12s linear}.blitz-table>.board{min-height:4rem}.blitz-hands{display:grid;grid-template-columns:repeat(2,1fr);gap:1rem}.blitz-hands button{display:grid;gap:.7rem;min-height:8rem;background:var(--surface-blitz);color:var(--ink);border-color:var(--line-3)}.blitz-hands button>span{color:var(--accent);font-size:var(--text-action)}.blitz-feedback{margin:0;color:var(--accent);font-weight:700;text-align:center}.blitz-actions{display:flex;justify-content:center}
 .page:has(.card-test){max-width:92rem}.card-test-suit{display:grid;gap:.6rem}.card-test-suit h2{margin:.5rem 0 0}.card-test-grid{--card-w:6.4rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem;padding:.65rem;border:1px solid var(--line-legacy);border-radius:var(--radius-control);background:var(--surface-deep-60)}
 
+/* The front door: one card per game. A card carries the game's name, what it
+   is in a line, and what is going on inside it, so the choice is made here
+   rather than after opening two lobbies. */
+.game-directory-heading{margin:1.4rem 0 .6rem;font-size:var(--text-action)}
+.game-directory{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:.6rem}
+.game-card{display:grid;align-content:start;gap:.2rem;padding:.85rem .95rem;border:1px solid var(--line-1);border-left:3px solid var(--gold);border-radius:var(--radius-control);background:var(--surface-deep);color:inherit;text-decoration:none}
+.game-card:hover,.game-card:focus-visible{border-color:var(--line-2);border-left-color:var(--gold-hi)}
+.game-card:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.game-card:hover .game-card-title,.game-card:focus-visible .game-card-title{color:var(--gold-hi)}
+.game-card-title{color:var(--accent);font-size:var(--text-action)}
+.game-card-tagline{color:var(--ink-muted);font-size:var(--text-small)}
+.game-card-detail{color:var(--ink-faint);font-size:var(--text-label);text-transform:uppercase;letter-spacing:.04em}
+.game-card-you{justify-self:start;margin-top:.35rem;padding:.1rem .4rem;border-radius:var(--radius-chip);background:var(--gold);color:var(--ink-on-gold);font-size:var(--text-label)}
+
 /* Standings: a board per game, then the record books. Each board scrolls
    sideways on its own so a wide one never drags the page with it. */
 .leaderboard{display:grid;gap:1.6rem;padding-bottom:2rem}

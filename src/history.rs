@@ -260,6 +260,7 @@ mod tests {
     fn hand(table: Uuid, hand_no: u64) -> HandRecord {
         HandRecord {
             table,
+            variant: crate::table::Variant::Holdem,
             hand_no,
             at: chrono::Utc::now(),
             stakes: Stakes::NoLimit {

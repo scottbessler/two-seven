@@ -1,9 +1,9 @@
 use crate::{
     bank::{SEAT_LEDGER_LINES, SeatBank},
     cards::Card,
-    holdem::{Hand, HandEvent, HandSummary, LegalActions},
     money::Cents,
-    table::{Seat, SeatOccupant, Table},
+    poker::{Hand, HandEvent, HandSummary, LegalActions},
+    table::{Seat, SeatOccupant, Table, Variant},
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -30,6 +30,7 @@ pub struct SeatView {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct HandView {
+    pub variant: Variant,
     pub street: String,
     pub button: usize,
     pub big_blind: Cents,
@@ -50,7 +51,7 @@ pub struct HandView {
     /// Who leads, and on what equity, on the board as it stands right now.
     /// Live, not a replay of a decided result.
     pub runout_leaders: Vec<usize>,
-    pub runout_odds: Vec<crate::holdem::ShowdownOdds>,
+    pub runout_odds: Vec<crate::poker::ShowdownOdds>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -67,6 +68,9 @@ pub struct HandPlayerView {
 pub struct TableView {
     pub id: uuid::Uuid,
     pub name: String,
+    /// The game this table deals. The client sizes a hand by it and knows
+    /// which lobby to send a leaver back to.
+    pub variant: Variant,
     pub stakes: crate::table::Stakes,
     pub buy_in: Cents,
     pub bank_balance: Option<Cents>,
@@ -170,6 +174,7 @@ pub struct LeaderboardBeat {
 pub struct LobbyTableView {
     pub id: uuid::Uuid,
     pub name: String,
+    pub variant: Variant,
     pub stakes: crate::table::Stakes,
     pub buy_in: Cents,
     pub occupied: usize,
@@ -247,6 +252,7 @@ pub fn hand_view(hand: &Hand, viewer: Option<usize>, x_ray: &[usize]) -> HandVie
         })
         .collect();
     HandView {
+        variant: hand.variant,
         street: format!("{:?}", hand.street),
         button: hand.button,
         big_blind: hand.stakes.blinds().1,
@@ -353,6 +359,7 @@ pub fn table_view_with_banks(
     TableView {
         id: table.id,
         name: table.name.clone(),
+        variant: table.variant,
         stakes: table.stakes,
         buy_in: table.buy_in,
         bank_balance,
@@ -394,7 +401,7 @@ pub fn table_view_with_banks(
         advance_at: table
             .hand
             .as_ref()
-            .is_some_and(crate::holdem::Hand::awaits_runout)
+            .is_some_and(crate::poker::Hand::awaits_runout)
             .then_some(table.next_action_at)
             .flatten(),
         runout_floor_ms: if table.runs_a_turn_clock() {
@@ -564,10 +571,10 @@ mod tests {
             pending_departure: false,
             pending_arrival: None,
         };
-        table.last_hand = Some(crate::holdem::HandSummary {
+        table.last_hand = Some(crate::poker::HandSummary {
             board: Vec::new(),
             results: Vec::new(),
-            awards: vec![crate::holdem::Award {
+            awards: vec![crate::poker::Award {
                 seat: 0,
                 amount: 20_000,
             }],
@@ -602,7 +609,7 @@ mod tests {
         table.seats[1].occupant =
             SeatOccupant::bot(crate::table::Bot::new(crate::table::BotKind::Fish, 1));
         table.seats[1].stack = 10_000;
-        table.hand = Some(crate::holdem::Hand::new(
+        table.hand = Some(crate::poker::Hand::new(
             Stakes::NoLimit {
                 small_blind: 100,
                 big_blind: 200,
@@ -750,7 +757,7 @@ mod tests {
         let mut table = terminal_tournament();
         // Seat 1 is broke, and still a player in the hand in progress.
         table.seats[1].stack = 0;
-        table.hand = Some(crate::holdem::Hand::new(
+        table.hand = Some(crate::poker::Hand::new(
             Stakes::NoLimit {
                 small_blind: 100,
                 big_blind: 200,
@@ -783,7 +790,7 @@ mod tests {
     #[test]
     fn v59_a_parked_runout_shows_cards_but_no_result() {
         let mut table = terminal_tournament();
-        let mut hand = crate::holdem::Hand::new(
+        let mut hand = crate::poker::Hand::new(
             Stakes::NoLimit {
                 small_blind: 100,
                 big_blind: 200,
@@ -792,8 +799,8 @@ mod tests {
             0,
             77,
         );
-        hand.apply_action(crate::holdem::Action::AllIn).unwrap();
-        hand.apply_action(crate::holdem::Action::Call).unwrap();
+        hand.apply_action(crate::poker::Action::AllIn).unwrap();
+        hand.apply_action(crate::poker::Action::Call).unwrap();
         assert!(hand.awaits_runout());
         table.hand = Some(hand);
 
@@ -823,7 +830,7 @@ mod tests {
     #[test]
     fn v59_runout_json_carries_every_opponent_hand() {
         let mut table = terminal_tournament();
-        let mut hand = crate::holdem::Hand::new(
+        let mut hand = crate::poker::Hand::new(
             Stakes::NoLimit {
                 small_blind: 100,
                 big_blind: 200,
@@ -832,8 +839,8 @@ mod tests {
             0,
             77,
         );
-        hand.apply_action(crate::holdem::Action::AllIn).unwrap();
-        hand.apply_action(crate::holdem::Action::Call).unwrap();
+        hand.apply_action(crate::poker::Action::AllIn).unwrap();
+        hand.apply_action(crate::poker::Action::Call).unwrap();
         table.hand = Some(hand);
 
         // Seat 0 is looking: seat 1 is the opponent whose cards must be up.

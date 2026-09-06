@@ -45,6 +45,8 @@ impl FromRef<AppState> for Key {
 pub fn router(s: AppState) -> Router {
     Router::new()
         .route("/", get(routes::index))
+        .route("/holdem", get(routes::holdem_lobby))
+        .route("/omaha", get(routes::omaha_lobby))
         .route("/healthcheck", get(routes::healthcheck))
         .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
@@ -104,7 +106,7 @@ pub fn router(s: AppState) -> Router {
             "/hand-blitz/answer",
             axum::routing::post(routes::hand_blitz_answer),
         )
-        .route("/tables/new", get(routes::new_table))
+        .route("/tables/new", get(routes::new_tournament))
         .route("/tournaments/new", get(routes::new_tournament))
         .route(
             "/tournaments",

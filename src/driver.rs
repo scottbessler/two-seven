@@ -71,7 +71,7 @@ pub async fn tick_once_at(state: &AppState, now: DateTime<Utc>) -> Result<(), an
                     if table
                         .hand
                         .as_ref()
-                        .is_some_and(crate::holdem::Hand::awaits_runout)
+                        .is_some_and(crate::poker::Hand::awaits_runout)
                     {
                         if table.next_action_at.is_none() {
                             table.next_action_at =
@@ -336,18 +336,26 @@ pub async fn retire_abandoned_tournaments(state: &AppState) -> Result<(), anyhow
     Ok(())
 }
 
+/// Every game gets the whole ladder, so a rung is identified by its variant as
+/// well as its entry: the $200 Omaha table is not the $200 Hold'em one.
 pub async fn ensure_cash_ladder(state: &AppState) -> Result<(), anyhow::Error> {
     let mut present = std::collections::BTreeSet::new();
     for id in state.tables.ids().await {
-        if let Some(table) = state.tables.get(id).await
-            && let Some(tier) = table.lock().await.cash_tier
-        {
-            present.insert(tier);
+        if let Some(table) = state.tables.get(id).await {
+            let table = table.lock().await;
+            if let Some(tier) = table.cash_tier {
+                present.insert((table.variant, tier));
+            }
         }
     }
-    for tier in 0..crate::cash::TIERS.len() {
-        if !present.contains(&tier) {
-            state.tables.insert(crate::cash::table(tier)).await?;
+    for variant in crate::table::Variant::ALL {
+        for tier in 0..crate::cash::TIERS.len() {
+            if !present.contains(&(variant, tier)) {
+                state
+                    .tables
+                    .insert(crate::cash::table(variant, tier))
+                    .await?;
+            }
         }
     }
     reseat_house_players_off_the_mix(state).await;
@@ -1239,14 +1247,16 @@ mod tests {
             key: Key::generate(),
             passkey_disabled: true,
         };
+        // Every game gets the whole ladder, and no two rungs collide.
+        let rungs = crate::cash::TIERS.len() * crate::table::Variant::ALL.len();
         ensure_cash_ladder(&state).await.unwrap();
-        assert_eq!(tables.ids().await.len(), crate::cash::TIERS.len());
+        assert_eq!(tables.ids().await.len(), rungs);
         // Seeding twice must not double the ladder.
         ensure_cash_ladder(&state).await.unwrap();
-        assert_eq!(tables.ids().await.len(), crate::cash::TIERS.len());
+        assert_eq!(tables.ids().await.len(), rungs);
 
         // One seat fills per tick, so a table is full in a handful of them.
-        for _ in 0..(crate::cash::SEATS * crate::cash::TIERS.len() + 4) {
+        for _ in 0..(crate::cash::SEATS * rungs + 4) {
             tick_once(&state).await.unwrap();
         }
         // Nobody sits at a table their kind is not seated at (§V62).
@@ -1262,17 +1272,29 @@ mod tests {
                 );
             }
         }
-        let cheapest = {
-            let mut found = None;
-            for id in tables.ids().await {
-                let table = tables.get(id).await.unwrap();
-                let table = table.lock().await;
-                if table.cash_tier == Some(0) {
-                    found = Some(table.clone());
-                }
+        // A rung belongs to one game, so the cheapest table is asked for by
+        // both: there is a $200 Hold'em table and a $200 Omaha one.
+        let mut cheapest_of = std::collections::BTreeMap::new();
+        for id in tables.ids().await {
+            let table = tables.get(id).await.unwrap();
+            let table = table.lock().await;
+            if table.cash_tier == Some(0) {
+                assert!(
+                    cheapest_of.insert(table.variant, table.clone()).is_none(),
+                    "a game has one cheapest table, not two"
+                );
             }
-            found.expect("the cheapest table")
-        };
+        }
+        assert_eq!(cheapest_of.len(), crate::table::Variant::ALL.len());
+        assert!(
+            cheapest_of
+                .get(&crate::table::Variant::Omaha)
+                .is_some_and(|table| table.name.contains("Omaha")),
+            "an Omaha rung says so in its name"
+        );
+        let cheapest = cheapest_of
+            .remove(&crate::table::Variant::Holdem)
+            .expect("the cheapest table");
         assert_eq!(cheapest.buy_in, crate::cash::TIERS[0]);
         assert_eq!(cheapest.max_seats, crate::cash::SEATS);
         let seated: Vec<_> = cheapest
@@ -1640,9 +1662,9 @@ mod tests {
                 for (event_index, event) in hand.events.iter().enumerate() {
                     if matches!(
                         event.kind,
-                        crate::holdem::HandEventKind::Bet
-                            | crate::holdem::HandEventKind::Raise
-                            | crate::holdem::HandEventKind::AllIn
+                        crate::poker::HandEventKind::Bet
+                            | crate::poker::HandEventKind::Raise
+                            | crate::poker::HandEventKind::AllIn
                     ) {
                         aggressive_actions.insert((hand.seed, event_index));
                     }

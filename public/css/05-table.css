@@ -535,3 +535,14 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 }
 /* Money lines up as a column wherever it is shown. */
 :where(.seat-wager,.seat-stack,.action-amount,.table-metrics b,.showdown-odds strong,.tournament-complete b,.game-log li,.wager-dialog output){font-variant-numeric:tabular-nums}
+
+/* Omaha deals four cards where hold'em deals two, and a hand still has to fit
+   the seat holding it. Nothing about the layout changes: a four-card hand only
+   asks for a smaller card. Each card takes half the share of its seat that two
+   used to, and comes down against its cap by the same factor the viewer's own
+   hand does (`--hand-card-scale`, set by table.js). The rule reads whatever
+   cap and share the breakpoint in force has already chosen, so one override
+   covers every tier -- and a hold'em table never matches it, so none of its
+   geometry moves. */
+.table-shell[data-hole-cards="4"] .seat:not(.viewer) .seat-cards .playing-card{--card-w:min(calc(var(--seat-card-cap) * var(--card-size-scale,1) * var(--hand-card-scale,1)),calc(var(--seat-card-share) / 2));--card-h:calc(var(--card-w) * var(--card-aspect));--corner-gap:calc(var(--card-w) * .04)}
+.table-shell[data-hole-cards="4"] .other-seats .seat-cards{gap:.14rem}

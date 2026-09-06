@@ -47,10 +47,15 @@ export function applyCardSettings({ cardSize, rankSize, rankWeight: rankBoldness
   root.style.setProperty("--card-rank-weight", String(rankWeight(rankBoldness)));
   root.style.setProperty("--card-rank-stroke", rankStroke(rankBoldness));
   root.style.setProperty("--viewer-card-scale", String(DEFAULT_CARD_SCALE * cardSize));
-  root.style.setProperty("--viewer-card-w", `${3 * scale}rem`);
-  root.style.setProperty("--viewer-card-h", `${4.2 * scale}rem`);
-  root.style.setProperty("--viewer-card-w-mobile", `${2.1 * scale}rem`);
-  root.style.setProperty("--viewer-card-h-mobile", `${2.95 * scale}rem`);
+  // A hand of four has to fit the room a hand of two had, so every size a hand
+  // is drawn at carries one more factor. Whatever is dealing sets
+  // `--hand-card-scale` (see table.js); anything that never deals four leaves
+  // it unset and the fallback of 1 keeps the size it always had.
+  const hand = "var(--hand-card-scale,1)";
+  root.style.setProperty("--viewer-card-w", `calc(${3 * scale}rem * ${hand})`);
+  root.style.setProperty("--viewer-card-h", `calc(${4.2 * scale}rem * ${hand})`);
+  root.style.setProperty("--viewer-card-w-mobile", `calc(${2.1 * scale}rem * ${hand})`);
+  root.style.setProperty("--viewer-card-h-mobile", `calc(${2.95 * scale}rem * ${hand})`);
   root.style.setProperty("--viewer-stage-extra", `${Math.max(0, 6.2 * (scale - DEFAULT_CARD_SCALE))}rem`);
 }
 

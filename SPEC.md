@@ -1,6 +1,7 @@
 # two-seven — Spec (living document)
 
-A multiplayer poker web app. First (and currently only) variant: **Texas Hold'em**.
+A multiplayer poker web app. Two variants: **Texas Hold'em** and **Omaha Hi**,
+each with a lobby of its own behind a directory of games.
 Same stack and conventions as [screwball](https://github.com/scottbessler/screwball):
 Rust + Axum server-side rendering, passkey auth, SSE for live updates, a single
 no-build Preact/htm island for interactivity, JSON files on a Fly volume for
@@ -15,7 +16,7 @@ outstanding work. Keep it up to date with every change.
 
 Goals
 
-- Real multiplayer Hold'em: several humans at one table, live updates, no page reloads.
+- Real multiplayer poker: several humans at one table, live updates, no page reloads.
 - Bots with visibly different playing styles and difficulty levels, so a table is
   always playable solo.
 - Cash tables in two flavours: **limit** and **no-limit** (see §4 Bank).
@@ -23,8 +24,9 @@ Goals
 - A persistent **bank**: every player (and every bot type) has an account.
   Accounts never go negative; users may re-up $1,000 only while below $1,000,
   repay loans from the coin menu, and see their current loan count.
-- Variant-agnostic plumbing: tables/bank/bots/tournaments should not assume
-  Hold'em, so Omaha / 2-7 triple draw can be added later.
+- Variant-agnostic plumbing: tables/bank/bots/tournaments do not assume a
+  variant. Hold'em and Omaha already share all of it; 2-7 triple draw can be
+  added the same way.
 
 Non-goals (for now)
 
@@ -127,8 +129,17 @@ standings links to their own copy of that page; the house's does not, having no
 page. Somebody else's page adds a $1,000 stepper that sends them money from
 your account, and redraws both the summary and the ledger once it lands.
 
-## 5. Hold'em rules implemented
+## 5. Poker rules implemented
 
+Both variants run the same engine (`src/poker/`). A variant decides exactly two
+things: how many hole cards a seat is dealt, and how a hand is read at showdown
+(§V67). Everything below applies to both unless it says otherwise.
+
+- **Hold'em:** two hole cards; a hand is the best five of the seven available,
+  so a seat may play one, both, or neither of its own cards.
+- **Omaha Hi:** four hole cards; a hand is *exactly* two of them plus *exactly*
+  three of the board. Four cards to a suit in the hand is not a flush, and a
+  seat can never play the board.
 - 2–9 seats. Button rotates clockwise each hand; heads-up uses the standard
   button-posts-small-blind rule.
 - Streets: preflop, flop (3), turn (1), river (1); one burn card is *not*
@@ -164,19 +175,23 @@ your account, and redraws both the summary and the ledger once it lands.
 - A hand ends early when all but one player folds (no cards shown).
 - Showdown reveals the hole cards of every seat still in the hand, in order.
 
-Hand evaluation (`src/eval.rs`): best five of seven cards, categories
-high-card < pair < two-pair < trips < straight < flush < full-house < quads <
-straight-flush, with wheel (`A2345`) straights. `HandRank` is `Ord`, so ties are
-exact equality.
+Hand evaluation (`src/eval.rs`): `evaluate_showdown(variant, hole, board)` reads
+a seat's hand the way its game reads one — best five of seven for Hold'em, best
+of exactly-two-plus-exactly-three for Omaha — and both come back as an
+`EvaluatedHand`, so nothing downstream knows which game it is looking at.
+Categories are high-card < pair < two-pair < trips < straight < flush <
+full-house < quads < straight-flush, with wheel (`A2345`) straights. `HandRank`
+is `Ord`, so ties are exact equality.
 
 ## 6. Tables
 
 ```
-Table { id, name, variant: Variant::Holdem, stakes: Stakes, mode: TableMode,
+Table { id, name, variant: Variant, stakes: Stakes, mode: TableMode,
         max_seats, min_buy_in, max_buy_in, seats: Vec<Seat>, button, hand: Option<Hand>,
         last_hand: Option<HandSummary>, hand_no, next_action_at, turn_clock: Option<TurnClock>,
         created_at, updated_at }
 TurnClock { seat, hand_no, decision, deadline }
+Variant   = Holdem | Omaha
 Stakes    = Limit { small_bet, big_bet } | NoLimit { small_blind, big_blind }
 TableMode = Cash { no_debt: bool } | Tournament(TournamentState)
 Seat      { occupant: Empty | Human{user_id} | Bot{kind}, stack, sitting_out, ... }
@@ -243,7 +258,9 @@ and the board) — the same redacted view a human gets (§V3).
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/` | Lobby: bank widget, open tables, tournaments, your seats |
+| GET | `/` | Directory of games: a card per poker variant, plus blackjack and Hand Blitz |
+| GET | `/holdem`, `/omaha` | That game's lobby: cash ladder, tournaments, your seats |
+| GET | `/tables` | 303 to `/holdem` — where the single lobby used to live |
 | GET | `/player` | Signed-in player's account, options and finance history |
 | POST | `/player/settings` | Save your own account options: `{unfunded_tournaments, see_bot_cards}` |
 | GET | `/healthcheck` | Liveness for Fly |
@@ -261,7 +278,8 @@ and the board) — the same redacted view a human gets (§V3).
 | POST | `/tables/{id}/bot` | Seat/remove a bot: `{seat, kind?}` |
 | POST | `/tables/{id}/action` | `{kind: fold\|check\|call\|bet\|raise, amount?}` |
 | POST | `/tables/{id}/emote` | Seated human emits `{kind: cry\|joy\|laugh\|poop\|shock}` |
-| GET | `/tournaments/new`, POST `/tournaments` | Create a sit-and-go |
+| GET | `/tournaments/new?variant=` | Sit-and-go setup for that game (absent = Hold'em) |
+| POST | `/tournaments` | Create a sit-and-go: `{variant?, ...}` (absent = Hold'em) |
 | POST | `/tournaments/{id}/register` | Buy in to the first open seat: `{}` |
 | GET | `/api/bank` | Balance, derived debt/net/next repayment + recent ledger entries |
 | POST | `/api/bank/repay` | Repay the newest outstanding loan principal |
@@ -291,8 +309,8 @@ src/
   auth.rs, session.rs, users.rs  # passkeys, cookie session, user store
   error.rs                       # AppError -> HTML/JSON
   cards.rs                       # Card/Rank/Suit/Deck (seeded shuffle)
-  eval.rs                        # 7-card hand evaluation
-  holdem/                        # hand engine statechart (see STATECHART.md)
+  eval.rs                        # five-card ranking + per-variant showdown reading
+  poker/                        # hand engine statechart (see STATECHART.md)
     mod.rs                       #   shared types, side pots, showdown resolution
     street.rs                    #   hand machine: street progression + fold win
     round.rs                     #   betting round machine: actions + rotation
@@ -307,7 +325,7 @@ src/
   routes.rs                      # handlers
   view.rs                        # redacted view projections
 public/                          # table.js island, auth.js, vendor/
-tests/                           # eval, holdem, bank, bot, routes, dockerfile
+tests/                           # eval, poker, bank, bot, routes, dockerfile
 ```
 
 ## 12. Milestones
@@ -326,7 +344,7 @@ Mark each milestone done here as it lands.
 
 - [ ] Action clock / auto-fold for idle humans (today a table waits forever).
 - [ ] Multi-table tournaments, late registration, rebuy periods.
-- [ ] More variants: Omaha, and 2-7 triple draw (the repo's namesake).
+- [ ] More variants: 2-7 triple draw (the repo's namesake).
 - [ ] Push notifications for "it's your turn" (screwball has the VAPID plumbing).
 - [ ] Hand history browser + replay from the recorded shuffle seed.
 - [ ] Playwright snapshot coverage for the table page.
@@ -626,6 +644,20 @@ Mark each milestone done here as it lands.
   count keeps them as written — the log still absorbs what is left (V48) and the
   footer still sits at the viewport bottom.
 
+- **V67** A variant decides two things and nothing else: the size of the deal,
+  and how a hand is read. Hold'em deals 2 and plays the best five of seven;
+  Omaha deals 4 and plays exactly two of them with exactly three of the board
+  ∴ four to a suit in the hand is ⊥ flush, and ⊥ seat plays the board. One
+  reading (`evaluate_showdown`) serves the showdown, the runout leaders, the
+  equity, and the bots ∴ nothing can rank a hand one way and pay it another.
+  Betting, blinds, side pots, the clock, the bank and the driver are untouched
+  by it. The cash ladder exists once per variant — a rung is (variant, entry),
+  so the $200 Omaha table is ⊥ the $200 Hold'em one — and a table's game is
+  fixed at creation ∴ a hand ⊥ change games under a seated player. `/` is a
+  directory of games; each variant's lobby holds its own tables only.
+  A four-card hand is drawn smaller so it takes the room two cards had ∴ ⊥
+  Hold'em geometry moves.
+
 ## §T Build tasks
 
 id|status|task|cites
@@ -685,6 +717,7 @@ T47|x|make the phone's insets an app-wide contract and unclip landscape|V42,V45,
 T48|x|make overlapping emotes keep their paths and finish fading before removal|V63,V64
 T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart points, bank writes, abandoned tournaments, payload logging|V64
 T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
+T51|x|add Omaha alongside Hold'em: variant-aware deal and showdown, a ladder per game, and a directory of games at the front door|V67
 
 ## §B Bug log
 

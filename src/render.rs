@@ -1,4 +1,7 @@
-use crate::money::{Cents, format_cents, format_dollars};
+use crate::{
+    money::{Cents, format_cents, format_dollars},
+    table::Variant,
+};
 use std::sync::OnceLock;
 use uuid::Uuid;
 static VERSION: OnceLock<String> = OnceLock::new();
@@ -107,7 +110,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play Texas Hold'em at a cash table.</p><p><a href="/tables">Open lobby</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a> · <a href="/tables/new">Start a game</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play poker at a cash table.</p><p><a href="/holdem">Hold&#39;em</a> · <a href="/omaha">Omaha</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
                 escape(&name),
                 sign_out()
             ),
@@ -116,16 +119,79 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
     }
 }
 
-pub fn home_lobby(name: &str, tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
+/// One poker game on the front door, with what is going on inside it.
+pub struct DirectoryGame {
+    pub variant: Variant,
+    pub tables: usize,
+    pub tournaments: usize,
+    pub your_seats: usize,
+}
+
+/// The front door. Every game gets a card of its own, so the tables a player
+/// opens are all the same game rather than two ladders interleaved.
+pub fn home_directory(name: &str, games: &[DirectoryGame]) -> String {
+    let count = |value: usize, one: &str, many: &str| match value {
+        1 => format!("1 {one}"),
+        other => format!("{other} {many}"),
+    };
+    let poker = games
+        .iter()
+        .map(|game| {
+            let seated = if game.your_seats > 0 {
+                format!(
+                    r#"<b class="game-card-you">{}</b>"#,
+                    count(game.your_seats, "seat of yours", "seats of yours")
+                )
+            } else {
+                String::new()
+            };
+            game_card(
+                &format!("/{}", game.variant.slug()),
+                game.variant.long_label(),
+                game.variant.tagline(),
+                &format!(
+                    "{} · {}",
+                    count(game.tables, "cash table", "cash tables"),
+                    count(game.tournaments, "tournament", "tournaments")
+                ),
+                &seated,
+            )
+        })
+        .collect::<String>();
+    let others = format!(
+        "{}{}",
+        game_card(
+            "/blackjack",
+            "Blackjack",
+            "Beat the dealer to twenty-one.",
+            "Four shared tables",
+            "",
+        ),
+        game_card(
+            "/hand-blitz",
+            "Hand Blitz",
+            "Pick the winning hand before the clock runs out.",
+            "Against the clock",
+            "",
+        ),
+    );
     layout(
-        "Lobby",
+        "two-seven",
         &format!(
-            "<section class=\"card lobby\"><h1>Welcome, {}</h1>{}<p><a href=\"/player\">Player</a> · <a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p>{}</section>",
+            "<section class=\"card lobby\"><h1>Welcome, {}</h1><h2 class=\"game-directory-heading\">Poker</h2><div class=\"game-directory\">{poker}</div><h2 class=\"game-directory-heading\">Elsewhere in the house</h2><div class=\"game-directory\">{others}</div><p><a href=\"/player\">Player</a> · <a href=\"/leaderboard\">Leaderboard</a></p>{}</section>",
             escape(name),
-            lobby_table_list(tables, balance, true),
             sign_out()
         ),
         "",
+    )
+}
+
+fn game_card(href: &str, title: &str, tagline: &str, detail: &str, badge: &str) -> String {
+    format!(
+        r#"<a class="game-card" href="{href}"><b class="game-card-title">{}</b><span class="game-card-tagline">{}</span><span class="game-card-detail">{}</span>{badge}</a>"#,
+        escape(title),
+        escape(tagline),
+        escape(detail),
     )
 }
 
@@ -135,18 +201,14 @@ fn classed_option(extra: &str, name: &str, value: &str, title: &str, detail: &st
     )
 }
 
-pub fn table_create(balance: Cents) -> String {
-    game_create(balance, false)
-}
-
-pub fn tournament_create(balance: Cents, unfunded: bool) -> String {
-    game_create(balance, unfunded)
+pub fn tournament_create(variant: Variant, balance: Cents, unfunded: bool) -> String {
+    game_create(variant, balance, unfunded)
 }
 
 /// `unfunded` is the account option that lets you set up a tournament richer
 /// than you are. The rungs above your balance are offered rather than hidden,
 /// and say what they are, so the step stays honest about what you can afford.
-fn game_create(balance: Cents, unfunded: bool) -> String {
+fn game_create(variant: Variant, balance: Cents, unfunded: bool) -> String {
     // One question per step; lobby.js walks the steps and assembles the config.
     let step = |name: &str, legend: &str, options: &str| {
         format!(
@@ -205,11 +267,14 @@ fn game_create(balance: Cents, unfunded: bool) -> String {
         },
     );
     let confirm_step = r#"<fieldset class="setup-step setup-confirm" data-step="confirm" hidden><legend>Name</legend><p class="setup-summary" id="setup-summary"></p><label>Name<input name="name" required maxlength="48" value="Friday night"></label><button class="setup-create" type="submit">Create tournament</button></fieldset>"#;
+    let title = format!("New {} tournament", variant.label());
     let body = format!(
-        r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form"><header><h2 id="setup-title">Start a tournament</h2><a class="setup-close" href="/tables" aria-label="Cancel">×</a></header><p class="setup-note">Cash games run around the clock in the lobby. A tournament is the one you start yourself.</p>{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
+        r#"<section class="setup-shell"><dialog id="game-setup" class="setup-dialog"><form id="quick-game-form" data-variant="{slug}"><header><h2 id="setup-title">{heading}</h2><a class="setup-close" href="/{slug}" aria-label="Cancel">×</a></header><p class="setup-note">Cash games run around the clock in the lobby. A tournament is the one you start yourself.</p>{players_step}{buy_in_step}{confirm_step}<footer><button class="setup-back" type="button" hidden>Back</button><p id="create-error" class="error" role="alert"></p></footer></form></dialog><script type="module" src="{lobby}" defer></script></section>"#,
+        slug = variant.slug(),
+        heading = escape(&title),
         lobby = asset("/public/lobby.js")
     );
-    layout("Start a tournament", &body, "")
+    layout(&title, &body, "")
 }
 
 pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
@@ -229,7 +294,7 @@ pub fn hand_blitz(stats: &crate::blitz::BlitzStats) -> String {
     layout(
         "Hand Blitz",
         &format!(
-            r#"<section class="blitz-shell"><div class="blitz-top"><div><h1>Hand Blitz</h1><p>Pick the winning Hold'em hand before the clock runs out.</p></div><a href="/tables">Lobby</a></div><div id="blitz-app" data-stats-runs="{}" data-stats-attempts="{}" data-stats-correct="{}" data-stats-avg-ms="{}" data-stats-best="{}"><section class="blitz-menu"><div class="blitz-stat-grid"><span><b>{}</b> avg</span><span><b>{}%</b> accuracy</span><span><b>{}</b> best</span></div><div class="difficulty-grid">{}</div></section></div></section>"#,
+            r#"<section class="blitz-shell"><div class="blitz-top"><div><h1>Hand Blitz</h1><p>Pick the winning Hold'em hand before the clock runs out.</p></div><a href="/">Games</a></div><div id="blitz-app" data-stats-runs="{}" data-stats-attempts="{}" data-stats-correct="{}" data-stats-avg-ms="{}" data-stats-best="{}"><section class="blitz-menu"><div class="blitz-stat-grid"><span><b>{}</b> avg</span><span><b>{}%</b> accuracy</span><span><b>{}</b> best</span></div><div class="difficulty-grid">{}</div></section></div></section>"#,
             stats.runs,
             stats.attempts,
             stats.correct,
@@ -314,7 +379,7 @@ pub fn admin(error: Option<&str>, message: Option<&str>) -> String {
     layout(
         "Admin",
         &format!(
-            r#"<section class="card admin-panel"><h1>Admin</h1>{notice}{error}<form method="post" action="/admin"><label>Secret password<input type="password" name="password" autocomplete="current-password" required autofocus></label><div class="admin-actions"><button class="danger" type="submit" name="action" value="money">Reset all money and loans</button><button type="submit" name="action" value="forgive-bot-loans">Forgive all bot loans</button><button class="danger" type="submit" name="action" value="poker">Reset all poker stats</button><button class="danger" type="submit" name="action" value="blitz">Reset all blitz stats</button><button class="danger" type="submit" name="action" value="blackjack">Reset all blackjack stats</button></div></form><p><a href="/tables">Lobby</a></p></section>"#
+            r#"<section class="card admin-panel"><h1>Admin</h1>{notice}{error}<form method="post" action="/admin"><label>Secret password<input type="password" name="password" autocomplete="current-password" required autofocus></label><div class="admin-actions"><button class="danger" type="submit" name="action" value="money">Reset all money and loans</button><button type="submit" name="action" value="forgive-bot-loans">Forgive all bot loans</button><button class="danger" type="submit" name="action" value="poker">Reset all poker stats</button><button class="danger" type="submit" name="action" value="blitz">Reset all blitz stats</button><button class="danger" type="submit" name="action" value="blackjack">Reset all blackjack stats</button></div></form><p><a href="/">Games</a></p></section>"#
         ),
         "",
     )
@@ -417,11 +482,11 @@ pub fn player_page(
     let (blurb, nav) = match gift {
         None => (
             "Your bankroll over time.".to_string(),
-            r#"<a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a>"#,
+            r#"<a href="/">Games</a> · <a href="/leaderboard">Leaderboard</a>"#,
         ),
         Some(_) => (
             format!("{}&#39;s bankroll over time.", escape(name)),
-            r#"<a href="/player">Your page</a> · <a href="/tables">Lobby</a> · <a href="/leaderboard">Leaderboard</a>"#,
+            r#"<a href="/player">Your page</a> · <a href="/">Games</a> · <a href="/leaderboard">Leaderboard</a>"#,
         ),
     };
     let body = format!(
@@ -897,8 +962,8 @@ pub fn leaderboard(
         .map(|(_, label)| format!("<th>{label}</th>"))
         .collect::<String>();
     let poker = standings_board(
-        "Hold'em",
-        "Most hands played first. Win is hands taken down over hands dealt. Each type column is winning hands of that make, over their share of the hands this player showed down. A hand everyone folded to never turns over, so the types add up to Shown, not to Won.",
+        "Poker",
+        "Hold'em and Omaha together. Most hands played first. Win is hands taken down over hands dealt. Each type column is winning hands of that make, over their share of the hands this player showed down. A hand everyone folded to never turns over, so the types add up to Shown, not to Won.",
         &format!(
             "<thead><tr><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th colspan=\"{}\">Winning hands by type</th></tr><tr class=\"leaderboard-subhead\"><th></th><th>Player</th><th>Hands</th><th>VPIP</th><th>PFR</th><th>Won</th><th>Win</th><th>Shown</th><th>Biggest pot</th>{type_headers}</tr></thead>",
             WINNING_CATEGORIES.len()
@@ -1173,7 +1238,7 @@ pub fn table_history(
                 hand.hand_no,
                 hand.at.format("%Y-%m-%d %H:%M:%S UTC"),
                 cards_html(&hand.summary.board),
-                escape(&hand.stakes.to_string()),
+                escape(&format!("{} · {}", hand.variant.label(), hand.stakes)),
                 seats,
                 actions
             )
@@ -1225,7 +1290,7 @@ fn card_text(value: &str) -> String {
 }
 
 fn event_line(
-    event: &crate::holdem::HandEvent,
+    event: &crate::poker::HandEvent,
     seats: &[crate::table::HandRecordSeat],
     seat_label: &impl Fn(usize, &crate::table::SeatOccupant) -> String,
 ) -> String {
@@ -1284,12 +1349,15 @@ fn format_duration_ms(ms: u64) -> String {
     }
 }
 
-pub fn lobby(tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
+pub fn lobby(variant: Variant, tables: &[crate::view::LobbyTableView], balance: Cents) -> String {
+    let title = format!("{} lobby", variant.long_label());
     layout(
-        "Lobby",
+        &title,
         &format!(
-            "<section class=\"card lobby\"><h1>Lobby</h1>{}<p><a href=\"/hand-blitz\">Hand Blitz</a> · <a href=\"/blackjack\">Blackjack</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tables/new\">Start a game</a></p></section>",
-            lobby_table_list(tables, balance, false)
+            "<section class=\"card lobby\"><h1>{}</h1>{}<p><a href=\"/\">All games</a> · <a href=\"/leaderboard\">Leaderboard</a> · <a href=\"/tournaments/new?variant={slug}\">Start a tournament</a></p></section>",
+            escape(&title),
+            lobby_table_list(variant, tables, balance),
+            slug = variant.slug(),
         ),
         "",
     )
@@ -1430,9 +1498,9 @@ fn stakes_short(stakes: crate::table::Stakes) -> String {
 }
 
 fn lobby_table_list(
+    variant: Variant,
     tables: &[crate::view::LobbyTableView],
     balance: Cents,
-    include_yours: bool,
 ) -> String {
     let section = |title: &str, sub: &str, rows: &str, empty: &str| {
         format!(
@@ -1453,7 +1521,7 @@ fn lobby_table_list(
         let entry = lobby_row(table, balance);
         // A seat of yours is called out at the top, and keeps its rung as well:
         // a ladder with a hole in it is the thing this list is getting away from.
-        if include_yours && table.your_seat.is_some() {
+        if table.your_seat.is_some() {
             yours.push_str(&entry);
         }
         if table.tournament.is_some() {
@@ -1469,15 +1537,10 @@ fn lobby_table_list(
     };
     format!(
         "{}{}{}",
-        if include_yours {
-            section(
-                "Your seats",
-                "",
-                &yours,
-                "<li class=\"table-empty\">None yet</li>",
-            )
-        } else {
+        if yours.is_empty() {
             String::new()
+        } else {
+            section("Your seats", "", &yours, "")
         },
         section(
             "Cash tables",
@@ -1489,7 +1552,10 @@ fn lobby_table_list(
             "Tournaments",
             "",
             &tournaments,
-            "<li class=\"table-empty\">None running · <a href=\"/tables/new\">start one</a></li>"
+            &format!(
+                "<li class=\"table-empty\">None running · <a href=\"/tournaments/new?variant={}\">start one</a></li>",
+                variant.slug()
+            )
         )
     )
 }
@@ -1634,10 +1700,7 @@ mod tests {
         long.poker.hands = 400;
         long.poker.hands_won = 100;
         let html = leaderboard(&[short, long], &[], &[], &[], &[]);
-        let poker = html
-            .split("Hold&#39;em</h2>")
-            .nth(1)
-            .expect("a poker board");
+        let poker = html.split("Poker</h2>").nth(1).expect("a poker board");
         let body = poker.split("<tbody>").nth(1).expect("rows");
         assert!(
             body.find("Grinder").unwrap() < body.find("Flash").unwrap(),

@@ -1,6 +1,6 @@
 use crate::{
-    holdem::{Action, Hand, HandSummary},
     money::{Cents, format_cents},
+    poker::{Action, Hand, HandSummary},
 };
 use chrono::{DateTime, Utc};
 use rand::Rng;
@@ -13,9 +13,84 @@ use std::{
 };
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+/// Which game a table deals. Everything else about a table -- seats, blinds,
+/// betting, side pots, the bank -- is the same either way; a variant only
+/// decides how many cards a player is dealt and how a hand is read at showdown
+/// (§V67).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum Variant {
+    #[default]
     Holdem,
+    Omaha,
+}
+
+impl Variant {
+    pub const ALL: [Self; 2] = [Self::Holdem, Self::Omaha];
+
+    /// How many hole cards a player is dealt.
+    pub const fn hole_cards(self) -> usize {
+        match self {
+            Self::Holdem => 2,
+            Self::Omaha => 4,
+        }
+    }
+
+    /// How many of those hole cards a showdown hand must use. Hold'em plays the
+    /// best five of seven; Omaha plays exactly two of the four.
+    pub const fn hole_cards_used(self) -> Option<usize> {
+        match self {
+            Self::Holdem => None,
+            Self::Omaha => Some(2),
+        }
+    }
+
+    /// The path this variant's lobby lives at, which is also its slug.
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Holdem => "holdem",
+            Self::Omaha => "omaha",
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Holdem => "Hold'em",
+            Self::Omaha => "Omaha",
+        }
+    }
+
+    /// The whole name, for the places that have room for it.
+    pub const fn long_label(self) -> &'static str {
+        match self {
+            Self::Holdem => "Texas Hold'em",
+            Self::Omaha => "Omaha Hi",
+        }
+    }
+
+    pub const fn tagline(self) -> &'static str {
+        match self {
+            Self::Holdem => "Two in the hand, five on the board.",
+            Self::Omaha => "Four in the hand; play exactly two of them.",
+        }
+    }
+}
+
+impl fmt::Display for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.slug())
+    }
+}
+
+impl FromStr for Variant {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.to_ascii_lowercase().as_str() {
+            "holdem" | "hold-em" | "holdem_hi" => Ok(Self::Holdem),
+            "omaha" | "plo" => Ok(Self::Omaha),
+            _ => Err(format!("unknown variant: {value}")),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -120,9 +195,9 @@ impl Bot {
     pub fn act(
         self,
         view: &crate::view::HandView,
-        legal: &crate::holdem::LegalActions,
+        legal: &crate::poker::LegalActions,
         seed: u64,
-    ) -> crate::holdem::Action {
+    ) -> crate::poker::Action {
         crate::bot::act(self, view, legal, seed)
     }
 }
@@ -197,7 +272,7 @@ mod bot_kind_tests {
         Stakes, TURN_SECONDS, Table, TableMode, TournamentConfig, TournamentState,
         maybe_start_hand, next_button, result_pause_seconds, run_turn_clock, turn_clock_due,
     };
-    use crate::holdem::{Action, HandSummary};
+    use crate::poker::{Action, HandSummary};
     use chrono::{Duration, Utc};
     use std::{collections::BTreeMap, str::FromStr};
 
@@ -465,7 +540,7 @@ mod bot_kind_tests {
             stacks_before_awards: BTreeMap::new(),
             runout: runout
                 .into_iter()
-                .map(|cards| crate::holdem::RunoutStep {
+                .map(|cards| crate::poker::RunoutStep {
                     cards,
                     leaders: Vec::new(),
                     odds: Vec::new(),
@@ -774,6 +849,10 @@ impl TurnClock {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct HandRecord {
     pub table: Uuid,
+    /// The game this hand was dealt. Absent on every record written before
+    /// there was a second one, which were all Hold'em.
+    #[serde(default)]
+    pub variant: Variant,
     pub hand_no: u64,
     pub at: DateTime<Utc>,
     pub stakes: Stakes,
@@ -862,6 +941,15 @@ impl Table {
             next_action_at: None,
             turn_clock: None,
         }
+    }
+
+    /// The game this table deals. Tables are built the same way whichever it
+    /// is, so the variant is chosen after the fact rather than threaded through
+    /// every constructor.
+    #[must_use]
+    pub fn with_variant(mut self, variant: Variant) -> Self {
+        self.variant = variant;
+        self
     }
 }
 
@@ -1038,7 +1126,8 @@ pub fn maybe_start_hand(table: &mut Table) {
         TableMode::Cash { .. } => 0,
     };
     let seed = deal_seed(table.id, table.hand_no, rand::thread_rng().r#gen());
-    table.hand = Some(Hand::new_with_seats_and_ante(
+    table.hand = Some(Hand::new_variant(
+        table.variant,
         table.stakes,
         &stacks,
         table.button,
@@ -1119,6 +1208,7 @@ pub fn settle_finished_hand(table: &mut Table) -> Option<HandRecord> {
     let summary = hand.summary?;
     let record = HandRecord {
         table: table.id,
+        variant: table.variant,
         hand_no: table.hand_no,
         at: Utc::now(),
         stakes: table.stakes,

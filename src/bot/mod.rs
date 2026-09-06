@@ -1,7 +1,7 @@
 use crate::{
-    cards::Rank,
-    eval::{Category, evaluate},
-    holdem::{Action, LegalActions},
+    cards::{Card, Rank},
+    eval::{Category, evaluate_showdown},
+    poker::{Action, LegalActions},
     table::{Bot, BotKind},
     view::HandView,
 };
@@ -31,16 +31,16 @@ pub fn act(bot: Bot, view: &HandView, legal: &LegalActions, seed: u64) -> Action
 
 fn avoid_excessive_raise(action: Action, view: &HandView, legal: &LegalActions) -> Action {
     let street = match view.board.len() {
-        0 => crate::holdem::Street::Preflop,
-        3 => crate::holdem::Street::Flop,
-        4 => crate::holdem::Street::Turn,
-        _ => crate::holdem::Street::River,
+        0 => crate::poker::Street::Preflop,
+        3 => crate::poker::Street::Flop,
+        4 => crate::poker::Street::Turn,
+        _ => crate::poker::Street::River,
     };
     let raises = view
         .events
         .iter()
         .filter(|event| {
-            event.street == street && matches!(event.kind, crate::holdem::HandEventKind::Raise)
+            event.street == street && matches!(event.kind, crate::poker::HandEventKind::Raise)
         })
         .count();
     if raises >= MAX_BOT_STREET_RAISES && matches!(action, Action::Raise { .. }) {
@@ -80,8 +80,7 @@ fn fish(view: &HandView, legal: &LegalActions, seed: u64) -> Action {
 
 fn rock(view: &HandView, legal: &LegalActions) -> Action {
     let premium = view.your_hole_cards.as_ref().is_some_and(|cards| {
-        cards.len() == 2
-            && (cards[0].rank == cards[1].rank || cards.iter().all(|card| card.rank >= Rank::Jack))
+        holds_a_pair(cards) || cards.iter().all(|card| card.rank >= Rank::Jack)
     });
     let made = made_category(view).is_some_and(|category| category >= Category::Pair);
     if !premium && !made && legal.to_call > 0 {
@@ -96,10 +95,9 @@ fn rock(view: &HandView, legal: &LegalActions) -> Action {
 fn grinder(view: &HandView, legal: &LegalActions) -> Action {
     let preflop_strong = view.board.is_empty()
         && view.your_hole_cards.as_ref().is_some_and(|cards| {
-            cards.len() == 2
-                && (cards[0].rank == cards[1].rank
-                    || cards.iter().any(|card| card.rank >= Rank::Ace)
-                    || cards.iter().all(|card| card.rank >= Rank::Jack))
+            holds_a_pair(cards)
+                || cards.iter().any(|card| card.rank >= Rank::Ace)
+                || all_broadway(cards)
         });
     if preflop_strong {
         return wager_or_call(legal);
@@ -117,18 +115,38 @@ fn grinder(view: &HandView, legal: &LegalActions) -> Action {
 pub mod shark;
 #[cfg(test)]
 use shark::{
-    OpponentTier, opening_threshold, opponent_tier, pair_indices, players_behind, range_accepts,
+    OpponentTier, opening_threshold, opponent_tier, players_behind, range_accepts, sample_indices,
     shark,
 };
 pub use shark::{SharkFrequency, SharkParams, SharkRatio, shark_with};
+/// Every card a jack or better. An empty hand is not: `all` over nothing is
+/// true, and a seat with no cards holds nothing premium.
+fn all_broadway(cards: &[Card]) -> bool {
+    !cards.is_empty() && cards.iter().all(|card| card.rank >= Rank::Jack)
+}
+
+/// Two of a kind anywhere in the hand. Hold'em's pocket pair, and the Omaha
+/// hand that holds one among its four.
+fn holds_a_pair(cards: &[Card]) -> bool {
+    cards.iter().enumerate().any(|(index, card)| {
+        cards[index + 1..]
+            .iter()
+            .any(|other| other.rank == card.rank)
+    })
+}
+
+/// The hand this seat has made, read the way its game reads one -- so an Omaha
+/// bot never counts a flush it is holding four cards of but may only play two.
 fn made_category(view: &HandView) -> Option<Category> {
     let hole = view.your_hole_cards.as_ref()?;
-    if hole.len() != 2 || view.board.len() + hole.len() < 5 {
+    if hole.len() != view.variant.hole_cards() || view.board.len() < 3 {
         return None;
     }
-    let mut cards = hole.clone();
-    cards.extend(view.board.iter().copied());
-    Some(evaluate(&cards).rank.category)
+    Some(
+        evaluate_showdown(view.variant, hole, &view.board)
+            .rank
+            .category,
+    )
 }
 
 fn wager_or_call(legal: &LegalActions) -> Action {
@@ -164,11 +182,59 @@ mod tests {
     use super::*;
     use crate::{
         cards::Card,
-        holdem::{Hand, HandEvent, WagerBounds},
+        poker::{Hand, HandEvent, WagerBounds},
         table::Stakes,
         view::{HandPlayerView, HandView, hand_view},
     };
     use std::str::FromStr;
+
+    /// The house has to be able to sit at either game. A bot that reads a
+    /// four-card hand as nothing folds every pot it is offered, so this is the
+    /// check that they are playing Omaha rather than surviving it (§V67).
+    #[test]
+    fn every_kind_plays_omaha_legally_and_puts_money_in() {
+        for kind in BotKind::ALL {
+            let mut voluntary = 0;
+            for seed in 0..40 {
+                let mut hand = Hand::new_variant(
+                    crate::table::Variant::Omaha,
+                    Stakes::NoLimit {
+                        small_blind: 1,
+                        big_blind: 2,
+                    },
+                    &[(0, 100), (1, 100), (2, 100)],
+                    0,
+                    seed,
+                    0,
+                );
+                for turn in 0..100 {
+                    if hand.complete {
+                        break;
+                    }
+                    if hand.advance_runout() {
+                        continue;
+                    }
+                    let legal = hand.legal_actions().expect("action");
+                    let view = hand_view(&hand, Some(legal.seat), &[]);
+                    assert_eq!(view.variant, crate::table::Variant::Omaha);
+                    let action = kind.act(&view, &legal, seed + turn);
+                    if matches!(
+                        action,
+                        Action::Call | Action::Bet { .. } | Action::Raise { .. } | Action::AllIn
+                    ) {
+                        voluntary += 1;
+                    }
+                    hand.apply_action(action).unwrap_or_else(|error| {
+                        panic!("{kind:?} seed {seed} turn {turn}: {action:?} rejected: {error}")
+                    });
+                }
+            }
+            assert!(
+                voluntary > 0,
+                "{kind:?} never put a chip in across forty Omaha hands"
+            );
+        }
+    }
 
     #[test]
     fn every_kind_returns_an_action_accepted_by_the_engine() {
@@ -281,9 +347,9 @@ mod tests {
         let mut view = hand_view(&hand, Some(legal.seat), &[]);
         view.events
             .extend((0..MAX_BOT_STREET_RAISES).map(|_| HandEvent {
-                street: crate::holdem::Street::Preflop,
+                street: crate::poker::Street::Preflop,
                 seat: Some(1),
-                kind: crate::holdem::HandEventKind::Raise,
+                kind: crate::poker::HandEventKind::Raise,
                 amount: 4,
             }));
 
@@ -305,6 +371,7 @@ mod tests {
     #[test]
     fn bots_check_instead_of_folding_free_actions() {
         let view = HandView {
+            variant: crate::table::Variant::Holdem,
             street: "Flop".into(),
             button: 0,
             big_blind: 2,
@@ -384,6 +451,7 @@ mod tests {
         let pair = Card::from_str("Ac").unwrap();
         let pair_two = Card::from_str("Ad").unwrap();
         let view = HandView {
+            variant: crate::table::Variant::Holdem,
             street: "Preflop".into(),
             button: 0,
             big_blind: 2,
@@ -412,6 +480,7 @@ mod tests {
         assert_eq!(rock(&view, &legal), Action::Fold);
         assert_eq!(fish(&view, &legal, 3), Action::Call);
         let pair_view = HandView {
+            variant: crate::table::Variant::Holdem,
             your_hole_cards: Some(vec![pair, pair_two]),
             ..view
         };
@@ -423,6 +492,7 @@ mod tests {
         let ace_clubs = Card::from_str("Ac").unwrap();
         let ace_diamonds = Card::from_str("Ad").unwrap();
         let view = HandView {
+            variant: crate::table::Variant::Holdem,
             street: "Preflop".into(),
             button: 0,
             big_blind: 2,
@@ -487,7 +557,7 @@ mod tests {
                     0,
                     seed,
                 );
-                while hand.street == crate::holdem::Street::Preflop && !hand.complete {
+                while hand.street == crate::poker::Street::Preflop && !hand.complete {
                     if hand.advance_runout() {
                         continue;
                     }
@@ -522,6 +592,7 @@ mod tests {
             })
             .collect();
         let view = HandView {
+            variant: crate::table::Variant::Holdem,
             street: "Preflop".into(),
             button: 0,
             big_blind: 2,
@@ -564,6 +635,7 @@ mod tests {
     #[test]
     fn shark_commits_instead_of_leaving_dust() {
         let view = HandView {
+            variant: crate::table::Variant::Holdem,
             street: "Flop".into(),
             button: 0,
             big_blind: 2,
@@ -612,7 +684,7 @@ mod tests {
             seat: 0,
             actions: vec![Action::Check, Action::Bet { amount: 10 }, Action::AllIn],
             to_call: 0,
-            wager: Some(crate::holdem::WagerBounds {
+            wager: Some(crate::poker::WagerBounds {
                 min: 10,
                 max: 50,
                 fixed: None,
@@ -642,8 +714,9 @@ mod tests {
             &trash
         ));
         let mut rng = StdRng::seed_from_u64(1);
-        assert_eq!(pair_indices(1, &mut rng), None);
+        assert_eq!(sample_indices(1, 2, &mut rng), None);
         let view = HandView {
+            variant: crate::table::Variant::Holdem,
             street: "Flop".into(),
             button: 0,
             big_blind: 2,
@@ -655,10 +728,10 @@ mod tests {
             legal_actions: None,
             summary: None,
             players: Vec::new(),
-            events: vec![crate::holdem::HandEvent {
-                street: crate::holdem::Street::Preflop,
+            events: vec![crate::poker::HandEvent {
+                street: crate::poker::Street::Preflop,
                 seat: Some(1),
-                kind: crate::holdem::HandEventKind::BigBlind,
+                kind: crate::poker::HandEventKind::BigBlind,
                 amount: 2,
             }],
             last_bet: 0,

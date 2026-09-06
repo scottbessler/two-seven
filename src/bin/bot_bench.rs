@@ -13,7 +13,7 @@ use std::str::FromStr;
 
 use two_seven::{
     bot::{SharkFrequency, SharkParams, SharkRatio, shark_with},
-    holdem::{Action, Hand, HandEventKind, LegalActions, Street},
+    poker::{Action, Hand, HandEventKind, LegalActions, Street},
     table::{BotKind, Stakes},
     view::{HandView, hand_view},
 };
@@ -637,6 +637,7 @@ mod tests {
     #[test]
     fn steal_bots_follow_their_preflop_rules() {
         let view = HandView {
+            variant: two_seven::table::Variant::Holdem,
             street: "Preflop".into(),
             button: 0,
             big_blind: 2,
@@ -659,7 +660,7 @@ mod tests {
             seat: 0,
             actions: vec![Action::Fold, Action::Call, Action::Raise { amount: 400 }],
             to_call: 200,
-            wager: Some(two_seven::holdem::WagerBounds {
+            wager: Some(two_seven::poker::WagerBounds {
                 min: 400,
                 max: 1_000,
                 fixed: None,
@@ -672,7 +673,7 @@ mod tests {
         );
 
         let fixed_limit_legal = LegalActions {
-            wager: Some(two_seven::holdem::WagerBounds {
+            wager: Some(two_seven::poker::WagerBounds {
                 min: 400,
                 max: 400,
                 fixed: Some(400),
@@ -685,15 +686,16 @@ mod tests {
         );
 
         let limped_view = HandView {
+            variant: two_seven::table::Variant::Holdem,
             pot: 700,
             events: vec![
-                two_seven::holdem::HandEvent {
+                two_seven::poker::HandEvent {
                     street: Street::Preflop,
                     seat: Some(1),
                     kind: HandEventKind::Call,
                     amount: 200,
                 },
-                two_seven::holdem::HandEvent {
+                two_seven::poker::HandEvent {
                     street: Street::Preflop,
                     seat: Some(2),
                     kind: HandEventKind::Call,
@@ -703,7 +705,7 @@ mod tests {
             ..view.clone()
         };
         let limped_legal = LegalActions {
-            wager: Some(two_seven::holdem::WagerBounds {
+            wager: Some(two_seven::poker::WagerBounds {
                 min: 400,
                 max: 1_000,
                 fixed: None,
@@ -716,7 +718,8 @@ mod tests {
         );
 
         let raised_view = HandView {
-            events: vec![two_seven::holdem::HandEvent {
+            variant: two_seven::table::Variant::Holdem,
+            events: vec![two_seven::poker::HandEvent {
                 street: Street::Preflop,
                 seat: Some(1),
                 kind: HandEventKind::Raise,
@@ -727,14 +730,15 @@ mod tests {
         assert_eq!(steal_action(&raised_view, &legal, false), Action::Fold);
 
         let limp_then_raise_view = HandView {
+            variant: two_seven::table::Variant::Holdem,
             events: vec![
-                two_seven::holdem::HandEvent {
+                two_seven::poker::HandEvent {
                     street: Street::Preflop,
                     seat: Some(1),
                     kind: HandEventKind::Call,
                     amount: 200,
                 },
-                two_seven::holdem::HandEvent {
+                two_seven::poker::HandEvent {
                     street: Street::Preflop,
                     seat: Some(2),
                     kind: HandEventKind::Raise,
@@ -752,11 +756,13 @@ mod tests {
     #[test]
     fn steal_bots_give_up_postflop_differently() {
         let view = HandView {
+            variant: two_seven::table::Variant::Holdem,
             board: vec![two_seven::cards::Card::new(
                 two_seven::cards::Rank::Ace,
                 two_seven::cards::Suit::Spades,
             )],
             ..HandView {
+                variant: two_seven::table::Variant::Holdem,
                 street: "Flop".into(),
                 button: 0,
                 big_blind: 2,
@@ -797,6 +803,7 @@ mod tests {
     #[test]
     fn steal_falls_back_without_calling_when_raise_is_unavailable() {
         let view = HandView {
+            variant: two_seven::table::Variant::Holdem,
             street: "Preflop".into(),
             button: 0,
             big_blind: 2,
@@ -834,7 +841,8 @@ mod tests {
             ..free_only
         };
         let called_view = HandView {
-            events: vec![two_seven::holdem::HandEvent {
+            variant: two_seven::table::Variant::Holdem,
+            events: vec![two_seven::poker::HandEvent {
                 street: Street::Preflop,
                 seat: Some(1),
                 kind: HandEventKind::Call,
