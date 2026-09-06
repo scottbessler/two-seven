@@ -6,20 +6,20 @@ use crate::{
     },
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
-    holdem::Action,
     money::{valid_game_amount, valid_optional_game_amount},
+    poker::Action,
     render,
     session::{AuthUser, MaybeUser},
     store::EmoteKind,
     table::{
         BlindLevel, BotKind, SeatOccupant, Stakes, Table, TableMode, TournamentConfig,
-        TournamentState, maybe_start_hand, run_turn_clock, settle_finished_hand,
+        TournamentState, Variant, maybe_start_hand, run_turn_clock, settle_finished_hand,
     },
     view::{LobbyTableView, LobbyTournamentView, table_view_with_banks},
 };
 use axum::{
     Form, Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderValue, StatusCode, header},
     response::{
         Html, IntoResponse,
@@ -308,20 +308,37 @@ pub async fn admin_action(
     };
     Ok(Html(render::admin(None, Some(&message))))
 }
+/// The front door: one card per game, rather than one game's lobby. Each poker
+/// variant has a lobby of its own behind it (`/holdem`, `/omaha`), so the
+/// tables a player is looking at are all the same game.
 pub async fn index(State(s): State<AppState>, MaybeUser(user): MaybeUser) -> Html<String> {
     let current = match user {
         Some(id) => s.users.get(id).await.map(|u| (id, u.display_name)),
         None => None,
     };
-    if let Some((id, name)) = current {
-        Html(render::home_lobby(
-            &name,
-            &lobby_views(&s, id).await,
-            balance_of(&s, id).await,
-        ))
-    } else {
-        Html(render::home(None))
+    let Some((id, name)) = current else {
+        return Html(render::home(None));
+    };
+    let mut games = Vec::new();
+    for variant in Variant::ALL {
+        let tables = lobby_views(&s, id, variant).await;
+        games.push(render::DirectoryGame {
+            variant,
+            tables: tables
+                .iter()
+                .filter(|table| table.tournament.is_none())
+                .count(),
+            tournaments: tables
+                .iter()
+                .filter(|table| table.tournament.is_some())
+                .count(),
+            your_seats: tables
+                .iter()
+                .filter(|table| table.your_seat.is_some())
+                .count(),
+        });
     }
+    Html(render::home_directory(&name, &games))
 }
 
 pub async fn player_page(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
@@ -499,20 +516,44 @@ pub async fn gift_player(
     })))
 }
 
-pub async fn new_table(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
-    Html(render::table_create(balance_of(&s, user).await))
+/// Which game a setup page or a create request is for. Absent means Hold'em,
+/// which is what every link meant before there was a second game.
+#[derive(Default, Deserialize)]
+pub struct VariantQuery {
+    pub variant: Option<String>,
 }
-pub async fn new_tournament(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+
+impl VariantQuery {
+    fn resolve(&self) -> Result<Variant, AppError> {
+        match &self.variant {
+            None => Ok(Variant::Holdem),
+            Some(value) => value.parse().map_err(AppError::bad_request),
+        }
+    }
+}
+
+/// The tournament setup page. `/tables/new` reaches it too: cash games are
+/// standing tables, so that path has meant "start a tournament" since the
+/// ladder landed.
+pub async fn new_tournament(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Query(query): Query<VariantQuery>,
+) -> Result<Html<String>, AppError> {
     let unfunded = settings_of(&s, user).await.unfunded_tournaments;
-    Html(render::tournament_create(
+    Ok(Html(render::tournament_create(
+        query.resolve()?,
         balance_of(&s, user).await,
         unfunded,
-    ))
+    )))
 }
 
 #[derive(Deserialize)]
 pub struct CreateTournament {
     pub name: String,
+    /// Absent means Hold'em: the request shape predates the second game.
+    #[serde(default)]
+    pub variant: Option<String>,
     pub buy_in: i64,
     pub seat_count: usize,
     pub starting_chips: i64,
@@ -526,6 +567,10 @@ pub async fn create_tournament(
     State(s): State<AppState>,
     Json(input): Json<CreateTournament>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    let variant = VariantQuery {
+        variant: input.variant.clone(),
+    }
+    .resolve()?;
     if !valid_game_amount(input.buy_in)
         || !valid_game_amount(input.starting_chips)
         || input.seat_count < 2
@@ -588,7 +633,8 @@ pub async fn create_tournament(
         }),
         config.seat_count,
         config.buy_in,
-    );
+    )
+    .with_variant(variant);
     let id = s.tables.insert(table).await.map_err(AppError::internal)?;
     Ok(Json(
         serde_json::json!({"id":id,"url":format!("/tables/{id}")}),
@@ -677,9 +723,28 @@ pub async fn register_tournament(
     }
     Ok(Json(serde_json::json!({"ok":true})))
 }
-pub async fn tables(AuthUser(user): AuthUser, State(s): State<AppState>) -> Html<String> {
+pub async fn holdem_lobby(user: AuthUser, state: State<AppState>) -> Html<String> {
+    variant_lobby(Variant::Holdem, user, state).await
+}
+
+pub async fn omaha_lobby(user: AuthUser, state: State<AppState>) -> Html<String> {
+    variant_lobby(Variant::Omaha, user, state).await
+}
+
+/// Where `/tables` used to land. The lobby belongs to a game now, so the old
+/// path forwards to the Hold'em one rather than showing two games at once.
+pub async fn tables() -> impl IntoResponse {
+    axum::response::Redirect::to(&format!("/{}", Variant::Holdem))
+}
+
+async fn variant_lobby(
+    variant: Variant,
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Html<String> {
     Html(render::lobby(
-        &lobby_views(&s, user).await,
+        variant,
+        &lobby_views(&s, user, variant).await,
         balance_of(&s, user).await,
     ))
 }
@@ -811,12 +876,15 @@ async fn wants_bot_cards(state: &AppState, user: Option<Uuid>) -> bool {
     }
 }
 
-async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
+async fn lobby_views(state: &AppState, user: Uuid, variant: Variant) -> Vec<LobbyTableView> {
     let mut tables = Vec::new();
     let balance = balance_of(state, user).await;
     for id in state.tables.ids().await {
         if let Some(table) = state.tables.get(id).await {
             let table = table.lock().await;
+            if table.variant != variant {
+                continue;
+            }
             // A finished tournament has nothing left to join or watch.
             if matches!(&table.mode, TableMode::Tournament(state) if state.finished) {
                 continue;
@@ -837,6 +905,7 @@ async fn lobby_views(state: &AppState, user: Uuid) -> Vec<LobbyTableView> {
             tables.push(LobbyTableView {
                 id,
                 name: table.name.clone(),
+                variant: table.variant,
                 stakes: table.stakes,
                 buy_in: table.buy_in,
                 occupied: table
@@ -1750,7 +1819,7 @@ pub async fn advance_runout(
             if !table
                 .hand
                 .as_ref()
-                .is_some_and(crate::holdem::Hand::awaits_runout)
+                .is_some_and(crate::poker::Hand::awaits_runout)
             {
                 return Err(anyhow::anyhow!("no card to turn"));
             }

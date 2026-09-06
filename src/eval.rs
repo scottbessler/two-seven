@@ -1,4 +1,4 @@
-use crate::cards::Card;
+use crate::{cards::Card, table::Variant};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -40,6 +40,69 @@ pub fn evaluate(cards: &[Card]) -> EvaluatedHand {
     let mut picked = [0usize; 5];
     visit(cards, 0, 0, &mut picked, &mut best);
     best.expect("at least one five-card hand")
+}
+
+/// The hand a seat holds, read the way its variant reads one.
+///
+/// Hold'em pools the hole cards and the board and takes the best five of them.
+/// Omaha does not: a hand is exactly two of the four hole cards plus exactly
+/// three of the board, which is what makes four hearts in the hand no flush at
+/// all (§V67). Both come back as an [`EvaluatedHand`], so nothing downstream
+/// has to know which game it is looking at.
+pub fn evaluate_showdown(variant: Variant, hole: &[Card], board: &[Card]) -> EvaluatedHand {
+    match variant.hole_cards_used() {
+        None => {
+            let cards: Vec<Card> = hole.iter().chain(board).copied().collect();
+            evaluate(&cards)
+        }
+        Some(used) => evaluate_split(hole, board, used),
+    }
+}
+
+/// Best five from exactly `used` hole cards and the rest off the board.
+fn evaluate_split(hole: &[Card], board: &[Card], used: usize) -> EvaluatedHand {
+    let from_board = 5 - used;
+    assert!(
+        hole.len() >= used && board.len() >= from_board,
+        "a split hand needs {used} hole cards and {from_board} board cards"
+    );
+    let mut best: Option<EvaluatedHand> = None;
+    let mut from_hole = Vec::with_capacity(used);
+    combinations(hole, used, 0, &mut from_hole, &mut |chosen_hole| {
+        let mut five = Vec::with_capacity(5);
+        combinations(board, from_board, 0, &mut five, &mut |chosen_board| {
+            let cards: [Card; 5] = std::array::from_fn(|index| {
+                chosen_hole
+                    .get(index)
+                    .copied()
+                    .unwrap_or_else(|| chosen_board[index - used])
+            });
+            let hand = eval_five(&cards);
+            if best.as_ref().is_none_or(|current| hand.rank > current.rank) {
+                best = Some(hand);
+            }
+        });
+    });
+    best.expect("at least one five-card hand")
+}
+
+fn combinations(
+    cards: &[Card],
+    take: usize,
+    start: usize,
+    picked: &mut Vec<Card>,
+    visit: &mut impl FnMut(&[Card]),
+) {
+    if picked.len() == take {
+        visit(picked);
+        return;
+    }
+    // Stop as soon as too few cards are left to finish the pick.
+    for index in start..=cards.len().saturating_sub(take - picked.len()) {
+        picked.push(cards[index]);
+        combinations(cards, take, index + 1, picked, visit);
+        picked.pop();
+    }
 }
 
 fn visit(
@@ -236,5 +299,92 @@ mod property_tests {
         assert!((700..=1_100).contains(&counts[0]));
         assert!((1_700..=2_700).contains(&counts[1]));
         assert!(counts[0] > counts[8]);
+    }
+}
+
+#[cfg(test)]
+mod omaha_tests {
+    use super::*;
+    use crate::table::Variant;
+
+    fn h(s: &str) -> Vec<Card> {
+        s.split_whitespace().map(|x| x.parse().unwrap()).collect()
+    }
+
+    /// §V67, the rule that makes Omaha a different game: exactly two of the
+    /// four hole cards play, and exactly three of the board. Six hearts between
+    /// the hand and the board is no flush at all when only two of the board's
+    /// are hearts -- a reading that pooled all nine cards would call one.
+    #[test]
+    fn omaha_plays_exactly_two_hole_cards() {
+        let hole = h("Ah Kh Qh Jh");
+        let board = h("2h 7h 9s 4c 3d");
+        assert_eq!(
+            hole.iter()
+                .chain(board.iter())
+                .filter(|card| card.to_string().ends_with('h'))
+                .count(),
+            6,
+            "six hearts are on the table"
+        );
+
+        let made = evaluate_showdown(Variant::Omaha, &hole, &board);
+
+        assert_eq!(made.rank.category, Category::HighCard);
+        assert_eq!(
+            made.rank.kickers,
+            vec![14, 13, 9, 7, 4],
+            "the best two it may play, over the best three of the board"
+        );
+    }
+
+    /// The board is three of five as well, so a seat can never play it: the
+    /// unbeatable board a hold'em table would chop is only a high card here.
+    #[test]
+    fn omaha_cannot_play_the_board() {
+        let hole = h("2c 3d 4h 5s");
+        let board = h("Ah Kh Qh Jh Th");
+        assert_eq!(
+            evaluate(&board).rank.category,
+            Category::StraightFlush,
+            "the board alone is a royal flush"
+        );
+
+        let made = evaluate_showdown(Variant::Omaha, &hole, &board);
+
+        assert_eq!(
+            made.rank.category,
+            Category::HighCard,
+            "Omaha has to bring two of its own, which breaks the board's flush"
+        );
+        assert_eq!(made.rank.kickers, vec![14, 13, 12, 5, 4]);
+    }
+
+    /// A pair in the hand is a set when the board pairs it, in both games --
+    /// the split reading must not lose the ordinary case.
+    #[test]
+    fn omaha_still_finds_the_hand_it_has() {
+        let hole = h("As Ad 7c 2h");
+        let board = h("Ac Kd 9s 4h 3c");
+        let made = evaluate_showdown(Variant::Omaha, &hole, &board);
+        assert_eq!(made.rank.category, Category::ThreeOfAKind);
+        assert_eq!(made.cards.len(), 5);
+        assert_eq!(
+            evaluate(&made.cards).rank,
+            made.rank,
+            "the five cards it names are the hand it scored"
+        );
+    }
+
+    /// Every seat is read on the same short board, so a leader can be named
+    /// before the turn and the river.
+    #[test]
+    fn omaha_reads_a_flop_and_a_turn() {
+        let hole = h("As Ad Kc Qh");
+        for board in ["2c 7s 9h", "2c 7s 9h Jd"] {
+            let made = evaluate_showdown(Variant::Omaha, &hole, &h(board));
+            assert_eq!(made.cards.len(), 5, "a five-card hand on {board}");
+            assert_eq!(made.rank.category, Category::Pair);
+        }
     }
 }

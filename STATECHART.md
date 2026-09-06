@@ -1,15 +1,18 @@
-# Hold'em game-flow statechart
+# Poker game-flow statechart
 
-The hand engine (`src/holdem/`) is defined as a statechart of two composed
-state machines:
+The hand engine (`src/poker/`) is defined as a statechart of two composed
+state machines. It is the same machine for every variant: the table's `Variant`
+decides how many hole cards the initial `Preflop` entry deals and how a hand is
+read at showdown, and changes nothing about the states or transitions below
+(SPEC §V67). The two machines are:
 
-* the **hand machine** (`src/holdem/street.rs`) — top-level lifecycle of a
+* the **hand machine** (`src/poker/street.rs`) — top-level lifecycle of a
   hand across streets;
-* the **betting round machine** (`src/holdem/round.rs`) — one instance runs
+* the **betting round machine** (`src/poker/round.rs`) — one instance runs
   inside each betting street, handling player actions.
 
 The shared data types, pot formation, and showdown resolution live in
-`src/holdem/mod.rs`. Randomized model checks for the invariants below live in
+`src/poker/mod.rs`. Randomized model checks for the invariants below live in
 `tests/statechart.rs`.
 
 ## Hand machine
@@ -20,7 +23,7 @@ machine; the hand machine only transitions when that round reports
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Preflop : deal hole cards, post antes + blinds
+    [*] --> Preflop : deal hole cards (2 or 4), post antes + blinds
     Preflop --> Flop : round complete / deal 3 cards
     Flop --> Turn : round complete / deal 1 card
     Turn --> River : round complete / deal 1 card

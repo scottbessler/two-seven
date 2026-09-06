@@ -74,10 +74,10 @@ function TurnClock({ remaining, duration, className, announce }) {
   ><i style=${{ width: `${left * 100}%` }}></i></span>`;
 }
 
-function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock, emotes, dismissEmote }) {
+function Seat({ seat, player, events, street, current, button, viewer, viewerCards, showdown, revealed, leading, settled, champion, clock, emotes, dismissEmote, holeCards }) {
   const label = seat.display_name || seat.occupant;
   const role = blindRole(events, seat.index);
-  const cards = revealed || (viewer ? viewerCards : player && !player.folded ? [null, null] : []);
+  const cards = revealed || (viewer ? viewerCards : player && !player.folded ? Array.from({ length: holeCards }, () => null) : []);
   // While a board is still running out, nobody has won anything yet.
   const awarded = showdown?.awards
     ?.filter((award) => award.seat === seat.index)
@@ -113,10 +113,10 @@ function Seat({ seat, player, events, street, current, button, viewer, viewerCar
       // A seat between hands still holds the space its cards had, or the whole
       // table shrinks the moment a hand ends and the controls below slide up
       // under whatever finger was on its way to them. Your own panel lays its
-      // hand out sideways, so it has to hold both cards' width, not one card's:
-      // a single slot would let the panel narrow and slide the hand across the
-      // moment a hand ended.
-      : html`<span class="seat-cards vacant">${Array.from({ length: viewer ? 2 : 1 }, () => html`<span class="playing-card slot-card" aria-hidden="true"></span>`)}${player?.folded && !viewer && html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`}</span>`}
+      // hand out sideways, so it has to hold the whole hand's width, not one
+      // card's: a single slot would let the panel narrow and slide the hand
+      // across the moment a hand ended.
+      : html`<span class="seat-cards vacant">${Array.from({ length: viewer ? holeCards : 1 }, () => html`<span class="playing-card slot-card" aria-hidden="true"></span>`)}${player?.folded && !viewer && html`<span class="seat-card-state"><i class="seat-role state-role">FOLDED</i></span>`}</span>`}
     ${!viewer && wager}
     <span class="seat-outcome-badges">${leading && html`<i class="seat-role leading-role">AHEAD</i>`}${winner && html`<i class="seat-role winner-role">WINNER</i>`}</span>
     ${clock && html`<${TurnClock} ...${clock} className="seat-clock" announce=${viewer} />`}
@@ -517,6 +517,24 @@ function RunoutAdvance({ remaining, duration, floorMs, seated, refresh }) {
   return html`<div class="showdown-advance"><button class=${busy ? "pending" : ""} type="button" disabled=${busy || held} aria-busy=${busy} aria-label=${`${label} now. ${label}${countdown}`} onClick=${advance}><span class="showdown-progress" style=${{ width }}></span><b>${label}${countdown}</b></button></div>`;
 }
 
+// Omaha deals four; hold'em deals two. The table lays out and sizes a hand by
+// this rather than by whatever happens to be face up, so a seat holds the same
+// room between hands as it does during one.
+const HOLE_CARDS = { Omaha: 4 };
+// How much smaller a card is drawn when four of them share a hand's room. The
+// seat rules in 05-table.css halve each card's share of its seat; this is the
+// same climbdown for the sizes that come from the card settings.
+const FOUR_CARD_SCALE = 0.66;
+function holeCardCount(state) {
+  return HOLE_CARDS[state?.variant] || 2;
+}
+
+// Which lobby a leaver goes back to: their own game's, not the other one's.
+const LOBBY_PATHS = { Omaha: "/omaha" };
+function lobbyPath(state) {
+  return LOBBY_PATHS[state?.variant] || "/holdem";
+}
+
 function tournamentChampion(state) {
   if (!state.tournament?.finished) return null;
   const eliminated = new Set(state.tournament.finish_order || []);
@@ -574,7 +592,7 @@ function TableCommand({ label, endpoint, href, disabled, forfeits, buyIn, refres
 /// choices, because rebuying must never be the only way out.
 function TableCommands({ state, openSeats, refresh }) {
   if (state.tournament?.finished) {
-    return html`<${TableCommand} label="Leave" href="/tables" />`;
+    return html`<${TableCommand} label="Leave" href=${lobbyPath(state)} />`;
   }
   // A table full of house players still has room: you take one of their seats.
   const seatsForYou = state.tournament
@@ -682,6 +700,15 @@ function TableApp() {
     return () => window.removeEventListener("bank:updated", syncBalance);
   }, []);
   useHeaderInfo(state?.tournament);
+  const holeCards = holeCardCount(state);
+  // Everything that sizes a hand reads this, so a four-card hand comes down to
+  // the room a two-card one had without a second set of card rules.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--hand-card-scale",
+      String(holeCards > 2 ? FOUR_CARD_SCALE : 1),
+    );
+  }, [holeCards]);
   const showdown = state && !state.hand ? state.last_hand : null;
   const resultPause = 1000 * (state?.result_pause_seconds
     ?? (showdown?.revealed_hole_cards?.length > 1 ? SHOWDOWN_PAUSE_MS : FOLD_RESULT_PAUSE_MS) / 1000);
@@ -734,8 +761,8 @@ function TableApp() {
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const turnClock = state.turn_deadline ? { remaining: turnRemaining, duration: turnDuration } : null;
-  const renderSeat = (seat) => html`<${Seat} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} dismissEmote=${dismissEmote} />`;
-  return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`}>
+  const renderSeat = (seat) => html`<${Seat} holeCards=${holeCards} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} dismissEmote=${dismissEmote} />`;
+  return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`} data-hole-cards=${holeCards}>
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
       <div class="felt">

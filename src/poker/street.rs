@@ -216,7 +216,7 @@ impl Hand {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::holdem::Action;
+    use crate::poker::Action;
     use crate::table::Stakes;
 
     fn no_limit(stacks: &[i64], seed: u64) -> Hand {

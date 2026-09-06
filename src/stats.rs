@@ -8,8 +8,8 @@ use crate::{
     bank::AccountOwner,
     cards::Card,
     eval::Category,
-    holdem::{HandEventKind, Street},
     money::Cents,
+    poker::{HandEventKind, Street},
     table::{HandRecord, SeatOccupant},
 };
 use anyhow::Result;
@@ -685,6 +685,7 @@ mod tests {
         let board = cards(board);
         HandRecord {
             table: Uuid::new_v4(),
+            variant: crate::table::Variant::Holdem,
             hand_no: 1,
             at: Utc::now(),
             stakes: crate::table::Stakes::NoLimit {
@@ -702,10 +703,10 @@ mod tests {
                     stack_after: if *seat == winner { 10_000 + pot } else { 0 },
                 })
                 .collect(),
-            summary: crate::holdem::HandSummary {
+            summary: crate::poker::HandSummary {
                 results: seats
                     .iter()
-                    .map(|(seat, _, hole)| crate::holdem::SeatResult {
+                    .map(|(seat, _, hole)| crate::poker::SeatResult {
                         seat: *seat,
                         hand: Some(crate::eval::evaluate(
                             &cards(hole)
@@ -715,7 +716,7 @@ mod tests {
                         )),
                     })
                     .collect(),
-                awards: vec![crate::holdem::Award {
+                awards: vec![crate::poker::Award {
                     seat: winner,
                     amount: pot,
                 }],
@@ -731,7 +732,7 @@ mod tests {
                 reveal_leaders: Vec::new(),
                 reveal_odds: odds
                     .iter()
-                    .map(|(seat, equity)| crate::holdem::ShowdownOdds {
+                    .map(|(seat, equity)| crate::poker::ShowdownOdds {
                         seat: *seat,
                         equity_permille: *equity,
                         outs: Vec::new(),

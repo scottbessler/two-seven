@@ -1,9 +1,9 @@
 use super::{first, first_calling};
 use crate::{
     cards::{Card, Deck, Rank},
-    eval::evaluate,
-    holdem::{Action, LegalActions},
+    eval::evaluate_showdown,
     money::Cents,
+    poker::{Action, LegalActions},
     view::HandView,
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -461,12 +461,12 @@ fn shark_preflop(params: &SharkParams, view: &HandView, legal: &LegalActions, se
     let is_big_blind = big_blind == Some(legal.seat);
     let is_small_blind = small_blind == Some(legal.seat);
     let unraised = !view.events.iter().any(|event| {
-        event.street == crate::holdem::Street::Preflop
+        event.street == crate::poker::Street::Preflop
             && matches!(
                 event.kind,
-                crate::holdem::HandEventKind::Bet
-                    | crate::holdem::HandEventKind::Raise
-                    | crate::holdem::HandEventKind::AllIn
+                crate::poker::HandEventKind::Bet
+                    | crate::poker::HandEventKind::Raise
+                    | crate::poker::HandEventKind::AllIn
             )
     });
     let pot_odds = if legal.to_call == 0 {
@@ -490,13 +490,13 @@ fn shark_preflop(params: &SharkParams, view: &HandView, legal: &LegalActions, se
         .filter(|player| player.seat != legal.seat && !player.folded)
         .filter(|player| {
             view.events.iter().any(|event| {
-                event.street == crate::holdem::Street::Preflop
+                event.street == crate::poker::Street::Preflop
                     && event.seat == Some(player.seat)
                     && matches!(
                         event.kind,
-                        crate::holdem::HandEventKind::Bet
-                            | crate::holdem::HandEventKind::Raise
-                            | crate::holdem::HandEventKind::AllIn
+                        crate::poker::HandEventKind::Bet
+                            | crate::poker::HandEventKind::Raise
+                            | crate::poker::HandEventKind::AllIn
                     )
             })
         })
@@ -550,9 +550,23 @@ fn preflop_score(view: &HandView) -> i32 {
     preflop_score_cards(cards)
 }
 
+/// Omaha is four cards, and only two of them ever play. Scoring the best pair
+/// among them is the same reading the hand gets at showdown, and it keeps one
+/// scale for both games: a hand with more pairs to choose from simply finds a
+/// better one.
 fn preflop_score_cards(cards: &[Card]) -> i32 {
-    if cards.len() != 2 {
-        return 0;
+    match cards.len() {
+        2 => {}
+        0 | 1 => return 0,
+        _ => {
+            return (0..cards.len())
+                .flat_map(|first| {
+                    ((first + 1)..cards.len())
+                        .map(move |second| preflop_score_cards(&[cards[first], cards[second]]))
+                })
+                .max()
+                .unwrap_or(0);
+        }
     }
     let (high, low) = if cards[0].rank >= cards[1].rank {
         (cards[0], cards[1])
@@ -601,24 +615,33 @@ pub(super) fn classify_draw(params: &SharkParams, view: &HandView) -> DrawInfo {
             outs: 0,
         };
     };
-    if hole.len() != 2 {
+    if hole.len() != view.variant.hole_cards() {
         return DrawInfo {
             kind: DrawKind::None,
             tier: DrawTier::None,
             outs: 0,
         };
     }
+    // How many hole cards a made hand may use. Hold'em plays as few as one and
+    // as many as five, so one is enough for a draw to be the hand's rather than
+    // the board's. Omaha plays exactly two either way, which is why four to a
+    // suit in the hand is no flush draw at all (§V67).
+    let least_from_hole = view.variant.hole_cards_used().unwrap_or(1);
+    let most_from_hole = view.variant.hole_cards_used().unwrap_or(usize::MAX);
     let mut known = hole.clone();
     known.extend(view.board.iter().copied());
 
     let mut flush_kind = DrawKind::None;
     let mut flush_outs = 0;
     for suit in hole.iter().map(|card| card.suit) {
-        let count = known.iter().filter(|card| card.suit == suit).count();
         let hole_count = hole.iter().filter(|card| card.suit == suit).count();
-        if hole_count == 0 {
+        if hole_count < least_from_hole {
             continue;
         }
+        // Only the cards that may play count towards the four: the fourth
+        // heart in an Omaha hand is dead weight, not a card to the flush.
+        let board_count = view.board.iter().filter(|card| card.suit == suit).count();
+        let count = board_count + hole_count.min(most_from_hole);
         if count == 4 {
             flush_kind = DrawKind::Flush;
             flush_outs = flush_outs.max(13 - count);
@@ -649,7 +672,11 @@ pub(super) fn classify_draw(params: &SharkParams, view: &HandView) -> DrawInfo {
             .copied()
             .filter(|rank| !rank_values.contains(rank))
             .collect();
-        if missing.len() != 1 || !window.iter().any(|rank| hole_rank_values.contains(rank)) {
+        let from_hand = window
+            .iter()
+            .filter(|rank| hole_rank_values.contains(rank))
+            .count();
+        if missing.len() != 1 || from_hand < least_from_hole {
             continue;
         }
         let missing_rank = missing[0];
@@ -794,14 +821,14 @@ pub(super) fn opening_threshold(params: &SharkParams, view: &HandView, seat: usi
 
 fn blind_seats(view: &HandView) -> (Option<usize>, Option<usize>) {
     let small_blind = view.events.iter().find_map(|event| {
-        (event.street == crate::holdem::Street::Preflop
-            && matches!(event.kind, crate::holdem::HandEventKind::SmallBlind))
+        (event.street == crate::poker::Street::Preflop
+            && matches!(event.kind, crate::poker::HandEventKind::SmallBlind))
         .then_some(event.seat)
         .flatten()
     });
     let big_blind = view.events.iter().find_map(|event| {
-        (event.street == crate::holdem::Street::Preflop
-            && matches!(event.kind, crate::holdem::HandEventKind::BigBlind))
+        (event.street == crate::poker::Street::Preflop
+            && matches!(event.kind, crate::poker::HandEventKind::BigBlind))
         .then_some(event.seat)
         .flatten()
     });
@@ -920,19 +947,19 @@ fn has_current_street_aggression(view: &HandView, seat: usize) -> bool {
             && event.seat == Some(seat)
             && matches!(
                 event.kind,
-                crate::holdem::HandEventKind::Bet
-                    | crate::holdem::HandEventKind::Raise
-                    | crate::holdem::HandEventKind::AllIn
+                crate::poker::HandEventKind::Bet
+                    | crate::poker::HandEventKind::Raise
+                    | crate::poker::HandEventKind::AllIn
             )
     })
 }
 
-fn current_street(view: &HandView) -> crate::holdem::Street {
+fn current_street(view: &HandView) -> crate::poker::Street {
     match view.board.len() {
-        0 => crate::holdem::Street::Preflop,
-        3 => crate::holdem::Street::Flop,
-        4 => crate::holdem::Street::Turn,
-        _ => crate::holdem::Street::River,
+        0 => crate::poker::Street::Preflop,
+        3 => crate::poker::Street::Flop,
+        4 => crate::poker::Street::Turn,
+        _ => crate::poker::Street::River,
     }
 }
 
@@ -949,9 +976,9 @@ fn aggressive_bettor_call_premium(params: &SharkParams, view: &HandView, hero_se
         event.seat != Some(hero_seat)
             && matches!(
                 event.kind,
-                crate::holdem::HandEventKind::Bet
-                    | crate::holdem::HandEventKind::Raise
-                    | crate::holdem::HandEventKind::AllIn
+                crate::poker::HandEventKind::Bet
+                    | crate::poker::HandEventKind::Raise
+                    | crate::poker::HandEventKind::AllIn
             )
     }) {
         *counts
@@ -963,9 +990,9 @@ fn aggressive_bettor_call_premium(params: &SharkParams, view: &HandView, hero_se
             && event.seat != Some(hero_seat)
             && matches!(
                 event.kind,
-                crate::holdem::HandEventKind::Bet
-                    | crate::holdem::HandEventKind::Raise
-                    | crate::holdem::HandEventKind::AllIn
+                crate::poker::HandEventKind::Bet
+                    | crate::poker::HandEventKind::Raise
+                    | crate::poker::HandEventKind::AllIn
             ))
         .then_some(event.seat)
         .flatten()
@@ -1098,7 +1125,7 @@ fn estimate_equity(
     let Some(hero) = view.your_hole_cards.as_ref() else {
         return params.missing_cards_equity;
     };
-    if hero.len() != 2 {
+    if hero.len() != view.variant.hole_cards() {
         return params.missing_cards_equity;
     }
     let mut deck = Deck::seeded(0);
@@ -1140,6 +1167,7 @@ fn estimate_equity(
                 &mut available,
                 &mut rng,
                 tiers.get(index).copied().unwrap_or(OpponentTier::Passive),
+                view.variant.hole_cards(),
             ) else {
                 continue 'sample;
             };
@@ -1153,16 +1181,10 @@ fn estimate_equity(
             let index = rng.gen_range(0..available.len());
             board.push(available.swap_remove(index));
         }
-        let mut hero_cards = hero.clone();
-        hero_cards.extend(board.iter().copied());
-        let hero_rank = evaluate(&hero_cards).rank;
+        let hero_rank = evaluate_showdown(view.variant, hero, &board).rank;
         let best_opponent = opponent_hands
             .iter()
-            .map(|hand| {
-                let mut cards = hand.clone();
-                cards.extend(board.iter().copied());
-                evaluate(&cards).rank
-            })
+            .map(|hand| evaluate_showdown(view.variant, hand, &board).rank)
             .max()
             .expect("at least one opponent");
         if hero_rank > best_opponent {
@@ -1187,13 +1209,13 @@ pub(super) fn opponent_tier(view: &HandView, seat: usize) -> OpponentTier {
     let mut blind = false;
     for event in view.events.iter().filter(|event| event.seat == Some(seat)) {
         match event.kind {
-            crate::holdem::HandEventKind::SmallBlind | crate::holdem::HandEventKind::BigBlind => {
+            crate::poker::HandEventKind::SmallBlind | crate::poker::HandEventKind::BigBlind => {
                 blind = true
             }
-            crate::holdem::HandEventKind::Bet
-            | crate::holdem::HandEventKind::Raise
-            | crate::holdem::HandEventKind::AllIn => aggressive = true,
-            crate::holdem::HandEventKind::Call => caller = true,
+            crate::poker::HandEventKind::Bet
+            | crate::poker::HandEventKind::Raise
+            | crate::poker::HandEventKind::AllIn => aggressive = true,
+            crate::poker::HandEventKind::Call => caller = true,
             _ => {}
         }
     }
@@ -1219,42 +1241,54 @@ fn sample_opponent(
     available: &mut Vec<Card>,
     rng: &mut StdRng,
     tier: OpponentTier,
+    cards_each: usize,
 ) -> Option<Vec<Card>> {
-    if available.len() < 2 {
-        return None;
-    }
     let filtered = !matches!(tier, OpponentTier::Passive);
     for _ in 0..params.range_rejection_attempts {
-        let (first, second) = pair_indices(available.len(), rng)?;
-        let cards = vec![available[first], available[second]];
+        let picked = sample_indices(available.len(), cards_each, rng)?;
+        let cards: Vec<Card> = picked.iter().map(|index| available[*index]).collect();
         if !filtered || range_accepts(params, tier, &cards) {
-            return Some(take_pair(available, first, second));
+            return Some(take_cards(available, &picked));
         }
     }
-    pair_indices(available.len(), rng).map(|(first, second)| take_pair(available, first, second))
+    let picked = sample_indices(available.len(), cards_each, rng)?;
+    Some(take_cards(available, &picked))
 }
 
-pub(super) fn pair_indices(len: usize, rng: &mut StdRng) -> Option<(usize, usize)> {
-    if len < 2 {
+/// `count` distinct indices into a deck of `len`. A hand is at most four cards
+/// against forty-odd unseen ones, so rejecting a repeat costs nothing.
+pub(super) fn sample_indices(len: usize, count: usize, rng: &mut StdRng) -> Option<Vec<usize>> {
+    if len < count || count == 0 {
         return None;
     }
-    let first = rng.gen_range(0..len);
-    let offset = rng.gen_range(0..len - 1);
-    let second = if offset >= first { offset + 1 } else { offset };
-    Some((first, second))
+    let mut picked: Vec<usize> = Vec::with_capacity(count);
+    while picked.len() < count {
+        let index = rng.gen_range(0..len);
+        if !picked.contains(&index) {
+            picked.push(index);
+        }
+    }
+    Some(picked)
 }
 
-fn take_pair(available: &mut Vec<Card>, first: usize, second: usize) -> Vec<Card> {
-    let first_card = available.swap_remove(first);
-    let second_card = available.swap_remove(if second > first { second - 1 } else { second });
-    vec![first_card, second_card]
+/// Deal the picked cards out of the deck. Highest index first, so removing one
+/// never moves another that is still to be taken.
+fn take_cards(available: &mut Vec<Card>, picked: &[usize]) -> Vec<Card> {
+    let mut order: Vec<usize> = picked.to_vec();
+    order.sort_unstable_by(|left, right| right.cmp(left));
+    let mut taken: Vec<Card> = order
+        .into_iter()
+        .map(|index| available.swap_remove(index))
+        .collect();
+    taken.reverse();
+    taken
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
-        holdem::{Action, LegalActions, WagerBounds},
+        poker::{Action, LegalActions, WagerBounds},
         view::{HandPlayerView, HandView},
     };
     use std::str::FromStr;
@@ -1268,6 +1302,7 @@ mod tests {
 
     fn postflop(hole: &[&str], board: &[&str]) -> HandView {
         HandView {
+            variant: crate::table::Variant::Holdem,
             street: match board.len() {
                 3 => "Flop",
                 4 => "Turn",

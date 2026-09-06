@@ -608,7 +608,11 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
         before + 9_900,
         "human cash-outs on a retired table pay loan interest"
     );
-    assert_eq!(t.tables.ids().await.len(), two_seven::cash::TIERS.len());
+    assert_eq!(
+        t.tables.ids().await.len(),
+        two_seven::cash::TIERS.len() * two_seven::table::Variant::ALL.len(),
+        "every game gets the whole ladder"
+    );
     t.bank
         .append(
             AccountOwner::User(user),
@@ -624,7 +628,7 @@ async fn the_lobby_is_ordered_by_buy_in_and_drops_pre_ladder_tables() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/tables")
+                .uri("/holdem")
                 .header(header::COOKIE, cookie_value)
                 .body(Body::empty())
                 .unwrap(),
@@ -907,7 +911,7 @@ async fn the_lobby_counts_humans_and_lists_tables_by_affordability() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/tables")
+                .uri("/holdem")
                 .header(header::COOKIE, cookie_value)
                 .body(Body::empty())
                 .unwrap(),
@@ -1428,7 +1432,7 @@ async fn the_lobby_drops_a_finished_tournament() {
         let response = router
             .oneshot(
                 Request::builder()
-                    .uri("/tables")
+                    .uri("/holdem")
                     .header(header::COOKIE, cookie_value)
                     .body(Body::empty())
                     .unwrap(),
@@ -1550,7 +1554,7 @@ async fn eliminated_tournament_player_returns_as_a_spectator() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/tables")
+                .uri("/holdem")
                 .header(header::COOKIE, cookie_value)
                 .body(Body::empty())
                 .unwrap(),
@@ -3545,4 +3549,226 @@ async fn a_table_state_response_never_carries_a_whole_ledger() {
         "the response grew from {before} to {} bytes on a ledger nobody reads",
         body.len()
     );
+}
+
+/// The front door is a directory of games, and each poker variant has a lobby
+/// of its own behind it: a player never has to pick a table out of two ladders
+/// interleaved.
+#[tokio::test]
+async fn the_front_door_lists_every_game_and_each_lobby_holds_one_of_them() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "directory".into(),
+            display_name: "Directory".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+    two_seven::driver::ensure_cash_ladder(&t.state)
+        .await
+        .unwrap();
+    let get = |uri: &'static str| {
+        let router = t.router.clone();
+        let cookie_value = cookie_value.clone();
+        async move {
+            router
+                .oneshot(
+                    Request::builder()
+                        .uri(uri)
+                        .header(header::COOKIE, cookie_value)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+        }
+    };
+
+    let home = get("/").await;
+    assert_eq!(home.status(), StatusCode::OK);
+    let home = String::from_utf8_lossy(&to_bytes(home.into_body(), usize::MAX).await.unwrap())
+        .into_owned();
+    for variant in two_seven::table::Variant::ALL {
+        assert!(
+            home.contains(&format!(r#"href="/{}""#, variant.slug())),
+            "the directory links to {variant}"
+        );
+    }
+    assert!(home.contains("Blackjack") && home.contains("Hand Blitz"));
+    assert!(
+        !home.contains("table-row"),
+        "the directory offers games, not a ladder of tables"
+    );
+
+    // The old lobby path still works, and lands on the Hold'em one.
+    let moved = get("/tables").await;
+    assert_eq!(moved.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        moved.headers().get(header::LOCATION).unwrap(),
+        "/holdem",
+        "the lobby belongs to a game now"
+    );
+
+    // Each lobby carries its own ladder and nobody else's.
+    for variant in two_seven::table::Variant::ALL {
+        let response = match variant {
+            two_seven::table::Variant::Holdem => get("/holdem").await,
+            two_seven::table::Variant::Omaha => get("/omaha").await,
+        };
+        assert_eq!(response.status(), StatusCode::OK);
+        let html =
+            String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .into_owned();
+        assert_eq!(
+            html.matches("class=\"table-row").count(),
+            two_seven::cash::TIERS.len(),
+            "{variant} lists its own rungs and only its own"
+        );
+        assert!(html.contains("<h2>Cash tables</h2>"));
+        assert!(
+            html.contains(&format!(
+                r#"href="/tournaments/new?variant={}""#,
+                variant.slug()
+            )),
+            "{variant} starts {variant} tournaments"
+        );
+    }
+}
+
+/// A tournament is created for the game whose lobby asked for it, and turns up
+/// in that lobby rather than the other one.
+#[tokio::test]
+async fn a_tournament_belongs_to_the_game_it_was_started_from() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "omaha-host".into(),
+            display_name: "Host".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank
+        .append(
+            AccountOwner::User(user),
+            LedgerKind::Adjustment,
+            1_000_000,
+            "stake".into(),
+        )
+        .await
+        .unwrap();
+    let cookie_value = cookie(&t.key, user);
+
+    let setup = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/tournaments/new?variant=omaha")
+                .header(header::COOKIE, cookie_value.clone())
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(setup.status(), StatusCode::OK);
+    let setup = String::from_utf8_lossy(&to_bytes(setup.into_body(), usize::MAX).await.unwrap())
+        .into_owned();
+    assert!(setup.contains(r#"data-variant="omaha""#));
+    assert!(setup.contains("New Omaha tournament"));
+
+    let create = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tournaments")
+                .header(header::COOKIE, cookie_value.clone())
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "name": "Omaha night",
+                        "variant": "omaha",
+                        "buy_in": 20_000,
+                        "seat_count": 4,
+                        "starting_chips": 1_000_000,
+                        "levels": [{"small_blind": 100, "big_blind": 200, "ante": 0, "hands": 8}],
+                        "payout_percentages": [100],
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(create.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
+    assert_eq!(
+        t.tables.get(id).await.unwrap().lock().await.variant,
+        two_seven::table::Variant::Omaha
+    );
+
+    let lobby = |uri: &'static str| {
+        let router = t.router.clone();
+        let cookie_value = cookie_value.clone();
+        async move {
+            let response = router
+                .oneshot(
+                    Request::builder()
+                        .uri(uri)
+                        .header(header::COOKIE, cookie_value)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                .into_owned()
+        }
+    };
+    assert!(lobby("/omaha").await.contains("Omaha night"));
+    assert!(!lobby("/holdem").await.contains("Omaha night"));
+}
+
+/// An unknown game is a bad request rather than a silent fall back to Hold'em.
+#[tokio::test]
+async fn an_unknown_variant_is_refused() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "stud".into(),
+            display_name: "Stud".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    let response = t
+        .router
+        .oneshot(
+            Request::builder()
+                .uri("/tournaments/new?variant=razz")
+                .header(header::COOKIE, cookie(&t.key, user))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }

@@ -29,6 +29,7 @@ const TABLE_LAYOUT = [
 const tableState = {
   id: "mock",
   name: "Friday Night Hold'em",
+  variant: "Holdem",
   stakes: { NoLimit: { small_blind: 100, big_blind: 200 } },
   button: 5,
   viewer_seat: 2,
@@ -178,6 +179,11 @@ async function readOpponentWagers(page) {
   }));
 }
 
+
+// The card-size setting reaches the viewer's hand through this variable, which
+// carries the hand-size factor as well: a four-card hand is drawn smaller so it
+// takes the room two cards had.
+const cardWidth = (rem) => `calc(${rem}rem * var(--hand-card-scale,1))`;
 
 async function mountTable(page, state, sseEvents = []) {
   await page.unroute("**/tables/mock/state");
@@ -354,6 +360,9 @@ test("cash table commands notice a same-page re-up", async ({ page }) => {
 
 test("re-ups from the lobby without a manual refresh", async ({ page }) => {
   await signIn(page, "reuplobby");
+  // The front door is a directory of games now; the ladder lives in each
+  // game's own lobby.
+  await page.goto("/holdem");
   await page.evaluate(() => document.documentElement.setAttribute("data-still-loaded", "yes"));
   await expect(page.locator("#bank-balance")).toHaveText("$0");
   // Rows are keyed by buy-in in cents: the $200 rung and the $2,000 one. The
@@ -438,22 +447,22 @@ test("shows live hand cues and event log", async ({ page }) => {
   // rather than the slider readout it renders alongside.
   const cardWidthVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"));
   await sizeSlider.fill("50");
-  await expect.poll(cardWidthVariable).toBe("2.7rem");
+  await expect.poll(cardWidthVariable).toBe(cardWidth(2.7));
   const initialCardBox = await viewerCard.boundingBox();
   await sizeSlider.fill("100");
   await expect(page.locator(".card-config-dialog output").first()).toHaveText("100%");
-  await expect.poll(cardWidthVariable).toBe("5.4rem");
+  await expect.poll(cardWidthVariable).toBe(cardWidth(5.4));
   const enlargedCardBox = await viewerCard.boundingBox();
   expect(enlargedCardBox.width).toBeGreaterThan(initialCardBox.width * 1.6);
   await sizeSlider.fill("200");
-  await expect.poll(cardWidthVariable).toBe("10.8rem");
+  await expect.poll(cardWidthVariable).toBe(cardWidth(10.8));
   const maximumCardBox = await viewerCard.boundingBox();
   // A portrait phone clamps the top setting to the height it can actually spare,
   // so the full step only lands where the viewport can afford it.
   const heightCapped = (page.viewportSize()?.height || 0) < 900;
   expect(maximumCardBox.width).toBeGreaterThan(enlargedCardBox.width * (heightCapped ? 1.4 : 1.6));
   await sizeSlider.fill("100");
-  await expect.poll(cardWidthVariable).toBe("5.4rem");
+  await expect.poll(cardWidthVariable).toBe(cardWidth(5.4));
   expect(await page.evaluate(() => localStorage.getItem("table-card-size-percent"))).toBe("100");
   const rankWeightVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--card-rank-weight"));
   const rankStrokeVariable = () => page.evaluate(() => document.documentElement.style.getPropertyValue("--card-rank-stroke"));
@@ -1733,7 +1742,7 @@ test("celebrates a completed tournament and leaves to the lobby", async ({ page 
   await expect(page.locator(".seat.champion")).toHaveCSS("border-top-color", "rgb(241, 213, 110)");
   await expect(page.locator(".showdown-advance")).toHaveCount(0);
   await expect(page.locator(".table-controls .table-command")).toHaveText(["Leave"]);
-  await expect(page.locator(".table-controls .table-command")).toHaveAttribute("href", "/tables");
+  await expect(page.locator(".table-controls .table-command")).toHaveAttribute("href", "/holdem");
   await expect(page.locator(".confirm-dialog")).toHaveCount(0);
 });
 
@@ -1743,7 +1752,7 @@ test("reflows viewer cards at maximum display settings", async ({ page }) => {
   await page.locator('input[name="card-scale"]').fill("200");
   await page.locator('input[name="rank-scale"]').fill("200");
   await page.locator('input[name="rank-weight"]').fill("200");
-  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"))).toBe("10.8rem");
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--viewer-card-w"))).toBe("calc(10.8rem * var(--hand-card-scale,1))");
   await page.getByRole("button", { name: "Close" }).click();
   const geometry = await page.locator(".table-stage").evaluate((stage) => {
     const viewerSeat = stage.querySelector(".seat.viewer").getBoundingClientRect();
@@ -2408,4 +2417,68 @@ test("a five-handed phone table fills every cell and spends the surplus on the b
   const log = await page.locator(".game-log").evaluate((element) => Math.round(element.getBoundingClientRect().height));
   expect(log, "the regrid takes the surplus the log used to hold").toBeLessThanOrEqual(130);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight)).toBe(true);
+});
+
+/**
+ * Omaha is the same table dealing four cards instead of two. The layout is not
+ * re-done for it: a four-card hand is drawn smaller so it takes the room two
+ * used to, and everything else on the table stays where it was (SPEC V67).
+ */
+const omahaState = {
+  ...tableState,
+  variant: "Omaha",
+  name: "Friday Night Omaha",
+  hand: {
+    ...tableState.hand,
+    variant: "Omaha",
+    your_hole_cards: ["5c", "6c", "Ad", "Kh"],
+  },
+};
+
+/** The cards a seat is holding, as one box. */
+async function readHandBoxes(page) {
+  return page.locator(".table-stage").evaluate((stage) =>
+    [...stage.querySelectorAll(".seat")].map((seat) => {
+      const cards = [...seat.querySelectorAll(".seat-cards .playing-card:not(.slot-card)")]
+        .map((card) => card.getBoundingClientRect());
+      const box = seat.getBoundingClientRect();
+      return {
+        seat: seat.dataset.seatIndex,
+        cards: cards.length,
+        overflowLeft: cards.length > 0 && Math.min(...cards.map((card) => card.left)) < box.left - 1,
+        overflowRight: cards.length > 0 && Math.max(...cards.map((card) => card.right)) > box.right + 1,
+      };
+    }),
+  );
+}
+
+test("Omaha deals four cards to a hand and still fits the seat", async ({ page }) => {
+  await mountTable(page, tableState);
+  await expect(page.locator(".table-shell")).toHaveAttribute("data-hole-cards", "2");
+
+  await mountTable(page, omahaState);
+  await expect(page.locator(".table-shell")).toHaveAttribute("data-hole-cards", "4");
+  await expect(page.locator(".seat.viewer .seat-cards .playing-card")).toHaveCount(4);
+  // Four opponents are still in the hand, each holding four cards face down;
+  // the one who folded holds none.
+  await expect(page.locator(".seat:not(.viewer) .seat-cards .playing-card.card-back")).toHaveCount(16);
+  await expect(page.locator(".seat.folded .seat-cards .playing-card.card-back")).toHaveCount(0);
+
+  const hands = await readHandBoxes(page);
+  expect(hands.filter((hand) => hand.cards > 0).length, "every live seat shows a hand").toBeGreaterThan(1);
+  expect(
+    hands.filter((hand) => hand.overflowLeft || hand.overflowRight),
+    `a four-card hand must fit the seat holding it: ${JSON.stringify(hands)}`,
+  ).toEqual([]);
+
+  // The same guards the hold'em table keeps: nothing lands on the board, and
+  // the page still does not scroll in either direction.
+  const overlaps = await page.locator(".table-stage").evaluate((stage) => {
+    const cards = [...stage.querySelectorAll(".board .playing-card")].map((node) => node.getBoundingClientRect());
+    const players = [...stage.querySelectorAll(".seat, .seat-cards")].map((node) => node.getBoundingClientRect());
+    return players.filter((player) => cards.some((card) => player.left < card.right && player.right > card.left && player.top < card.bottom && player.bottom > card.top)).length;
+  });
+  expect(overlaps, "V14: players and attached cards must not overlap the board").toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight), "V23: the table must not scroll the page").toBe(true);
 });

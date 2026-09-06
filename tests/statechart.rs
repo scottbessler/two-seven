@@ -1,12 +1,13 @@
-//! Randomized model checks for the hold'em statechart (see STATECHART.md).
-//! Plays many hands with random legal actions and asserts the machine
-//! invariants hold on every trace.
+//! Randomized model checks for the hand statechart (see STATECHART.md). Plays
+//! many hands with random legal actions and asserts the machine invariants hold
+//! on every trace. The machine is the same for every variant, so the checks run
+//! over all of them.
 
 use rand::{Rng, SeedableRng, seq::SliceRandom};
 use two_seven::{
-    holdem::{Action, Hand, HandEvent, HandEventKind, Street},
     money::Cents,
-    table::Stakes,
+    poker::{Action, Hand, HandEvent, HandEventKind, Street},
+    table::{Stakes, Variant},
 };
 
 fn play_random(mut hand: Hand, seed: u64) -> Hand {
@@ -173,15 +174,29 @@ fn assert_everyone_acted_before_each_deal(hand: &Hand, seed: u64) {
 fn random_legal_play_upholds_statechart_invariants() {
     for seed in 0..300u64 {
         let players = 2 + (seed % 5) as usize;
-        let hand = Hand::new(
+        // Every variant runs the same machine, so every variant has to uphold
+        // the same invariants -- only the size of the deal differs.
+        let variant = Variant::ALL[(seed % Variant::ALL.len() as u64) as usize];
+        let stacks: Vec<(usize, Cents)> = (0..players).map(|seat| (seat, 100)).collect();
+        let hand = Hand::new_variant(
+            variant,
             Stakes::NoLimit {
                 small_blind: 1,
                 big_blind: 2,
             },
-            &vec![100; players],
+            &stacks,
             0,
             seed,
+            0,
         );
+        for player in &hand.players {
+            assert_eq!(
+                player.hole_cards.len(),
+                variant.hole_cards(),
+                "seed {seed}: {variant} deals {} cards",
+                variant.hole_cards()
+            );
+        }
         let hand = play_random(hand, seed);
         let awarded: Cents = hand
             .summary
