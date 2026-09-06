@@ -103,5 +103,5 @@ export async function expectImage(
   options?: { fullPage?: boolean },
 ): Promise<void> {
   if (!COMPARE_IMAGES) return;
-  await expect(target).toHaveScreenshot(name, options);
+  await expect(target).toHaveScreenshot(["images", name], options);
 }
