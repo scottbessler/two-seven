@@ -1,0 +1,52 @@
+/* The wheel's own palette. The canvas reads these rather than hard-coding
+   colours, so the wood and the felt can be retuned here with the rest of the
+   design system -- and the pocket reds stay related to the card reds. */
+.roulette-canvas{
+  --wheel-wood:#5c3720;--wheel-wood-light:#8a5533;--wheel-wood-dark:#25150c;
+  --wheel-groove:#160c06;--wheel-bowl:#4a2c19;--wheel-bowl-dark:#1f1209;
+  --wheel-metal:#ccd4d8;--wheel-metal-dark:#5d686e;
+  --wheel-red:#b32219;--wheel-black:#191b19;--wheel-green:#0f6b45;
+  --wheel-ink:var(--ink);--wheel-cone:#b6bec3;--wheel-cone-dark:#3f484d;
+  --wheel-gold:var(--gold);--wheel-glow:var(--gold-hi);
+  --wheel-ball:#f8f6ef;--wheel-ball-dark:#a8a79d;
+  display:block;width:100%;aspect-ratio:1/.8;touch-action:manipulation
+}
+.roulette-shell{display:grid;gap:.75rem}
+.roulette-shell>header{display:grid;gap:.15rem}
+.roulette-shell>header h1{margin:0}
+.roulette-shell>header p{margin:0;color:var(--muted);font-size:var(--text-small)}
+.roulette-stage{display:grid;gap:.6rem;justify-items:center;max-width:34rem;width:100%;margin:0 auto}
+/* The readout holds its height whether or not there is a number in it: a row
+   that appears on landing shoves the controls down at the worst moment. */
+.roulette-readout{display:flex;align-items:center;justify-content:center;gap:.75rem;min-height:3.4rem}
+.roulette-facts{display:grid;gap:.1rem;color:var(--muted);font-size:var(--text-small);text-align:left}
+.roulette-waiting{color:var(--ink-faint);font-size:var(--text-small)}
+.roulette-ok{color:var(--mint)}
+.roulette-bad{color:var(--danger-ink);font-weight:700}
+.roulette-chip{display:grid;place-items:center;min-width:1.7rem;height:1.7rem;padding:0 .3rem;border:1px solid var(--white-20);border-radius:var(--radius-chip);color:var(--white);font-size:var(--text-small);font-weight:700;font-variant-numeric:tabular-nums}
+.roulette-chip.big{min-width:3.2rem;height:3.2rem;border-width:2px;font-size:var(--text-display)}
+.roulette-chip.red{background:#b32219}
+.roulette-chip.black{background:#191b19}
+.roulette-chip.green{background:#0f6b45}
+.roulette-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:.5rem}
+.roulette-spin{min-width:9rem;height:var(--control-h-primary);font-size:var(--text-action)}
+.roulette-target{display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:var(--text-small)}
+.roulette-target select{height:var(--control-h-compact);padding:0 .4rem}
+.roulette-mute{height:var(--control-h-compact);padding:0 .7rem;font-size:var(--text-small)}
+.roulette-mute.off{color:var(--ink-faint)}
+.roulette-history{display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem;min-height:1.7rem}
+.roulette-tuning{width:100%;padding:.5rem .7rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60)}
+.roulette-tuning summary{color:var(--muted);font-size:var(--text-small);cursor:pointer}
+.roulette-knobs{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.4rem .9rem;margin-top:.6rem}
+.roulette-slider{display:grid;gap:.15rem;font-size:var(--text-label)}
+.roulette-slider span{display:flex;justify-content:space-between;color:var(--muted)}
+.roulette-slider b{color:var(--accent);font-variant-numeric:tabular-nums}
+.roulette-slider input{width:100%;accent-color:var(--accent)}
+.roulette-audit{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin-top:.7rem;font-size:var(--text-small)}
+.roulette-audit button{height:var(--control-h-compact);padding:0 .7rem;font-size:var(--text-small)}
+/* On a phone the wheel takes the width it can and the controls stay reachable
+   without scrolling past it. */
+@media(max-width:34rem){
+  .roulette-chip.big{min-width:2.6rem;height:2.6rem;font-size:var(--text-title)}
+  .roulette-spin{min-width:7rem}
+}

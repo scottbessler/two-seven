@@ -21,6 +21,9 @@ fn import_map() -> String {
     let entries = [
         "/public/card.js",
         "/public/card-settings.js",
+        "/public/roulette-sound.js",
+        "/public/roulette-spin.js",
+        "/public/roulette-wheel.js",
         "/public/shared.js",
         "/public/vendor/htm-preact.js",
     ]
@@ -66,7 +69,7 @@ fn layout_with_header(
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="preload" href="/public/vendor/bitter-v42-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<details class="bank-widget" title="Account balance"><summary>🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></summary><div id="bank-panel" class="bank-panel" role="status"></div></details>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="preload" href="/public/vendor/bitter-v42-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<details class="bank-widget" title="Account balance"><summary>🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></summary><div id="bank-panel" class="bank-panel" role="status"></div></details>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
         escape(title),
         asset("/public/manifest.webmanifest"),
         asset("/public/icon.svg"),
@@ -78,6 +81,7 @@ fn layout_with_header(
         asset("/public/css/05-table.css"),
         asset("/public/css/06-blackjack.css"),
         asset("/public/css/07-pages.css"),
+        asset("/public/css/08-roulette.css"),
         import_map(),
         head,
         context,
@@ -407,6 +411,20 @@ pub fn card_test() -> String {
             cards
         ),
         "",
+    )
+}
+
+/// A wheel on a page of its own. There is no game behind it yet -- the point is
+/// to judge the spin itself, so the page is the wheel, a spin button and every
+/// number the motion depends on.
+pub fn roulette_test() -> String {
+    layout(
+        "Roulette Wheel",
+        r#"<section class="roulette-shell"><header><h1>Roulette Wheel</h1><p>A motion study: single-zero wheel, real gravity, no betting. Pick a number to prove the ball lands where it is told.</p></header><div id="roulette-app"></div></section>"#,
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/roulette-test.js")
+        ),
     )
 }
 

@@ -78,3 +78,13 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   `src/db.rs`; a migration that has shipped is never edited.
 - `scripts/check_conservation.py <data-dir>` verifies the SPEC §V1/§V2/§V4 money
   invariants against a `DATA_PATH` tree.
+- The roulette wheel at `/roulette-test` is a motion prototype, not a game:
+  there is no server, no bet and no money behind it. `roulette-spin.js` is pure
+  and simulates the ball honestly, then turns the *rotor* so the pocket it
+  happened to land in carries the number that was asked for -- fret geometry
+  repeats every pocket, so that correction is a whole number of pockets and the
+  simulated path stays valid. Nothing about the ball's flight depends on the
+  outcome, which is what makes the bouncing worth watching. A rotor that is
+  already turning cannot jump to the phase an outcome needs, so `rotorAt` walks
+  it there while the ball is still on the track. `roulette-wheel.js` only reads
+  the plan's timeline, so motion is identical at any frame rate.

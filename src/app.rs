@@ -50,6 +50,7 @@ pub fn router(s: AppState) -> Router {
         .route("/healthcheck", get(routes::healthcheck))
         .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
+        .route("/roulette-test", get(routes::roulette_test))
         .route("/player", get(routes::player_page))
         .route("/player/{id}", get(routes::other_player_page))
         .route(
@@ -377,6 +378,7 @@ fn asset_version() -> String {
         "public/css/05-table.css",
         "public/css/06-blackjack.css",
         "public/css/07-pages.css",
+        "public/css/08-roulette.css",
         "public/auth.js",
         "public/bank.js",
         "public/blackjack.js",
@@ -388,6 +390,10 @@ fn asset_version() -> String {
         "public/player.js",
         "public/table.js",
         "public/card-settings.js",
+        "public/roulette-spin.js",
+        "public/roulette-wheel.js",
+        "public/roulette-sound.js",
+        "public/roulette-test.js",
         "public/vendor/htm-preact.js",
         "public/vendor/bitter-v42-latin.woff2",
         "public/vendor/bitter-v42-latin-ext.woff2",

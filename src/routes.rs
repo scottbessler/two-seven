@@ -46,6 +46,10 @@ pub async fn service_worker() -> impl IntoResponse {
 pub async fn card_test() -> Html<String> {
     Html(render::card_test())
 }
+
+pub async fn roulette_test() -> Html<String> {
+    Html(render::roulette_test())
+}
 pub async fn blackjack(MaybeUser(user): MaybeUser, State(s): State<AppState>) -> Html<String> {
     Html(render::blackjack_lobby(&s.blackjack.lobby(user).await))
 }
