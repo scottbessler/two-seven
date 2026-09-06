@@ -145,3 +145,144 @@ test.describe("roulette wheel", () => {
     await expectLayout(page, "roulette-page", LAYOUT);
   });
 });
+
+let player = 0;
+async function sitDown(page) {
+  player += 1;
+  await page.goto("/");
+  const suffix = `${Date.now()}${player}${Math.random().toString(36).slice(2, 7)}`;
+  await page.fill('#register-form input[name="username"]', `roulette${suffix}`);
+  await page.click("#register-form button");
+  await page.waitForTimeout(300);
+  // A fresh account has nothing; the re-up is where a player's first money
+  // comes from, and the buy-in is exactly what it gives.
+  await page.evaluate(() =>
+    fetch("/api/bank", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: "{}",
+    }),
+  );
+  await page.goto("/roulette");
+  await page.getByRole("button", { name: /Buy in/ }).click();
+  await expect(page.locator(".rl-board")).toBeVisible();
+}
+
+/** The box of a numbered square, which is where every inside bet is aimed. */
+async function square(page, n: number) {
+  const box = await page.locator(`[data-cell="${Math.floor((n - 1) / 3)},${(n - 1) % 3}"]`).boundingBox();
+  if (!box) throw new Error(`no square for ${n}`);
+  return box;
+}
+
+/** Press at a fraction of a square and lift, which is how a chip is placed. */
+async function drop(page, n: number, fx: number, fy: number) {
+  const box = await square(page, n);
+  await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy);
+  const aim = (await page.locator(".rl-aim").innerText()).replaceAll("\n", " ");
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  return aim;
+}
+
+test.describe("roulette table", () => {
+  test("the board can only name bets the server will price", async ({ page }) => {
+    await sitDown(page);
+    // The felt's geometry and the server's catalogue are two descriptions of one
+    // board. This walks every zone of every square and checks that the ids the
+    // first produces are all ids the second knows -- which is what stops a chip
+    // being refused because the two drifted apart.
+    const drift = await page.evaluate(async () => {
+      const { everyBet } = await import("/public/roulette-board.js");
+      const known = new Set(
+        JSON.parse(document.getElementById("roulette-board").textContent).map((spec) => spec.id),
+      );
+      return { known: known.size, unknown: everyBet().filter((id) => !known.has(id)) };
+    });
+    expect(drift.known, "the page ships the whole catalogue").toBe(157);
+    expect(drift.unknown, "every bet the board can aim at must be one the server prices").toEqual([]);
+  });
+
+  test("aiming names the bet under the finger before it costs anything", async ({ page }) => {
+    await sitDown(page);
+    // The middle of a square is that number; its edges and corners are the
+    // lines between squares, exactly as a chip would rest on real felt.
+    expect(await drop(page, 17, 0.5, 0.5)).toContain("Straight up");
+    expect(await drop(page, 17, 0.5, 0.98)).toContain("Split");
+    expect(await drop(page, 14, 0.98, 0.5)).toContain("Split");
+    expect(await drop(page, 22, 0.02, 0.5)).toContain("Street");
+    expect(await drop(page, 25, 0.98, 0.98)).toContain("Corner");
+    expect(await drop(page, 31, 0.02, 0.98)).toContain("Six line");
+    expect(await drop(page, 1, 0.98, 0.02)).toContain("Trio");
+    expect(await drop(page, 1, 0.02, 0.02)).toContain("First four");
+    // Eight chips at $5, and the stack has not moved: chips on the felt are a
+    // claim on it, not a withdrawal from it.
+    await expect(page.locator(".rl-money")).toContainText("$40.00");
+    await expect(page.locator(".rl-money")).toContainText("$1,000.00");
+    await expect(page.locator(".rl-chip")).toHaveCount(8);
+  });
+
+  test("a spin pays what the board says it pays", async ({ page }) => {
+    await sitDown(page);
+    await page.locator('[data-cell="red"]').click();
+    await page.locator('[data-cell="black"]').click();
+    // Backing both colours cannot win and cannot lose: one of them is paid
+    // even money and the other is taken, unless the zero comes up.
+    await expect(page.locator(".rl-money")).toContainText("$10.00");
+    await page.getByRole("button", { name: "Spin", exact: true }).click();
+    await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
+    const settled = await page.evaluate(async () => {
+      const state = await (await fetch("/roulette/state", { headers: { Accept: "application/json" } })).json();
+      return { stack: state.stack, last: state.last, staked: state.staked };
+    });
+    expect(settled.staked, "the felt is swept for the next spin").toBe(0);
+    const green = settled.last.number === 0;
+    expect(settled.last.returned).toBe(green ? 0 : 1_000);
+    expect(settled.stack).toBe(green ? 99_000 : 100_000);
+    expect(settled.last.staked).toBe(1_000);
+  });
+
+  test("the felt refuses a chip the stack cannot cover", async ({ page }) => {
+    await sitDown(page);
+    await page.locator(".rl-chip-button", { hasText: "$100.00" }).click();
+    // Two hundred dollars is the ceiling on any one spot.
+    await page.locator('[data-cell="red"]').click();
+    await page.locator('[data-cell="red"]').click();
+    await expect(page.locator(".rl-money")).toContainText("$200.00");
+    await page.locator('[data-cell="red"]').click();
+    await expect(page.locator(".error")).toContainText("limit");
+    await expect(page.locator(".rl-money")).toContainText("$200.00");
+  });
+
+  test("undo lifts the last chip and rebet puts the layout back", async ({ page }) => {
+    await sitDown(page);
+    await page.locator('[data-cell="red"]').click();
+    await drop(page, 17, 0.5, 0.5);
+    await expect(page.locator(".rl-chip")).toHaveCount(2);
+    await page.getByRole("button", { name: "Undo" }).click();
+    await expect(page.locator(".rl-chip")).toHaveCount(1);
+    await page.getByRole("button", { name: "Clear" }).click();
+    await expect(page.locator(".rl-chip")).toHaveCount(0);
+
+    await page.locator('[data-cell="red"]').click();
+    await page.getByRole("button", { name: "Spin", exact: true }).click();
+    await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
+    await page.getByRole("button", { name: "Rebet" }).click();
+    await expect(page.locator(".rl-money")).toContainText("$5.00");
+  });
+
+  test("the table fits the phone it is played on", async ({ page }) => {
+    await sitDown(page);
+    // The board takes every touch so a thumb can slide onto a line, which means
+    // it cannot be scrolled past -- so nothing may need scrolling to reach.
+    const room = await page.evaluate(() => ({
+      over: document.documentElement.scrollHeight - window.innerHeight,
+      wide: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    }));
+    expect(room.over, "the table must not need scrolling").toBeLessThanOrEqual(0);
+    expect(room.wide, "and must not run off the side").toBeLessThanOrEqual(0);
+    await expect(page.locator(".rl-spin")).toBeVisible();
+    await expectLayout(page, "roulette-table", [".rl-table", ".rl-stage", ".rl-board", ".rl-money", ".rl-tray", ".rl-actions", ".rl-spin"]);
+  });
+});

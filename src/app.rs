@@ -29,6 +29,7 @@ pub struct AppState {
     pub blackjack: BlackjackStore,
     pub blackjack_stats: BlackjackStatsStore,
     pub blitz: BlitzStore,
+    pub roulette: crate::roulette::RouletteStore,
     pub tables: TableStore,
     pub history: HistoryStore,
     pub stats: StatsStore,
@@ -51,6 +52,27 @@ pub fn router(s: AppState) -> Router {
         .route("/sw.js", get(routes::service_worker))
         .route("/card-test", get(routes::card_test))
         .route("/roulette-test", get(routes::roulette_test))
+        .route("/roulette", get(routes::roulette_page))
+        .route("/roulette/state", get(routes::roulette_state))
+        .route("/roulette/bet", axum::routing::post(routes::roulette_place))
+        .route("/roulette/undo", axum::routing::post(routes::roulette_undo))
+        .route(
+            "/roulette/clear",
+            axum::routing::post(routes::roulette_clear),
+        )
+        .route(
+            "/roulette/rebet",
+            axum::routing::post(routes::roulette_rebet),
+        )
+        .route("/roulette/spin", axum::routing::post(routes::roulette_spin))
+        .route(
+            "/roulette/buy-in",
+            axum::routing::post(routes::roulette_buy_in),
+        )
+        .route(
+            "/roulette/cash-out",
+            axum::routing::post(routes::roulette_cash_out),
+        )
         .route("/player", get(routes::player_page))
         .route("/player/{id}", get(routes::other_player_page))
         .route(
@@ -251,6 +273,7 @@ pub async fn run() -> Result<()> {
     let (bank, house_was_reset) = BankStore::load_reporting_reset(&data).await?;
     let blackjack = BlackjackStore::load(&data).await?;
     let blitz = BlitzStore::load(&data).await?;
+    let roulette = crate::roulette::RouletteStore::load(&data).await?;
     let tables = TableStore::load(&data).await?;
     let history = HistoryStore::load(&data).await?;
     let stats = StatsStore::load(&data).await?;
@@ -289,6 +312,7 @@ pub async fn run() -> Result<()> {
         blackjack,
         blackjack_stats,
         blitz,
+        roulette,
         tables,
         history,
         stats,
@@ -394,6 +418,8 @@ fn asset_version() -> String {
         "public/roulette-wheel.js",
         "public/roulette-sound.js",
         "public/roulette-test.js",
+        "public/roulette-board.js",
+        "public/roulette.js",
         "public/vendor/htm-preact.js",
         "public/vendor/bitter-v42-latin.woff2",
         "public/vendor/bitter-v42-latin-ext.woff2",

@@ -50,6 +50,133 @@ pub async fn card_test() -> Html<String> {
 pub async fn roulette_test() -> Html<String> {
     Html(render::roulette_test())
 }
+
+pub async fn roulette_page(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Html<String>, AppError> {
+    let view = s
+        .roulette
+        .view(user, &s.bank)
+        .await
+        .map_err(AppError::internal)?;
+    Ok(Html(render::roulette(&view)))
+}
+
+pub async fn roulette_state(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    Ok(Json(
+        s.roulette
+            .view(user, &s.bank)
+            .await
+            .map_err(AppError::internal)?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+pub struct RouletteBetRequest {
+    pub bet: String,
+    pub amount: crate::money::Cents,
+}
+
+pub async fn roulette_place(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(input): Json<RouletteBetRequest>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    s.roulette
+        .place(user, &s.bank, &input.bet, input.amount)
+        .await
+        .map(Json)
+        .map_err(roulette_error)
+}
+
+pub async fn roulette_undo(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    s.roulette
+        .undo(user, &s.bank)
+        .await
+        .map(Json)
+        .map_err(roulette_error)
+}
+
+pub async fn roulette_clear(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    s.roulette
+        .clear(user, &s.bank)
+        .await
+        .map(Json)
+        .map_err(roulette_error)
+}
+
+pub async fn roulette_rebet(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    s.roulette
+        .rebet(user, &s.bank)
+        .await
+        .map(Json)
+        .map_err(roulette_error)
+}
+
+pub async fn roulette_spin(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    s.roulette
+        .spin(user, &s.bank, Utc::now())
+        .await
+        .map(Json)
+        .map_err(roulette_error)
+}
+
+#[derive(serde::Deserialize)]
+pub struct RouletteBuyInRequest {
+    pub amount: Option<crate::money::Cents>,
+}
+
+pub async fn roulette_buy_in(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+    Json(input): Json<RouletteBuyInRequest>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    let amount = input.amount.unwrap_or(crate::roulette::BUY_IN);
+    if !crate::money::valid_game_amount(amount) {
+        return Err(AppError::bad_request(
+            "that is not a buy-in this table takes",
+        ));
+    }
+    s.roulette
+        .buy_in(user, &s.bank, amount)
+        .await
+        .map(Json)
+        .map_err(|error| AppError::bad_request(error.to_string()))
+}
+
+pub async fn roulette_cash_out(
+    AuthUser(user): AuthUser,
+    State(s): State<AppState>,
+) -> Result<Json<crate::roulette::RouletteView>, AppError> {
+    s.roulette
+        .cash_out(user, &s.bank)
+        .await
+        .map(Json)
+        .map_err(|error| AppError::bad_request(error.to_string()))
+}
+
+fn roulette_error(error: crate::roulette::RouletteError) -> AppError {
+    match error {
+        crate::roulette::RouletteError::NotSeated => AppError::not_found(error.message()),
+        other => AppError::bad_request(other.message()),
+    }
+}
 pub async fn blackjack(MaybeUser(user): MaybeUser, State(s): State<AppState>) -> Html<String> {
     Html(render::blackjack_lobby(&s.blackjack.lobby(user).await))
 }

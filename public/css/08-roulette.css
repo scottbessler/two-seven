@@ -50,3 +50,106 @@
   .roulette-chip.big{min-width:2.6rem;height:2.6rem;font-size:var(--text-title)}
   .roulette-spin{min-width:7rem}
 }
+
+/* ---------------------------------------------------------------------------
+   The table: wheel above, felt below.
+   The board is the portrait layout a phone can actually hold -- twelve rows of
+   three with the zero on top -- rather than the croupier's landscape one, which
+   at this width would give each number about thirty pixels of column.
+   --------------------------------------------------------------------------- */
+/* A game that has to be played with a thumb should not also have to be
+   scrolled, and the board cannot be scrolled past anyway -- it takes every
+   touch so a thumb can slide onto a line. So the page is the viewport, and the
+   felt is given whatever height the controls left: the rows are fractions, not
+   millimetres, and the same board fits an SE and a Pro Max. */
+.page:has(.roulette-game){display:flex;flex-direction:column;gap:.5rem;height:100vh;overflow:hidden;padding-bottom:calc(.5rem + var(--safe-bottom))}
+html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
+.page:has(.roulette-game) .site-header{flex:0 0 auto}
+.roulette-game{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+.roulette-game>#roulette-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+.rl-table{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto;gap:.35rem;flex:1 1 auto;min-height:0;max-width:32rem;width:100%;margin:0 auto}
+/* One stage, two things that want it. The felt sets the height; the wheel is
+   sized to whatever the felt left behind, so the swap never moves the controls
+   under the player's thumb. */
+.rl-stage{display:grid;min-height:0}
+.rl-stage>*{grid-area:1/1;min-width:0;min-height:0}
+/* Room down the sides for the chips that ride the outer lines: a street or a
+   six line rests half off its square, and half of that would be off the page. */
+.rl-felt{padding:0 .55rem}
+.rl-wheel{display:grid;place-items:center}
+.rl-wheel .roulette-canvas{width:100%;aspect-ratio:1/.72;max-height:100%}
+.rl-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.6rem}
+.rl-readout{display:flex;align-items:center;min-height:2.6rem}
+.rl-waiting{color:var(--ink-faint);font-size:var(--text-small)}
+.rl-empty{margin:0;color:var(--ink-faint);font-size:var(--text-label)}
+.rl-result{display:flex;align-items:center;gap:.6rem}
+.rl-result div{display:grid;gap:.05rem;font-size:var(--text-label);color:var(--muted)}
+.rl-result b{font-size:var(--text-action);font-variant-numeric:tabular-nums}
+.rl-up{color:var(--mint)}
+.rl-down{color:var(--danger-ink)}
+.rl-pocket{display:grid;place-items:center;width:2.6rem;height:2.6rem;border:2px solid var(--gold);border-radius:var(--radius-chip);color:var(--white);font-size:var(--text-title);font-weight:700}
+.rl-pocket.red{background:var(--wheel-red,#b32219)}
+.rl-pocket.black{background:var(--wheel-black,#191b19)}
+.rl-pocket.green{background:var(--wheel-green,#0f6b45)}
+/* The marquee reads newest-first, which is the way the board above a real
+   wheel reads and the opposite of how a log does. */
+.rl-marquee{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.2rem;max-width:9rem;margin:0;padding:0;list-style:none}
+.rl-marquee li{display:grid;place-items:center;min-width:1.35rem;height:1.35rem;padding:0 .2rem;border-radius:var(--radius-card);color:var(--white);font-size:var(--text-label);font-weight:700;font-variant-numeric:tabular-nums}
+.rl-marquee .red{background:var(--wheel-red,#b32219)}
+.rl-marquee .black{background:var(--wheel-black,#191b19)}
+.rl-marquee .green{background:var(--wheel-green,#0f6b45)}
+.rl-money{display:flex;align-items:center;justify-content:space-between;gap:.4rem;padding:.35rem .55rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);font-size:var(--text-label);color:var(--muted)}
+.rl-money b{display:block;color:var(--accent);font-size:var(--text-body);font-variant-numeric:tabular-nums}
+.rl-cash-out{height:1.9rem;padding:0 .5rem;font-size:var(--text-label)}
+
+/* `touch-action:none` is what makes press-and-slide aiming possible: without it
+   the first millimetre of the drag is taken by the page scroll and the bet the
+   thumb was moving towards never arrives. */
+.rl-board{display:grid;grid-template-columns:repeat(3,1fr) 1.9rem;grid-template-rows:1.15fr repeat(12,1fr) .95fr repeat(2,.95fr);height:100%;gap:0;touch-action:none;user-select:none;-webkit-user-select:none}
+.rl-board>*{display:grid;place-items:center;position:relative;border:1px solid var(--line-2);color:var(--white);font-size:var(--text-small);font-weight:700;font-variant-numeric:tabular-nums}
+.rl-zero{grid-area:1/1/2/4;background:var(--wheel-green,#0f6b45)}
+.rl-board .rl-cell.red{background:var(--wheel-red,#b32219)}
+.rl-board .rl-cell.black{background:var(--wheel-black,#191b19)}
+.rl-outside{background:var(--surface-wager);color:var(--ink);font-size:var(--text-label)}
+.rl-dozen{grid-column:4}
+.rl-dozen span{writing-mode:vertical-rl;rotate:180deg}
+.rl-swatch.red{background:var(--wheel-red,#b32219)}
+.rl-swatch.black{background:var(--wheel-black,#191b19)}
+/* Coloured like the bet, and still labelled: an unlabelled black rectangle
+   at the foot of the board reads as a gap in the felt rather than a bet. */
+.rl-swatch span{color:var(--white);text-shadow:0 1px 2px var(--shadow-80)}
+/* The aim: the numbers a chip would cover light up, so the bet is legible
+   before it is paid for -- which is the whole answer to a thumb on a 30px cell. */
+.rl-board .lit,.rl-board .aiming{outline:2px solid var(--gold-hi);outline-offset:-2px;z-index:2}
+.rl-board .lit::after{content:"";position:absolute;inset:0;background:var(--gold-hi-27)}
+.rl-board .winner{outline:3px solid var(--gold);outline-offset:-3px;z-index:3;box-shadow:0 0 12px var(--gold-hi-60)}
+/* A chip sits where the croupier would have pushed it: in the square for a
+   straight up, and on the line or the cross for everything else. `z-index`
+   lifts it over the neighbouring cell it half-covers, which is the point. */
+.rl-chip{position:absolute;z-index:4;padding:0 .2rem;border:1px solid var(--ink-on-gold);border-radius:var(--radius-chip);background:var(--gold);color:var(--ink-on-gold);font-size:9px;line-height:1.3;font-weight:700;transform:translate(-50%,-50%);pointer-events:none}
+.rl-chip.at-spot{left:75%;top:72%}
+.rl-chip.at-right{left:100%;top:50%}
+.rl-chip.at-left{left:0;top:50%}
+.rl-chip.at-top{left:50%;top:0}
+.rl-chip.at-bottom{left:50%;top:100%}
+.rl-chip.at-corner-br{left:100%;top:100%}
+.rl-chip.at-corner-bl{left:0;top:100%}
+.rl-chip.at-corner-tr{left:100%;top:0}
+.rl-chip.at-corner-tl{left:0;top:0}
+
+.rl-aim{display:flex;align-items:center;justify-content:center;gap:.5rem;min-height:1.9rem;padding:.2rem .5rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);font-size:var(--text-label);color:var(--muted);text-align:center}
+.rl-aim b{color:var(--gold-hi);font-variant-numeric:tabular-nums}
+.rl-tray{display:flex;justify-content:center;gap:.35rem}
+.rl-chip-button{min-width:3.4rem;height:var(--control-h-compact);border-radius:var(--radius-chip);font-size:var(--text-small);font-variant-numeric:tabular-nums}
+.rl-chip-button.on{outline:2px solid var(--gold-hi);outline-offset:2px}
+/* The four housekeeping buttons share a row; the one that costs money gets
+   its own, at the bottom, where a thumb rests. */
+.rl-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem}
+.rl-actions button{height:var(--control-h-compact);padding:0 .3rem;font-size:var(--text-small)}
+.rl-spin{height:var(--control-h-primary);width:100%;font-size:var(--text-action)}
+.rl-buy-in{display:grid;gap:.5rem;justify-items:center;padding:1rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);text-align:center}
+.rl-buy-in p{margin:0;color:var(--muted);font-size:var(--text-small)}
+.rl-buy-in button{height:var(--control-h-primary);padding:0 1rem;font-size:var(--text-action)}
+/* The felt has a shape of its own: past about this height it would stretch into
+   a ladder, so it stops growing and centres instead. */
+@media(min-height:56rem){.rl-stage{max-height:44rem;justify-self:center;width:100%}}

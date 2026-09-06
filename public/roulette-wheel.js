@@ -324,6 +324,9 @@ export function createWheel(canvas, options = {}) {
 
   function build() {
     const box = canvas.getBoundingClientRect();
+    // A hidden canvas measures zero, and a wheel drawn at zero radius is a
+    // divide by nothing. The observer calls back when it is on screen again.
+    if (box.width < 2 || box.height < 2) return;
     dpr = Math.min(3, window.devicePixelRatio || 1);
     width = Math.max(1, Math.round(box.width));
     height = Math.max(1, Math.round(box.height));

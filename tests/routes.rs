@@ -48,6 +48,7 @@ async fn appx() -> T {
             .await
             .unwrap(),
         blitz,
+        roulette: two_seven::roulette::RouletteStore::new(),
         tables,
         history,
         stats,

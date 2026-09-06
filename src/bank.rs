@@ -33,6 +33,8 @@ pub enum LedgerKind {
     BlackjackPayout { game: Uuid },
     BlackjackBuyIn { table: Uuid },
     BlackjackCashOut { table: Uuid },
+    RouletteBuyIn { table: Uuid },
+    RouletteCashOut { table: Uuid },
     Gift { peer: AccountOwner },
     Adjustment,
 }
@@ -678,6 +680,42 @@ impl BankStore {
     /// twice, and the pair of entries cancels out: the total on the books is
     /// unchanged (§V1). The two files are written debit first, so a crash
     /// between them can only lose the gift, never mint it.
+    pub async fn roulette_buy_in(
+        &self,
+        owner: AccountOwner,
+        table: Uuid,
+        amount: Cents,
+    ) -> Result<Account, anyhow::Error> {
+        if amount < 1 {
+            return Err(anyhow::anyhow!("game entry must be positive"));
+        }
+        self.append(
+            owner,
+            LedgerKind::RouletteBuyIn { table },
+            -amount,
+            "roulette table buy-in".into(),
+        )
+        .await
+    }
+
+    pub async fn roulette_cash_out(
+        &self,
+        owner: AccountOwner,
+        table: Uuid,
+        amount: Cents,
+    ) -> Result<Account, anyhow::Error> {
+        if amount < 0 {
+            return Err(anyhow::anyhow!("cash-out amount cannot be negative"));
+        }
+        self.append(
+            owner,
+            LedgerKind::RouletteCashOut { table },
+            amount,
+            "roulette table cash-out".into(),
+        )
+        .await
+    }
+
     pub async fn transfer(
         &self,
         from: AccountOwner,

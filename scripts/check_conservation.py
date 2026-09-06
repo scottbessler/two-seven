@@ -78,7 +78,26 @@ for path in sorted(glob.glob(os.path.join(root, "tables", "*.json"))):
                     f"V4 {table['name']} {label}: awards {awarded} != contributions {contributed}"
                 )
 
-total = bank_total + cash_stacks + pots + escrow
+# Chips bought at a house game have left the bank and are sitting at a table,
+# so §V1 only balances if they are counted back. Roulette keeps a player's whole
+# worth in `stack` -- chips on the felt are a claim on it, not a withdrawal --
+# and blackjack spreads a seat's across its stack, its live bets and insurance.
+house_stacks = 0
+roulette_path = os.path.join(root, "roulette", "tables.json")
+if os.path.exists(roulette_path):
+    for table in json.load(open(roulette_path)):
+        house_stacks += table["stack"]
+
+blackjack_path = os.path.join(root, "blackjack", "tables.json")
+if os.path.exists(blackjack_path):
+    for table in json.load(open(blackjack_path)):
+        for seat in table["seats"]:
+            if seat is None:
+                continue
+            house_stacks += seat["stack"] + seat.get("insurance", 0)
+            house_stacks += sum(hand["bet"] for hand in seat.get("hands", []))
+
+total = bank_total + cash_stacks + pots + escrow + house_stacks
 if total:
     failures.append(f"V1 total is {total}, expected zero")
 

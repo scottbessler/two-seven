@@ -1,7 +1,7 @@
 {
   ".roulette-stage": {
     "x": 16,
-    "y": 197,
+    "y": 207,
     "width": 361,
     "height": 546,
     "display": "grid",
@@ -16,7 +16,7 @@
   },
   ".roulette-canvas": {
     "x": 16,
-    "y": 197,
+    "y": 207,
     "width": 361,
     "height": 289,
     "display": "block",
@@ -31,7 +31,7 @@
   },
   ".roulette-readout": {
     "x": 153,
-    "y": 496,
+    "y": 506,
     "width": 86,
     "height": 54,
     "display": "flex",
@@ -46,7 +46,7 @@
   },
   ".roulette-controls": {
     "x": 16,
-    "y": 560,
+    "y": 570,
     "width": 361,
     "height": 104,
     "display": "flex",
@@ -61,7 +61,7 @@
   },
   ".roulette-spin": {
     "x": 55,
-    "y": 560,
+    "y": 570,
     "width": 112,
     "height": 52,
     "display": "block",
@@ -76,7 +76,7 @@
   },
   ".roulette-target": {
     "x": 175,
-    "y": 566,
+    "y": 576,
     "width": 163,
     "height": 40,
     "display": "flex",
@@ -91,7 +91,7 @@
   },
   ".roulette-history": {
     "x": 106,
-    "y": 673,
+    "y": 683,
     "width": 181,
     "height": 27,
     "display": "flex",

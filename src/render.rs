@@ -21,6 +21,7 @@ fn import_map() -> String {
     let entries = [
         "/public/card.js",
         "/public/card-settings.js",
+        "/public/roulette-board.js",
         "/public/roulette-sound.js",
         "/public/roulette-spin.js",
         "/public/roulette-wheel.js",
@@ -45,6 +46,12 @@ fn sign_out() -> &'static str {
         r#"<footer><button class="sign-out-cancel" type="button" commandfor="sign-out" command="close">Stay signed in</button>"#,
         r#"<button class="danger" type="submit">Sign out</button></footer></div></dialog></form>"#
     )
+}
+
+/// JSON bound for a `<script type="application/json">`. Only `<` can end the
+/// element early, and escaping it keeps the payload valid JSON either way.
+fn json_script(value: &str) -> String {
+    value.replace('<', "\\u003c")
 }
 
 pub fn escape(s: &str) -> String {
@@ -114,7 +121,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play poker at a cash table.</p><p><a href="/holdem">Hold&#39;em</a> · <a href="/omaha">Omaha</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play poker at a cash table.</p><p><a href="/holdem">Hold&#39;em</a> · <a href="/omaha">Omaha</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/roulette">Roulette</a> · <a href="/leaderboard">Leaderboard</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
                 escape(&name),
                 sign_out()
             ),
@@ -424,6 +431,31 @@ pub fn roulette_test() -> String {
         &format!(
             r#"<script type="module" src="{}" defer></script>"#,
             asset("/public/roulette-test.js")
+        ),
+    )
+}
+
+/// The roulette table. The felt has a hundred and fifty-seven places a chip can
+/// rest, so the board is built by the island rather than spelled out here; the
+/// page carries the opening state so the first paint is the real table and not
+/// an empty one that fills in a moment later.
+pub fn roulette(view: &crate::roulette::RouletteView) -> String {
+    // The board and its odds ship with the page rather than being written out
+    // again in JavaScript: the felt has one set of rules, and this is it, so a
+    // shape the server will not price is a shape the client cannot draw.
+    let board = serde_json::to_string(&crate::roulette::catalogue().values().collect::<Vec<_>>())
+        .unwrap_or_else(|_| "[]".into());
+    let state = serde_json::to_string(view).unwrap_or_else(|_| "null".into());
+    layout(
+        "Roulette",
+        &format!(
+            r#"<section class="roulette-shell roulette-game"><div id="roulette-app"></div><script id="roulette-state" type="application/json">{}</script><script id="roulette-board" type="application/json">{}</script></section>"#,
+            json_script(&state),
+            json_script(&board)
+        ),
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/roulette.js")
         ),
     )
 }
