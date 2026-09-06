@@ -1,15 +1,12 @@
-name: Update snapshots
+name: Update image snapshots
 # Regenerates the Playwright image baselines in the same pinned container CI
-# compares them against, and commits them to the branch. This is the supported
-# way to update baselines: no contributor needs a local Docker daemon, and a
-# baseline can never be produced by a host whose fonts differ from CI's.
+# compares them against, and commits only image changes to the branch. JSON
+# layout snapshots remain human-reviewed changes. No contributor needs a local
+# Docker daemon, and a baseline can never be produced by a host whose fonts
+# differ from CI's.
 #
-# Three ways in, because `workflow_dispatch` only resolves once the file is on
-# the default branch — which would make this unusable on the very branch that
-# changes rendering, before it merges:
-#   * Actions -> Update snapshots -> Run workflow (pick the branch),
-#   * comment `/update-snapshots` on the pull request, or
-#   * push a commit whose message contains [update-snapshots].
+# Every same-repository pull request runs this automatically. Manual dispatch
+# and `/update-snapshots` remain available as fallbacks.
 on:
   workflow_dispatch:
     inputs:
@@ -23,8 +20,11 @@ on:
         type: string
   issue_comment:
     types: [created]
-  push:
-    branches-ignore: [main]
+  pull_request:
+    types: [opened, reopened, synchronize]
+concurrency:
+  group: update-image-snapshots-${{ github.event.pull_request.head.ref || inputs.branch || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   target:
     # One cheap job decides whether this event asked for a regeneration and
@@ -44,17 +44,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           INPUT_BRANCH: ${{ inputs.branch }}
-          REF_NAME: ${{ github.ref_name }}
-          # A push delivers a batch of commits, and the marker belongs to the
-          # one that changed rendering — which is rarely the last one to land,
-          # because review notes and spec edits pile on top of it afterwards.
-          # `head_commit` alone silently skipped those branches.
-          PUSH_MESSAGES: ${{ join(github.event.commits.*.message, '  ') }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ROLE: ${{ github.event.comment.author_association }}
           ON_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
           PR_NUMBER: ${{ github.event.issue.number }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
           set -Eeuo pipefail
           case "$EVENT" in
@@ -62,12 +58,12 @@ jobs:
               echo "Dispatched for $INPUT_BRANCH."
               echo "branch=$INPUT_BRANCH" >> "$GITHUB_OUTPUT"
               ;;
-            push)
-              if [[ "$PUSH_MESSAGES" == *"[update-snapshots]"* ]]; then
-                echo "Marker found in this push; regenerating on $REF_NAME."
-                echo "branch=$REF_NAME" >> "$GITHUB_OUTPUT"
+            pull_request)
+              if [[ "$PR_HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+                echo "::warning::Cannot push regenerated images to fork $PR_HEAD_REPOSITORY; use a maintainer branch."
               else
-                echo "No [update-snapshots] marker in this push; nothing to do."
+                echo "PR updated; regenerating images on $PR_HEAD_BRANCH."
+                echo "branch=$PR_HEAD_BRANCH" >> "$GITHUB_OUTPUT"
               fi
               ;;
             issue_comment)
@@ -115,6 +111,8 @@ jobs:
     needs: [target, server]
     runs-on: ubuntu-24.04
     container: mcr.microsoft.com/playwright:v1.54.1-noble
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
     permissions:
       contents: write
     steps:
@@ -132,14 +130,23 @@ jobs:
           name: e2e-server-snapshots
           path: target/debug
       - run: chmod +x target/debug/two-seven
-      # --update-snapshots rewrites the baselines, so a failing comparison is the
-      # point here, not an error. Keep going and let the diff be the result.
-      - run: bun run test:e2e -- --update-snapshots ${{ inputs.grep && format('--grep {0}', inputs.grep) || '' }}
-        continue-on-error: true
+      # Playwright updates both snapshot kinds in one pass. Only `images/` is
+      # staged below; JSON layout changes remain an explicit author decision.
+      - name: Regenerate snapshots
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          args=(--update-snapshots)
+          if [[ -n "$PLAYWRIGHT_GREP" ]]; then
+            args+=(--grep "$PLAYWRIGHT_GREP")
+          fi
+          bunx playwright test "${args[@]}"
         env:
           E2E_SERVER_BIN: target/debug/two-seven
           E2E_IMAGES: "1"
-      - name: Commit regenerated baselines
+          PLAYWRIGHT_GREP: ${{ inputs.grep }}
+      - name: Commit regenerated image baselines
+        id: commit
         # The image's default shell is dash, which has no pipefail.
         shell: bash
         run: |
@@ -147,10 +154,24 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- tests/e2e; then
-            echo "Baselines already match this branch — nothing to commit."
+          git add -A -- ':(glob)tests/e2e/*-snapshots/images/**'
+          if git diff --cached --quiet; then
+            echo "Image baselines already match this branch — nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git add tests/e2e
-          git commit -m "Regenerate Playwright baselines in the pinned container"
+          git commit -m "Refresh Playwright image snapshots"
           git push origin "HEAD:${{ needs.target.outputs.branch }}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+  rerun-ci:
+    needs: [target, update]
+    if: needs.update.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - run: gh workflow run ci.yml --ref "$TARGET_BRANCH" -R "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ needs.target.outputs.branch }}

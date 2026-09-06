@@ -35,26 +35,19 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
 - Passkeys can't be driven headlessly. `PASSKEY_DISABLED=1` is set by `dev.sh`
   and by the Playwright web server; use it for any local run you need to sign
   into.
-- e2e snapshots live beside their specs in `tests/e2e/*-snapshots/`. Baselines
-  are rendered by the pinned Playwright image, which is the only environment
-  that reproduces them: **`bun run test:e2e` skips image comparison entirely**
+- e2e snapshots live beside their specs: reviewable geometry baselines under
+  `tests/e2e/*-snapshots/json/`, image baselines under
+  `tests/e2e/*-snapshots/images/`. Images are rendered by the pinned Playwright
+  environment: **`bun run test:e2e` skips image comparison entirely**
   unless `CI` or `E2E_IMAGES` is set, because a comparison against another
   host's fonts reports failures that mean nothing. Treat a green local run as
   saying nothing about pixels.
-- To regenerate baselines, do any one of: comment `/update-snapshots` on the
-  pull request, run the **Update snapshots** workflow (Actions → Update
-  snapshots → Run workflow, pick the branch), or push a commit whose message
-  contains `[update-snapshots]`. All three render them in the pinned image and
-  commit them back to the branch, so no local Docker daemon is needed. (The
-  comment and the message marker exist because `workflow_dispatch` only resolves
-  once a workflow is on the default branch, which would leave a branch that
-  changes rendering unable to update its own baselines. The marker counts
-  anywhere in the push, not just on its last commit — a rendering change usually
-  picks up review fixes on top of it before it goes up.)
-  `bun run test:e2e:docker -- --update-snapshots` still works if you have one.
-  The regeneration commit is pushed with `GITHUB_TOKEN`, and GitHub does not
-  start workflows for those pushes — re-run CI by hand (Actions → CI → Run
-  workflow) or push again to verify the new baselines.
+- Every same-repository pull request automatically regenerates image baselines
+  in the pinned environment and commits image-only changes back to its branch;
+  JSON geometry changes stay explicit and reviewable. The workflow dispatches
+  CI after its bot commit. Manual fallbacks remain: comment `/update-snapshots`,
+  run **Update image snapshots** (pick the branch), or use
+  `bun run test:e2e:docker -- --update-snapshots` if you have Docker.
 - On Linux you can compare images without any container: the pinned fonts and
   rasterizer flags make a plain checkout match CI byte for byte, verified across
   a different Chromium build. `E2E_IMAGES=1 bun run test:e2e` opts in. macOS
