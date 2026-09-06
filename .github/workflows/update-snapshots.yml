@@ -5,8 +5,8 @@ name: Update image snapshots
 # Docker daemon, and a baseline can never be produced by a host whose fonts
 # differ from CI's.
 #
-# Every same-repository pull request runs this automatically. Manual dispatch,
-# `/update-snapshots`, and the commit marker remain available as fallbacks.
+# Every same-repository pull request runs this automatically. Manual dispatch
+# and `/update-snapshots` remain available as fallbacks.
 on:
   workflow_dispatch:
     inputs:
@@ -22,11 +22,7 @@ on:
     types: [created]
   pull_request:
     types: [opened, reopened, synchronize]
-  push:
-    branches-ignore: [main]
 concurrency:
-  # A marker push and the resulting PR synchronization target the same branch;
-  # use that branch for both so only the newest regeneration can write it.
   group: update-image-snapshots-${{ github.event.pull_request.head.ref || inputs.branch || github.ref_name }}
   cancel-in-progress: true
 jobs:
@@ -48,12 +44,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           INPUT_BRANCH: ${{ inputs.branch }}
-          REF_NAME: ${{ github.ref_name }}
-          # A push delivers a batch of commits, and the marker belongs to the
-          # one that changed rendering — which is rarely the last one to land,
-          # because review notes and spec edits pile on top of it afterwards.
-          # `head_commit` alone silently skipped those branches.
-          PUSH_MESSAGES: ${{ join(github.event.commits.*.message, '  ') }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ROLE: ${{ github.event.comment.author_association }}
           ON_PULL_REQUEST: ${{ github.event.issue.pull_request != null }}
@@ -67,14 +57,6 @@ jobs:
             workflow_dispatch)
               echo "Dispatched for $INPUT_BRANCH."
               echo "branch=$INPUT_BRANCH" >> "$GITHUB_OUTPUT"
-              ;;
-            push)
-              if [[ "$PUSH_MESSAGES" == *"[update-snapshots]"* ]]; then
-                echo "Marker found in this push; regenerating on $REF_NAME."
-                echo "branch=$REF_NAME" >> "$GITHUB_OUTPUT"
-              else
-                echo "No [update-snapshots] marker in this push; nothing to do."
-              fi
               ;;
             pull_request)
               if [[ "$PR_HEAD_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then

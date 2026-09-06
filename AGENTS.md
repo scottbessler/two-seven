@@ -46,10 +46,8 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   in the pinned environment and commits image-only changes back to its branch;
   JSON geometry changes stay explicit and reviewable. The workflow dispatches
   CI after its bot commit. Manual fallbacks remain: comment `/update-snapshots`,
-  run **Update image snapshots** (pick the branch), or include
-  `[update-snapshots]` in a pushed commit message. The marker counts anywhere in
-  the push, not just its last commit. `bun run test:e2e:docker --
-  --update-snapshots` still works if you have one.
+  run **Update image snapshots** (pick the branch), or use
+  `bun run test:e2e:docker -- --update-snapshots` if you have Docker.
 - On Linux you can compare images without any container: the pinned fonts and
   rasterizer flags make a plain checkout match CI byte for byte, verified across
   a different Chromium build. `E2E_IMAGES=1 bun run test:e2e` opts in. macOS
