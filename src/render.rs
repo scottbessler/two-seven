@@ -21,6 +21,10 @@ fn import_map() -> String {
     let entries = [
         "/public/card.js",
         "/public/card-settings.js",
+        "/public/roulette-board.js",
+        "/public/roulette-sound.js",
+        "/public/roulette-spin.js",
+        "/public/roulette-wheel.js",
         "/public/shared.js",
         "/public/vendor/htm-preact.js",
     ]
@@ -42,6 +46,12 @@ fn sign_out() -> &'static str {
         r#"<footer><button class="sign-out-cancel" type="button" commandfor="sign-out" command="close">Stay signed in</button>"#,
         r#"<button class="danger" type="submit">Sign out</button></footer></div></dialog></form>"#
     )
+}
+
+/// JSON bound for a `<script type="application/json">`. Only `<` can end the
+/// element early, and escaping it keeps the payload valid JSON either way.
+fn json_script(value: &str) -> String {
+    value.replace('<', "\\u003c")
 }
 
 pub fn escape(s: &str) -> String {
@@ -66,7 +76,7 @@ fn layout_with_header(
         format!(r#"<span class="header-context">{}</span>"#, escape(value))
     });
     format!(
-        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="preload" href="/public/vendor/bitter-v42-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<details class="bank-widget" title="Account balance"><summary>🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></summary><div id="bank-panel" class="bank-panel" role="status"></div></details>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
+        r##"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"><meta name="theme-color" content="#123d34"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><title>{}</title><link rel="manifest" href="{}"><link rel="icon" href="{}"><link rel="apple-touch-icon" href="{}"><link rel="preload" href="/public/vendor/bitter-v42-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}"><link rel="stylesheet" href="{}">{}{}</head><body><main class="page"><header class="site-header"><a class="brand" href="/">♠ two-seven</a>{}<details class="bank-widget" title="Account balance"><summary>🪙 <span id="bank-balance">—</span><span id="bank-delta"></span></summary><div id="bank-panel" class="bank-panel" role="status"></div></details>{}</header>{}</main><script type="module" src="{}" defer></script></body></html>"##,
         escape(title),
         asset("/public/manifest.webmanifest"),
         asset("/public/icon.svg"),
@@ -78,6 +88,7 @@ fn layout_with_header(
         asset("/public/css/05-table.css"),
         asset("/public/css/06-blackjack.css"),
         asset("/public/css/07-pages.css"),
+        asset("/public/css/08-roulette.css"),
         import_map(),
         head,
         context,
@@ -110,7 +121,7 @@ pub fn home(signed: Option<(Uuid, String)>) -> String {
         Some((_, name)) => layout(
             "two-seven",
             &format!(
-                r#"<section class="card"><h1>Welcome, {}</h1><p>Play poker at a cash table.</p><p><a href="/holdem">Hold&#39;em</a> · <a href="/omaha">Omaha</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/leaderboard">Leaderboard</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
+                r#"<section class="card"><h1>Welcome, {}</h1><p>Play poker at a cash table.</p><p><a href="/holdem">Hold&#39;em</a> · <a href="/omaha">Omaha</a> · <a href="/player">Player</a> · <a href="/hand-blitz">Hand Blitz</a> · <a href="/blackjack">Blackjack</a> · <a href="/roulette">Roulette</a> · <a href="/leaderboard">Leaderboard</a></p><form class="re-up-form"><button type="submit">Re-up $1,000</button></form>{}</section>"#,
                 escape(&name),
                 sign_out()
             ),
@@ -159,12 +170,19 @@ pub fn home_directory(name: &str, games: &[DirectoryGame]) -> String {
         })
         .collect::<String>();
     let others = format!(
-        "{}{}",
+        "{}{}{}",
         game_card(
             "/blackjack",
             "Blackjack",
             "Beat the dealer to twenty-one.",
             "Four shared tables",
+            "",
+        ),
+        game_card(
+            "/roulette",
+            "Roulette",
+            "Back a number, or half the wheel, and watch the ball.",
+            "Single-zero wheel",
             "",
         ),
         game_card(
@@ -407,6 +425,45 @@ pub fn card_test() -> String {
             cards
         ),
         "",
+    )
+}
+
+/// A wheel on a page of its own. There is no game behind it yet -- the point is
+/// to judge the spin itself, so the page is the wheel, a spin button and every
+/// number the motion depends on.
+pub fn roulette_test() -> String {
+    layout(
+        "Roulette Wheel",
+        r#"<section class="roulette-shell"><header><h1>Roulette Wheel</h1><p>A motion study: single-zero wheel, real gravity, no betting. Pick a number to prove the ball lands where it is told.</p></header><div id="roulette-app"></div></section>"#,
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/roulette-test.js")
+        ),
+    )
+}
+
+/// The roulette table. The felt has a hundred and fifty-seven places a chip can
+/// rest, so the board is built by the island rather than spelled out here; the
+/// page carries the opening state so the first paint is the real table and not
+/// an empty one that fills in a moment later.
+pub fn roulette(view: &crate::roulette::RouletteView) -> String {
+    // The board and its odds ship with the page rather than being written out
+    // again in JavaScript: the felt has one set of rules, and this is it, so a
+    // shape the server will not price is a shape the client cannot draw.
+    let board = serde_json::to_string(&crate::roulette::catalogue().values().collect::<Vec<_>>())
+        .unwrap_or_else(|_| "[]".into());
+    let state = serde_json::to_string(view).unwrap_or_else(|_| "null".into());
+    layout(
+        "Roulette",
+        &format!(
+            r#"<section class="roulette-shell roulette-game"><div id="roulette-app"></div><script id="roulette-state" type="application/json">{}</script><script id="roulette-board" type="application/json">{}</script></section>"#,
+            json_script(&state),
+            json_script(&board)
+        ),
+        &format!(
+            r#"<script type="module" src="{}" defer></script>"#,
+            asset("/public/roulette.js")
+        ),
     )
 }
 

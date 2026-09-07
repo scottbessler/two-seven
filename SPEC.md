@@ -163,6 +163,28 @@ things: how many hole cards a seat is dealt, and how a hand is read at showdown
   the table for a short pause before the next betting round. Seated players can
   Add chips (another buy-in) or Leave; with a live bet both wait for settlement
   and the seat visibly remains Leaving until then.
+- **Roulette:** A single-zero (European) wheel, played alone against the house
+  at a private table per player. The buy-in is $1,000 out of the bank as one
+  `RouletteBuyIn` ledger row; cashing out returns the whole stack as one
+  `RouletteCashOut` and is refused while chips are on the felt. Chips come in
+  $1 / $5 / $25 / $100; at most $200 may rest on any one spot and at most 60
+  chips on the felt at once. **Chips on the felt are a claim on the stack, not
+  a withdrawal from it** — nothing moves until the wheel is spun, so the table
+  is worth exactly `stack` at every moment a reader can observe it (§V1), and
+  a restart sweeps the felt without anyone losing anything.
+  The felt allows exactly the 157 bets a European layout allows, derived from
+  the board's geometry rather than listed: 37 straight-ups, 60 splits (24
+  across, 33 down, 3 against the zero), 12 streets, 22 corners, 11 six lines,
+  2 trios, the first four, 3 dozens, 3 columns and the six even-money bets.
+  Payouts are 35, 17, 11, 8, 5, 2 and 1 to one, which on 37 pockets is a 2.70%
+  house edge on every bet alike. A bet the geometry cannot produce cannot be
+  placed, priced or paid: the catalogue is the only validator, and the page is
+  served the same catalogue so the board and the odds have one source.
+  The winning pocket is drawn on the server when the spin is requested and the
+  spin is settled before the response returns; the wheel animation replays it
+  from the seed it is given. The number is therefore in the client's hands
+  before the ball lands — a play-money game does not pay for hiding it, and the
+  alternative is holding a settled result open for eight seconds.
 - **Limit** stakes (`small_bet`/`big_bet`): blinds are `small_bet/2` and
   `small_bet`; bets are `small_bet` preflop and on the flop, `big_bet` on turn
   and river; at most 4 wagers per street (bet + 3 raises).
@@ -636,6 +658,28 @@ Mark each milestone done here as it lands.
   standing ∴ ⊥ refund happens here. Every response logs `bytes`; past
   `SLOW_REQUEST_MS` or `LARGE_RESPONSE_BYTES` it also warns, ∵ elapsed time
   alone never showed the payload that caused this.
+- **V68** Roulette's bet catalogue is derived from the board's geometry and is
+  the only thing that prices a bet: every entry's expected return is exactly
+  −1/37 of its stake, no bet outside it can be placed, and the client's board
+  cannot name an id the catalogue lacks.
+- **V69** A roulette table is worth exactly its `stack` between spins: chips on
+  the felt are a claim on it, `staked <= stack`, and a spin moves
+  `returned - staked` in one step. `scripts/check_conservation.py` counts house
+  stacks (roulette, and blackjack seats' stacks, live bets and insurance)
+  toward §V1.
+- **V70** The roulette table needs no scrolling on the phone it is played on:
+  the board takes every touch so a thumb can slide onto a line, so nothing may
+  sit off screen. The felt is sized in fractions of the height the controls
+  leave, and the wheel and the felt share one stage rather than stacking. It
+  also holds still: the aim, the spin and the result share one status line of
+  fixed height, because a row that grows by a line shrinks every square on the
+  board under the thumb aiming at it.
+- **V71** The felt is one board in two orientations. Given the width for twelve
+  columns it is laid out the way a croupier's is — the zero at the left end,
+  the dozens beneath the numbers they cover, the column bets at the far end —
+  and below that width the same board is turned a quarter turn. A press names
+  the same bet in either, because the touch is turned with the board rather
+  than the board having two sets of rules.
 - **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
   fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
   board then owns the full stage width (no side rails) and all-in odds become
@@ -718,6 +762,7 @@ T48|x|make overlapping emotes keep their paths and finish fading before removal|
 T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart points, bank writes, abandoned tournaments, payload logging|V64
 T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
 T51|x|add Omaha alongside Hold'em: variant-aware deal and showdown, a ladder per game, and a directory of games at the front door|V67
+T52|x|roulette: wheel, felt and betting|V68,V69,V70,V71
 
 ## §B Bug log
 

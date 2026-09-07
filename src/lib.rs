@@ -16,6 +16,7 @@ pub mod history;
 pub mod money;
 pub mod poker;
 pub mod render;
+pub mod roulette;
 pub mod routes;
 pub mod session;
 pub mod stats;
