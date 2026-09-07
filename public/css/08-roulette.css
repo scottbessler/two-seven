@@ -28,11 +28,16 @@
 .roulette-chip.red{background:#b32219}
 .roulette-chip.black{background:#191b19}
 .roulette-chip.green{background:#0f6b45}
-.roulette-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:.5rem}
+.roulette-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:.5rem;width:min(25.25rem,100%)}
 .roulette-spin{min-width:9rem;height:var(--control-h-primary);font-size:var(--text-action)}
 .roulette-target{display:flex;align-items:center;gap:.4rem;color:var(--muted);font-size:var(--text-small)}
 .roulette-target select{height:var(--control-h-compact);padding:0 .4rem}
 .roulette-mute{height:var(--control-h-compact);padding:0 .7rem;font-size:var(--text-small)}
+@media(min-width:34.01rem){
+  .roulette-controls>.roulette-spin{flex:0 0 9rem}
+  .roulette-controls>.roulette-target{flex:0 0 10.1875rem}
+  .roulette-controls>.roulette-mute{flex:0 0 5.0625rem}
+}
 .roulette-mute.off{color:var(--ink-faint)}
 .roulette-history{display:flex;flex-wrap:wrap;justify-content:center;gap:.25rem;min-height:1.7rem}
 .roulette-tuning{width:100%;padding:.5rem .7rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60)}
@@ -67,13 +72,13 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .page:has(.roulette-game) .site-header{flex:0 0 auto}
 .roulette-game{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .roulette-game>#roulette-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
-.rl-table{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto auto;gap:.3rem;flex:1 1 auto;min-height:0;max-width:32rem;width:100%;margin:0 auto}
+.rl-table{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:.35rem;flex:1 1 auto;min-height:0;max-width:32rem;width:100%;margin:0 auto}
 /* A board laid out across is nearly three times as wide as it is tall, so the
    column that was sized for the turned one has to widen with it. */
 .rl-table:has(.rl-board.across){max-width:66rem}
-/* One stage, two things that want it. The felt sets the height; the wheel is
-   sized to whatever the felt left behind, so the swap never moves the controls
-   under the player's thumb. */
+/* The wheel no longer trades places with the felt. It lives in the dashboard,
+   then opens above the table for motion/result without becoming a layer below
+   the board. */
 .rl-stage{display:grid;min-height:0}
 .rl-stage>*{grid-area:1/1;min-width:0;min-height:0}
 /* `hidden` is a UA rule, so any class that sets `display` outranks it and the
@@ -84,18 +89,8 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
    six line rests half off its square, and half of that would be off the page. */
 .rl-felt{padding:0 .55rem}
 .rl-felt:has(.rl-board.across){display:grid;align-content:center;padding:.55rem}
-.rl-wheel{display:grid;place-items:center}
-.rl-wheel .roulette-canvas{width:100%;aspect-ratio:1/.72;max-height:100%}
-/* One status line. The aim, the spin and the result never want to be read at
-   the same moment, and a strip each costs the felt a row of squares. */
-/* A fixed height, not a minimum. Everything in this row changes as you play --
-   the aim text arrives and goes, the result is two lines and a disc, the
-   marquee grows a number per spin -- and the felt below it is sized from
-   whatever is left. A row that grows by a line therefore shrinks every square
-   on the board, which reads as the whole table twitching under your thumb. So
-   the row is a fixed height and its contents are clipped to fit. */
-.rl-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;height:2.9rem;overflow:hidden}
-.rl-readout{display:flex;align-items:center;flex:1 1 auto;min-width:0;height:100%;overflow:hidden}
+.rl-dashboard{position:relative;z-index:6;display:grid;grid-template-columns:minmax(0,1fr) 4.8rem;grid-template-rows:2.5rem 3.7rem;gap:.25rem .5rem;height:6.45rem;padding:.3rem .45rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60)}
+.rl-readout{display:flex;align-items:center;min-width:0;overflow:hidden}
 .rl-waiting{color:var(--ink-faint);font-size:var(--text-small)}
 .rl-empty{margin:0;color:var(--ink-faint);font-size:var(--text-label)}
 .rl-result{display:flex;align-items:center;gap:.6rem;min-width:0}
@@ -110,14 +105,25 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .rl-pocket.green{background:var(--wheel-green,#0f6b45)}
 /* The marquee reads newest-first, which is the way the board above a real
    wheel reads and the opposite of how a log does. */
-.rl-marquee{display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:.2rem;flex:0 1 auto;max-width:45%;margin:0;padding:0;list-style:none;overflow:hidden}
+.rl-marquee{display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:.2rem;max-width:100%;margin:0;padding:0;list-style:none;overflow:hidden}
 .rl-marquee li{display:grid;place-items:center;flex:0 0 auto;min-width:1.35rem;height:1.35rem;padding:0 .2rem;border-radius:var(--radius-card);color:var(--white);font-size:var(--text-label);font-weight:700;font-variant-numeric:tabular-nums}
 .rl-marquee .red{background:var(--wheel-red,#b32219)}
 .rl-marquee .black{background:var(--wheel-black,#191b19)}
 .rl-marquee .green{background:var(--wheel-green,#0f6b45)}
-.rl-money{display:flex;align-items:center;justify-content:space-between;gap:.4rem;padding:.28rem .5rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);font-size:var(--text-label);color:var(--muted)}
-.rl-money b{display:block;color:var(--accent);font-size:var(--text-body);font-variant-numeric:tabular-nums}
-.rl-cash-out{height:1.9rem;padding:0 .5rem;font-size:var(--text-label)}
+.rl-summary{display:grid;grid-template-rows:1.35rem minmax(0,1fr);gap:.15rem;min-width:0}
+.rl-money{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:center;gap:.3rem;font-size:var(--text-label);color:var(--muted)}
+.rl-money span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl-money b{display:block;color:var(--accent);font-size:var(--text-small);font-variant-numeric:tabular-nums}
+.rl-cash-out{min-height:1.9rem;height:1.9rem;padding:0 .5rem;font-size:var(--text-label)}
+.rl-wheel-dock{position:relative;grid-area:1/2/3/3;align-self:center;justify-self:center;width:4.6rem;z-index:8;transition:transform 160ms ease,width 180ms ease}
+.rl-wheel-trigger{position:relative;display:block;width:100%;height:auto;padding:0;border:0;border-radius:50%;background:transparent;box-shadow:none;color:var(--ink);overflow:visible}
+.rl-wheel-trigger:disabled{opacity:.74;cursor:default}
+.rl-wheel-trigger .roulette-canvas{display:block;width:100%;aspect-ratio:1/.72;filter:drop-shadow(0 4px 8px var(--shadow-67))}
+.rl-wheel-trigger span{position:absolute;left:50%;bottom:-.05rem;translate:-50% 0;padding:.05rem .3rem;border-radius:var(--radius-chip);background:var(--surface-deep-91);font-size:9px;white-space:nowrap}
+.rl-wheel-dock:not(.open):has(.rl-wheel-trigger:hover),.rl-wheel-dock:not(.open):has(.rl-wheel-trigger:focus-visible){transform:scale(1.65);z-index:15}
+.rl-wheel-dock.open{position:absolute;left:50%;top:50%;grid-area:auto;width:min(32rem,82vw);transform:translate(-50%,-12%);z-index:30;padding:.55rem;border:1px solid var(--line-2);border-radius:50%;background:var(--surface-deep-91);box-shadow:0 1rem 3rem var(--shadow-80)}
+.rl-wheel-dock.open .rl-wheel-trigger span{bottom:.35rem;font-size:var(--text-label)}
+.rl-wheel-close{position:absolute;right:4%;top:7%;z-index:2;width:2rem;height:2rem;padding:0;border-radius:50%;font-size:var(--text-title)}
 
 /* The felt, drawn the way a real one is: bright green, every line in gold, the
    numbers in filled red and black cells and the colour bets as diamonds. A
@@ -167,7 +173,7 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
    the DOM for anyone reading the page rather than looking at it. */
 /* Taken out of the grid entirely rather than sized to nothing: as a grid
    item it still claimed a row and pushed the diamond off centre. */
-.rl-swatch span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.rl-swatch>span:first-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .rl-swatch::after{content:"";width:1.05rem;height:1.05rem;rotate:45deg;border:1px solid var(--rl-line)}
 .rl-swatch.red::after{background:var(--wheel-red,#b32219)}
 .rl-swatch.black::after{background:var(--wheel-black,#191b19)}
@@ -181,7 +187,7 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
    straight up, and on the line or the cross for everything else. `z-index`
    lifts it over the neighbouring cell it half-covers, which is the point. */
 .rl-chip{position:absolute;z-index:4;padding:0 .2rem;border:1px solid var(--ink-on-gold);border-radius:var(--radius-chip);background:var(--gold);color:var(--ink-on-gold);font-size:9px;line-height:1.3;font-weight:700;transform:translate(-50%,-50%);pointer-events:none}
-.rl-chip.at-spot{left:75%;top:72%}
+.rl-chip.at-spot{left:50%;top:50%}
 .rl-chip.at-right{left:100%;top:50%}
 .rl-chip.at-left{left:0;top:50%}
 .rl-chip.at-top{left:50%;top:0}
@@ -190,22 +196,53 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .rl-chip.at-corner-bl{left:0;top:100%}
 .rl-chip.at-corner-tr{left:100%;top:0}
 .rl-chip.at-corner-tl{left:0;top:0}
+/* Turn every canonical portrait anchor with the across board. */
+.rl-board.across .rl-chip.at-right{left:50%;top:0}
+.rl-board.across .rl-chip.at-left{left:50%;top:100%}
+.rl-board.across .rl-chip.at-top{left:0;top:50%}
+.rl-board.across .rl-chip.at-bottom{left:100%;top:50%}
+.rl-board.across .rl-chip.at-corner-br{left:100%;top:0}
+.rl-board.across .rl-chip.at-corner-bl{left:100%;top:100%}
+.rl-board.across .rl-chip.at-corner-tr{left:0;top:0}
+.rl-board.across .rl-chip.at-corner-tl{left:0;top:100%}
 
 .rl-aim{display:flex;align-items:baseline;gap:.4rem;min-width:0;font-size:var(--text-label);color:var(--muted);white-space:nowrap;overflow:hidden}
 .rl-aim b{overflow:hidden;text-overflow:ellipsis}
 .rl-aim>span{flex:0 0 auto}
 .rl-aim b{color:var(--gold-hi);font-variant-numeric:tabular-nums}
-.rl-tray{display:flex;justify-content:center;gap:.35rem}
-.rl-chip-button{min-width:3.4rem;height:2.2rem;border-radius:var(--radius-chip);font-size:var(--text-small);font-variant-numeric:tabular-nums}
-.rl-chip-button.on{outline:2px solid var(--gold-hi);outline-offset:2px}
-/* The four housekeeping buttons share a row; the one that costs money gets
-   its own, at the bottom, where a thumb rests. */
-.rl-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem}
-.rl-actions button{height:2.2rem;padding:0 .3rem;font-size:var(--text-small)}
-.rl-spin{height:var(--control-h-primary);width:100%;font-size:var(--text-action)}
+.rl-toolbar{display:flex;align-items:end;justify-content:space-between;gap:.6rem;min-width:0}
+.rl-tray{display:flex;justify-content:flex-start;gap:.3rem}
+.rl-chip-button{width:2.8rem;min-width:2.8rem;height:2.8rem;padding:0;border:2px dashed var(--ink-on-gold);border-radius:50%;background:radial-gradient(circle,var(--gold-hi) 0 50%,var(--gold) 52% 69%,var(--surface-deep) 71% 77%,var(--gold) 79%);box-shadow:inset 0 0 0 2px var(--gold),0 2px 4px var(--shadow-40);font-size:10px;font-weight:700;font-variant-numeric:tabular-nums}
+.rl-chip-button.on{outline:3px solid var(--mint);outline-offset:2px;translate:0 -2px}
+.rl-actions{display:flex;justify-content:flex-end;gap:.25rem}
+.rl-actions button{height:2rem;min-width:3.6rem;min-height:2rem;padding:0 .5rem;font-size:var(--text-label)}
+.rl-error{position:absolute;left:50%;bottom:3.2rem;z-index:40;translate:-50% 0;margin:0;white-space:nowrap}
 .rl-buy-in{display:grid;gap:.5rem;justify-items:center;padding:1rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);text-align:center}
 .rl-buy-in p{margin:0;color:var(--muted);font-size:var(--text-small)}
 .rl-buy-in button{height:var(--control-h-primary);padding:0 1rem;font-size:var(--text-action)}
+.rl-buy-in-backdrop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:1rem;background:var(--surface-backdrop-80)}
+.rl-buy-in-dialog{position:static;width:min(32rem,calc(100vw - 2rem));max-width:100%;margin:0;padding:0;border:1px solid var(--line-2);border-radius:var(--radius-control);background:var(--surface-deep);color:var(--ink);box-shadow:0 1.5rem 5rem var(--shadow-80)}
+.rl-buy-in-dialog form{display:grid;gap:1rem;padding:1rem}
+.rl-buy-in-dialog header,.rl-buy-in-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.rl-buy-in-dialog h2,.rl-buy-in-dialog p{margin:0}
+.rl-buy-in-dialog p{color:var(--muted);font-size:var(--text-small)}
+.rl-buy-in-dialog output{color:var(--accent);font-size:var(--text-display);font-weight:700;text-align:center}
+.rl-buy-in-dialog input{width:100%;accent-color:var(--accent)}
+.rl-buy-in-rungs{display:flex;justify-content:space-between;color:var(--muted);font-size:9px}
+.rl-dialog-close{width:2rem;height:2rem;padding:0;font-size:var(--text-title)}
+.rl-buy-in-dialog footer{justify-content:flex-end}
+.rl-buy-in-dialog footer button{height:var(--control-h-compact)}
+@media(min-width:56rem){
+  .rl-table{grid-template-rows:auto auto auto minmax(0,1fr)}
+  .rl-dashboard{grid-template-columns:minmax(0,1fr) 7rem minmax(22rem,1.4fr);grid-template-rows:1fr;height:7.4rem;padding:.45rem .65rem}
+  .rl-summary{grid-template-rows:1.5rem auto}
+  .rl-wheel-dock{grid-area:1/2;width:6.6rem}
+  .rl-money b{font-size:var(--text-body)}
+}
+@media(max-width:28rem){
+  .rl-chip-button{width:2.5rem;min-width:2.5rem;height:2.5rem;font-size:9px}
+  .rl-actions button{min-width:auto;padding:0 .35rem}
+}
 /* The felt has a shape of its own: past about this height it would stretch into
    a ladder, so it stops growing and centres instead. */
 @media(min-height:56rem){.rl-stage{max-height:44rem;justify-self:center;width:100%}}

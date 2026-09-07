@@ -115,6 +115,101 @@ async fn health() {
 }
 
 #[tokio::test]
+async fn roulette_buy_in_uses_only_the_four_slider_rungs() {
+    let t = appx().await;
+    let user = Uuid::new_v4();
+    t.users
+        .insert(User {
+            id: user,
+            username: "roulette-rungs".into(),
+            display_name: "Roulette Rungs".into(),
+            credentials: vec![],
+            settings: UserSettings::default(),
+            created_at: chrono::Utc::now(),
+        })
+        .await
+        .unwrap();
+    t.bank
+        .append(
+            AccountOwner::User(user),
+            LedgerKind::Adjustment,
+            100_000_000,
+            "seed".into(),
+        )
+        .await
+        .unwrap();
+    let session = cookie(&t.key, user);
+
+    let state = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/roulette/state")
+                .header(header::COOKIE, &session)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let state: serde_json::Value =
+        serde_json::from_slice(&to_bytes(state.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        state["buy_ins"],
+        serde_json::json!([100_000, 1_000_000, 10_000_000, 100_000_000])
+    );
+
+    let invalid = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/roulette/buy-in")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"amount":5000000}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        t.bank
+            .account(AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance,
+        100_000_000
+    );
+
+    let accepted = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/roulette/buy-in")
+                .header(header::COOKIE, &session)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"amount":1000000}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(accepted.status(), StatusCode::OK);
+    let accepted: serde_json::Value =
+        serde_json::from_slice(&to_bytes(accepted.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(accepted["stack"], 1_000_000);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(account.balance, 99_000_000);
+    assert!(matches!(
+        account.entries.last().map(|entry| &entry.kind),
+        Some(LedgerKind::RouletteBuyIn { .. })
+    ));
+}
+
+#[tokio::test]
 async fn only_seated_humans_can_emit_the_five_table_emotes() {
     let t = appx().await;
     let seated = Uuid::new_v4();

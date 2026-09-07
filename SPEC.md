@@ -162,7 +162,8 @@ things: how many hole cards a seat is dealt, and how a hand is read at showdown
   refused outright while a hand is live, rather than deferred. Changing the
   ceiling means leaving and sitting down again.
 - **Roulette:** A single-zero (European) wheel, played alone against the house
-  at a private table per player. The buy-in is $1,000 out of the bank as one
+  at a private table per player. Buy-in slider offers $1,000 / $10,000 /
+  $100,000 / $1,000,000; selected amount leaves bank as one
   `RouletteBuyIn` ledger row; cashing out returns the whole stack as one
   `RouletteCashOut` and is refused while chips are on the felt. Chips come in
   $1 / $5 / $25 / $100; at most $200 may rest on any one spot and at most 60
@@ -683,6 +684,14 @@ Mark each milestone done here as it lands.
   and below that width the same board is turned a quarter turn. A press names
   the same bet in either, because the touch is turned with the board rather
   than the board having two sets of rules.
+- **V73** Roulette buy-in ∈ `$1,000|$10,000|$100,000|$1,000,000`; dialog slider
+  names exact debit before confirm. Default wheel stays compact above felt,
+  hover/focus zooms it, wheel press starts enabled spin, and spinning/result
+  keeps wheel open. Status + history + money share one dashboard; chip tray
+  hugs felt's lower-left edge; Undo/Clear/Rebet stay compact. ∀ board bet,
+  rendered chip centre = geometric spot/line/corner anchor in both orientations.
+- **V74** Roulette wheel-study control row width = `min(25.25rem,100%)`;
+  host font metrics ⊥ change geometry snapshot.
 - **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
   fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
   board then owns the full stage width (no side rails) and all-in odds become
@@ -767,6 +776,7 @@ T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
 T51|x|add Omaha alongside Hold'em: variant-aware deal and showdown, a ladder per game, and a directory of games at the front door|V67
 T52|x|roulette: wheel, felt and betting|V68,V69,V70,V71
 T53|x|return blackjack to one game per player, sat down with a max-bet slider|V24,V25,V26,V27,V63,V72
+T54|x|fix roulette buy-in, bet anchors, wheel interaction and control layout|V1,V2,V68,V69,V70,V71,V73,V74
 
 ## §B Bug log
 
@@ -923,3 +933,4 @@ B26|2026-09-04|the emote taps shipped at a fixed 2rem square on the same footer 
 B27|2026-09-04|a revealed opponent hand is taller than a face-down one and the cards carry a `z-index`, so at a showdown an all-in seat's own cards grew down out of their track and over the ALL IN chip in the strip below them; the hit test that would have caught it was only ever run against a live flop, where the cards are small|V45
 B28|2026-09-04|emote drift came from live `:nth-child`, so sibling removal jumped bubbles between lanes; JS removal matched CSS duration exactly, so it could delete before the final transparent frame painted|V64
 B29|2026-09-04|every table state read and every SSE push carried each seat's whole bank ledger — the client renders 3 lines, the server sent all of them — so a state read grew a line per hand forever: 228KB in prod (98% ledger), 1.7MB against a table seating the oldest house accounts. `elapsed_ms` never showed it ∵ it stops when the handler returns, ⊥ when the bytes land|V64
+B30|2026-09-06|wheel-study controls sized from host font metrics → 1px desktop geometry drift|V74

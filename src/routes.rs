@@ -148,7 +148,7 @@ pub async fn roulette_buy_in(
     Json(input): Json<RouletteBuyInRequest>,
 ) -> Result<Json<crate::roulette::RouletteView>, AppError> {
     let amount = input.amount.unwrap_or(crate::roulette::BUY_IN);
-    if !crate::money::valid_game_amount(amount) {
+    if !crate::roulette::BUY_INS.contains(&amount) {
         return Err(AppError::bad_request(
             "that is not a buy-in this table takes",
         ));
