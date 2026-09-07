@@ -159,11 +159,14 @@ function App() {
   return html`<div class="rl-table">
     <div class="rl-top">
       <div class="rl-readout" role="status">
-        ${spinning
-          ? html`<span class="rl-waiting">No more bets…</span>`
-          : shown
-            ? html`<${Result} spin=${shown} />`
-            : html`<span class="rl-waiting">Place your bets</span>`}
+        ${aimed
+          ? html`<span class="rl-aim"><b>${aimed.numbers.length > 6 ? `${aimed.numbers.length} numbers` : aimed.numbers.join(" · ")}</b>
+              <span>${aimed.label} · pays ${aimed.payout} to 1</span></span>`
+          : spinning
+            ? html`<span class="rl-waiting">No more bets…</span>`
+            : shown
+              ? html`<${Result} spin=${shown} />`
+              : html`<span class="rl-waiting rl-aim">Press the felt to aim, lift to place a chip</span>`}
       </div>
       <${Marquee} history=${table.history} />
     </div>
@@ -193,13 +196,6 @@ function App() {
       <span><b>${money(table.available)}</b> to bet</span>
       <button class="rl-cash-out" type="button" disabled=${busy || !seated || table.staked > 0}
         onClick=${() => act("cash-out", "/roulette/cash-out")}>Cash out</button>
-    </div>
-
-    <div class="rl-aim" role="status">
-      ${aimed
-        ? html`<b>${aimed.numbers.length > 6 ? `${aimed.numbers.length} numbers` : aimed.numbers.join(" · ")}</b>
-            <span>${aimed.label} · pays ${aimed.payout} to 1</span>`
-        : html`<span class="rl-empty">Press the felt to aim, lift to place a chip</span>`}
     </div>
 
     <div class="rl-tray" role="group" aria-label="Chips">

@@ -62,12 +62,12 @@
    touch so a thumb can slide onto a line. So the page is the viewport, and the
    felt is given whatever height the controls left: the rows are fractions, not
    millimetres, and the same board fits an SE and a Pro Max. */
-.page:has(.roulette-game){display:flex;flex-direction:column;gap:.5rem;height:100vh;overflow:hidden;padding-bottom:calc(.5rem + var(--safe-bottom))}
+.page:has(.roulette-game){display:flex;flex-direction:column;gap:.5rem;height:100vh;overflow:hidden;padding-bottom:calc(.35rem + var(--safe-bottom))}
 html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .page:has(.roulette-game) .site-header{flex:0 0 auto}
 .roulette-game{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .roulette-game>#roulette-app{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
-.rl-table{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto auto auto auto;gap:.35rem;flex:1 1 auto;min-height:0;max-width:32rem;width:100%;margin:0 auto}
+.rl-table{display:grid;grid-template-rows:auto minmax(0,1fr) auto auto auto;gap:.3rem;flex:1 1 auto;min-height:0;max-width:32rem;width:100%;margin:0 auto}
 /* One stage, two things that want it. The felt sets the height; the wheel is
    sized to whatever the felt left behind, so the swap never moves the controls
    under the player's thumb. */
@@ -78,8 +78,10 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .rl-felt{padding:0 .55rem}
 .rl-wheel{display:grid;place-items:center}
 .rl-wheel .roulette-canvas{width:100%;aspect-ratio:1/.72;max-height:100%}
-.rl-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.6rem}
-.rl-readout{display:flex;align-items:center;min-height:2.6rem}
+/* One status line. The aim, the spin and the result never want to be read at
+   the same moment, and a strip each costs the felt a row of squares. */
+.rl-top{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:2.3rem}
+.rl-readout{display:flex;align-items:center;min-height:2.3rem;min-width:0}
 .rl-waiting{color:var(--ink-faint);font-size:var(--text-small)}
 .rl-empty{margin:0;color:var(--ink-faint);font-size:var(--text-label)}
 .rl-result{display:flex;align-items:center;gap:.6rem}
@@ -98,7 +100,7 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .rl-marquee .red{background:var(--wheel-red,#b32219)}
 .rl-marquee .black{background:var(--wheel-black,#191b19)}
 .rl-marquee .green{background:var(--wheel-green,#0f6b45)}
-.rl-money{display:flex;align-items:center;justify-content:space-between;gap:.4rem;padding:.35rem .55rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);font-size:var(--text-label);color:var(--muted)}
+.rl-money{display:flex;align-items:center;justify-content:space-between;gap:.4rem;padding:.28rem .5rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);font-size:var(--text-label);color:var(--muted)}
 .rl-money b{display:block;color:var(--accent);font-size:var(--text-body);font-variant-numeric:tabular-nums}
 .rl-cash-out{height:1.9rem;padding:0 .5rem;font-size:var(--text-label)}
 
@@ -137,15 +139,15 @@ html:has(.roulette-game),body:has(.roulette-game){height:100vh;overflow:hidden}
 .rl-chip.at-corner-tr{left:100%;top:0}
 .rl-chip.at-corner-tl{left:0;top:0}
 
-.rl-aim{display:flex;align-items:center;justify-content:center;gap:.5rem;min-height:1.9rem;padding:.2rem .5rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);font-size:var(--text-label);color:var(--muted);text-align:center}
+.rl-aim{display:flex;align-items:baseline;gap:.4rem;font-size:var(--text-label);color:var(--muted)}
 .rl-aim b{color:var(--gold-hi);font-variant-numeric:tabular-nums}
 .rl-tray{display:flex;justify-content:center;gap:.35rem}
-.rl-chip-button{min-width:3.4rem;height:var(--control-h-compact);border-radius:var(--radius-chip);font-size:var(--text-small);font-variant-numeric:tabular-nums}
+.rl-chip-button{min-width:3.4rem;height:2.2rem;border-radius:var(--radius-chip);font-size:var(--text-small);font-variant-numeric:tabular-nums}
 .rl-chip-button.on{outline:2px solid var(--gold-hi);outline-offset:2px}
 /* The four housekeeping buttons share a row; the one that costs money gets
    its own, at the bottom, where a thumb rests. */
 .rl-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem}
-.rl-actions button{height:var(--control-h-compact);padding:0 .3rem;font-size:var(--text-small)}
+.rl-actions button{height:2.2rem;padding:0 .3rem;font-size:var(--text-small)}
 .rl-spin{height:var(--control-h-primary);width:100%;font-size:var(--text-action)}
 .rl-buy-in{display:grid;gap:.5rem;justify-items:center;padding:1rem;border:1px solid var(--line-1);border-radius:var(--radius-control);background:var(--surface-deep-60);text-align:center}
 .rl-buy-in p{margin:0;color:var(--muted);font-size:var(--text-small)}

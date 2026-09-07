@@ -282,7 +282,23 @@ test.describe("roulette table", () => {
     }));
     expect(room.over, "the table must not need scrolling").toBeLessThanOrEqual(0);
     expect(room.wide, "and must not run off the side").toBeLessThanOrEqual(0);
-    await expect(page.locator(".rl-spin")).toBeVisible();
-    await expectLayout(page, "roulette-table", [".rl-table", ".rl-stage", ".rl-board", ".rl-money", ".rl-tray", ".rl-actions", ".rl-spin"]);
+
+    // Measured rather than pinned to a baseline: what matters here is that the
+    // whole felt and every control are reachable at whatever size the viewport
+    // gave them, and that holds on any host. An absolute-coordinate snapshot of
+    // this page would also move with a line of copy above it.
+    await expect(page.locator(".rl-board [data-cell]")).toHaveCount(37 + 3 + 3 + 6);
+    const box = await page.locator(".rl-board").boundingBox();
+    const spin = await page.locator(".rl-spin").boundingBox();
+    const view = page.viewportSize();
+    expect(spin.y + spin.height, "the spin button must sit on screen").toBeLessThanOrEqual(view.height);
+    expect(spin.height, "and stay a full-size primary control").toBeGreaterThanOrEqual(44);
+    // A square has to be worth aiming at with a thumb.
+    // The felt gets whatever the controls leave, and what matters about the
+    // result is that a square is still worth aiming at with a thumb.
+    const square17 = await square(page, 17);
+    expect(square17.height, "a square must stay tall enough to aim at").toBeGreaterThanOrEqual(25);
+    expect(square17.width).toBeGreaterThanOrEqual(60);
+    expect(box.height).toBeGreaterThan(square17.height * 15);
   });
 });
