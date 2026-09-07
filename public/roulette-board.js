@@ -13,7 +13,19 @@
  * own; `everyBet` below walks every zone of every cell so a drift between the
  * two shows up as a test failure rather than as a refused chip.
  */
-import { html } from "/public/vendor/htm-preact.js";
+import { html, useEffect, useState } from "/public/vendor/htm-preact.js";
+
+/**
+ * Where the board is wide enough to lay out the way a croupier's is: twelve
+ * columns of three, running across, with the zero at the left end. Narrower
+ * than this and the same board is turned a quarter turn, because twelve columns
+ * across a phone gives each number about thirty pixels.
+ *
+ * The query lives here rather than in the stylesheet so there is one answer:
+ * this decides, the board wears the class, and the CSS follows. A breakpoint
+ * written twice is a breakpoint that will disagree with itself.
+ */
+export const ACROSS = "(min-width: 56rem)";
 
 export const ROWS = 12;
 export const COLUMNS = 3;
@@ -145,11 +157,11 @@ export const DOZENS = [
    low over high, even over odd, red over black. Each column is then one
    proposition and its opposite, which is how they are read anyway. */
 export const EVENS = [
-  { id: "low", label: "1–18" },
-  { id: "even", label: "Even" },
+  { id: "low", label: "1 to 18" },
+  { id: "even", label: "EVEN" },
   { id: "red", label: "Red", swatch: "red" },
-  { id: "high", label: "19–36" },
-  { id: "odd", label: "Odd" },
+  { id: "high", label: "19 to 36" },
+  { id: "odd", label: "ODD" },
   { id: "black", label: "Black", swatch: "black" },
 ];
 export const COLUMN_BETS = [
@@ -157,6 +169,14 @@ export const COLUMN_BETS = [
   { id: "column:2", label: "2 to 1" },
   { id: "column:3", label: "2 to 1" },
 ];
+
+/**
+ * Where each even-money bet starts when the board runs across. The array above
+ * is ordered to pair down the columns of the turned board -- low over high,
+ * even over odd, red over black -- and a croupier's felt runs them in a single
+ * row, so the across layout places them by name rather than by index.
+ */
+const EVENS_ACROSS = [2, 4, 6, 12, 10, 8];
 
 const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 export function pocketColour(n) {
@@ -198,6 +218,22 @@ export function anchorOf(id) {
   }
 }
 
+/** Whether the board is laid out across, kept in step with the media query. */
+function useAcross() {
+  const [across, setAcross] = useState(
+    () => window.matchMedia?.(ACROSS).matches ?? false,
+  );
+  useEffect(() => {
+    const query = window.matchMedia?.(ACROSS);
+    if (!query) return;
+    const sync = () => setAcross(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+  return across;
+}
+
 function Chip({ amount, place, money }) {
   if (!amount) return null;
   // One disc carrying the total, rather than a pile: at this size a stack of
@@ -211,6 +247,7 @@ function Chip({ amount, place, money }) {
  * caller so this stays a drawing of state rather than a holder of it.
  */
 export function Board({ aim, spots, lit, winner, money, onAim, onPlace, onCancel }) {
+  const across = useAcross();
   const staked = new Map(spots.map((spot) => [spot.bet, spot.amount]));
   const glow = new Set(lit || []);
   // Chips that ride a line belong to the cell they are anchored against, so
@@ -242,11 +279,15 @@ export function Board({ aim, spots, lit, winner, money, onAim, onPlace, onCancel
     // under the finger is taken as the truth and the fraction is pulled in.
     const fx = grip(event.clientX - box.left, box.width);
     const fy = grip(event.clientY - box.top, box.height);
+    // Laid out across, the board is the same board turned a quarter turn: down
+    // the screen is a *falling* column index and rightwards is a rising row.
+    // Turning the touch back the same way is all `betAt` needs to be told.
+    const [ax, ay] = across ? [1 - fy, fx] : [fx, fy];
     const at = cell.dataset.cell;
-    if (at === "zero") return betAtZero(fx, fy);
+    if (at === "zero") return betAtZero(ax, ay);
     if (at.includes(",")) {
       const [row, column] = at.split(",").map(Number);
-      return betAt(row, column, fx, fy);
+      return betAt(row, column, ax, ay);
     }
     return at;
   };
@@ -265,7 +306,7 @@ export function Board({ aim, spots, lit, winner, money, onAim, onPlace, onCancel
     onCancel();
   };
 
-  return html`<div class="rl-board"
+  return html`<div class=${`rl-board ${across ? "across" : ""}`}
     onPointerDown=${pointer} onPointerMove=${pointer} onPointerUp=${release}
     onPointerCancel=${onCancel} onPointerLeave=${(event) => event.pointerType === "mouse" && onCancel()}>
     <div class=${`rl-zero ${winner === 0 ? "winner" : ""} ${glow.has(0) ? "lit" : ""}`} data-cell="zero">
@@ -276,7 +317,7 @@ export function Board({ aim, spots, lit, winner, money, onAim, onPlace, onCancel
         const n = number(row, column);
         return html`<div key=${n}
           class=${`rl-cell ${pocketColour(n)} ${glow.has(n) ? "lit" : ""} ${winner === n ? "winner" : ""}`}
-          style=${`grid-area:${row + 2}/${column + 1}`}
+          style=${`--pr:${row + 2};--pc:${column + 1}`}
           data-cell=${`${row},${column}`}>
           <span>${n}</span>
           <${Chip} amount=${staked.get(straight(n))} place="spot" money=${money} />
@@ -287,23 +328,23 @@ export function Board({ aim, spots, lit, winner, money, onAim, onPlace, onCancel
     ${DOZENS.map(
       (dozen, index) => html`<div key=${dozen.id}
         class=${`rl-outside rl-dozen ${aim === dozen.id ? "aiming" : ""}`}
-        style=${`grid-area:${2 + index * 4}/4/${6 + index * 4}/5`}
+        style=${`--dz:${index}`}
         data-cell=${dozen.id}>
         <span>${dozen.label}</span><${Chip} amount=${staked.get(dozen.id)} place="spot" money=${money} />
       </div>`,
     )}
     ${COLUMN_BETS.map(
       (bet, index) => html`<div key=${bet.id}
-        class=${`rl-outside ${aim === bet.id ? "aiming" : ""}`}
-        style=${`grid-area:14/${index + 1}`}
+        class=${`rl-outside rl-column ${aim === bet.id ? "aiming" : ""}`}
+        style=${`--cb:${index}`}
         data-cell=${bet.id}>
         <span>${bet.label}</span><${Chip} amount=${staked.get(bet.id)} place="spot" money=${money} />
       </div>`,
     )}
     ${EVENS.map(
       (bet, index) => html`<div key=${bet.id}
-        class=${`rl-outside ${bet.swatch ? `rl-swatch ${bet.swatch}` : ""} ${aim === bet.id ? "aiming" : ""}`}
-        style=${`grid-area:${15 + Math.floor(index / 3)}/${(index % 3) + 1}`}
+        class=${`rl-outside rl-even ${bet.swatch ? `rl-swatch ${bet.swatch}` : ""} ${aim === bet.id ? "aiming" : ""}`}
+        style=${`--er:${15 + Math.floor(index / 3)};--ec:${(index % 3) + 1};--lc:${EVENS_ACROSS[index]}`}
         data-cell=${bet.id}>
         <span>${bet.label}</span><${Chip} amount=${staked.get(bet.id)} place="spot" money=${money} />
       </div>`,

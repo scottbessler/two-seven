@@ -670,7 +670,16 @@ Mark each milestone done here as it lands.
 - **V70** The roulette table needs no scrolling on the phone it is played on:
   the board takes every touch so a thumb can slide onto a line, so nothing may
   sit off screen. The felt is sized in fractions of the height the controls
-  leave, and the wheel and the felt share one stage rather than stacking.
+  leave, and the wheel and the felt share one stage rather than stacking. It
+  also holds still: the aim, the spin and the result share one status line of
+  fixed height, because a row that grows by a line shrinks every square on the
+  board under the thumb aiming at it.
+- **V71** The felt is one board in two orientations. Given the width for twelve
+  columns it is laid out the way a croupier's is — the zero at the left end,
+  the dozens beneath the numbers they cover, the column bets at the far end —
+  and below that width the same board is turned a quarter turn. A press names
+  the same bet in either, because the touch is turned with the board rather
+  than the board having two sets of rules.
 - **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
   fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
   board then owns the full stage width (no side rails) and all-in odds become
@@ -753,7 +762,7 @@ T48|x|make overlapping emotes keep their paths and finish fading before removal|
 T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart points, bank writes, abandoned tournaments, payload logging|V64
 T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
 T51|x|add Omaha alongside Hold'em: variant-aware deal and showdown, a ladder per game, and a directory of games at the front door|V67
-T52|x|roulette: wheel, felt and betting|V68,V69,V70
+T52|x|roulette: wheel, felt and betting|V68,V69,V70,V71
 
 ## §B Bug log
 

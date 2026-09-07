@@ -366,6 +366,10 @@ export function createWheel(canvas, options = {}) {
   }
 
   function draw(now) {
+    // Nothing is built until the canvas has a size, and it has none while the
+    // felt has the stage. The loop keeps running -- it is what notices the
+    // wheel coming back -- so it has to be able to do nothing.
+    if (!bowl || !rotor) return;
     const time = elapsed(now);
     const wheelRadius = WHEEL.rim * unit;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

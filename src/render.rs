@@ -170,12 +170,19 @@ pub fn home_directory(name: &str, games: &[DirectoryGame]) -> String {
         })
         .collect::<String>();
     let others = format!(
-        "{}{}",
+        "{}{}{}",
         game_card(
             "/blackjack",
             "Blackjack",
             "Beat the dealer to twenty-one.",
             "Four shared tables",
+            "",
+        ),
+        game_card(
+            "/roulette",
+            "Roulette",
+            "Back a number, or half the wheel, and watch the ball.",
+            "Single-zero wheel",
             "",
         ),
         game_card(

@@ -93,6 +93,13 @@ Toolchain: Rust 1.90+ (edition 2024), bun 1.3.13, node 22 — see `.mise.toml`.
   e2e walks every zone of every square against the catalogue, which is what
   keeps the two boards one board. Chips on the felt are a claim on the stack
   rather than a withdrawal, so a table is always worth exactly `stack`.
+- The felt has two orientations and one set of rules. `ACROSS` in
+  `roulette-board.js` decides which — the query lives there, not in the
+  stylesheet, so the board wears a class and the CSS follows rather than a
+  breakpoint being written twice and disagreeing with itself. Cells are placed
+  from `--pr`/`--pc` custom properties rather than an inline `grid-area`, which
+  is what lets one class transpose the whole board; `betAt` is told the touch
+  turned the same way (`[1 - fy, fx]`) rather than learning a second layout.
 - The wheel itself is a motion study first: `roulette-spin.js` is pure
   and simulates the ball honestly, then turns the *rotor* so the pocket it
   happened to land in carries the number that was asked for -- fret geometry

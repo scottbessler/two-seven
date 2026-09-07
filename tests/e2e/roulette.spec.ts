@@ -175,10 +175,20 @@ async function square(page, n: number) {
   return box;
 }
 
-/** Press at a fraction of a square and lift, which is how a chip is placed. */
+/**
+ * Press at a fraction of a square and lift, which is how a chip is placed.
+ *
+ * The fractions are the *board's* — across the columns and down the rows of the
+ * layout as the felt describes it. A wide screen lays that board out a quarter
+ * turn round, so the press is turned with it. Every test below therefore names
+ * one bet and asserts it in both orientations, which is the property that
+ * matters: the same place on the felt is the same bet whichever way it is hung.
+ */
 async function drop(page, n: number, fx: number, fy: number) {
   const box = await square(page, n);
-  await page.mouse.move(box.x + box.width * fx, box.y + box.height * fy);
+  const across = (await page.locator(".rl-board.across").count()) > 0;
+  const [sx, sy] = across ? [fy, 1 - fx] : [fx, fy];
+  await page.mouse.move(box.x + box.width * sx, box.y + box.height * sy);
   const aim = (await page.locator(".rl-aim").innerText()).replaceAll("\n", " ");
   await page.mouse.down();
   await page.mouse.up();
@@ -272,6 +282,59 @@ test.describe("roulette table", () => {
     await expect(page.locator(".rl-money")).toContainText("$5.00");
   });
 
+  test("the felt is laid out the way the screen has room for", async ({ page }) => {
+    await sitDown(page);
+    const wide = page.viewportSize().width >= 56 * 16;
+    const across = (await page.locator(".rl-board.across").count()) > 0;
+    expect(across, "a croupier's layout needs the width for twelve columns").toBe(wide);
+    // Either way it is the same board: the zero, thirty-six numbers, three
+    // dozens, three column bets and the six even-money spots.
+    await expect(page.locator(".rl-board [data-cell]")).toHaveCount(37 + 3 + 3 + 6);
+    const one = await square(page, 1);
+    const two = await square(page, 2);
+    const four = await square(page, 4);
+    if (across) {
+      // 1, 2, 3 climb the left-hand column; 1 and 4 sit side by side.
+      expect(two.y).toBeLessThan(one.y);
+      expect(four.x).toBeGreaterThan(one.x);
+      expect(Math.round(four.y)).toBe(Math.round(one.y));
+    } else {
+      expect(two.x).toBeGreaterThan(one.x);
+      expect(four.y).toBeGreaterThan(one.y);
+      expect(Math.round(four.x)).toBe(Math.round(one.x));
+    }
+  });
+
+  test("the table holds still while you aim at it", async ({ page }) => {
+    await sitDown(page);
+    // The felt is sized from whatever the row above it leaves, so a status line
+    // that grows by a line shrinks every square on the board -- which reads as
+    // the table twitching under the thumb that is trying to aim at it.
+    const height = async () => (await page.locator(".rl-board").boundingBox()).height;
+    const settled = await height();
+    const seen = [settled];
+    // Aiming is a sequence of pointer moves; they cannot be raced.
+    /* oxlint-disable no-await-in-loop */
+    for (const [n, fx, fy] of [[17, 0.5, 0.5], [31, 0.02, 0.98], [25, 0.98, 0.98]] as const) {
+      const box = await square(page, n);
+      const across = (await page.locator(".rl-board.across").count()) > 0;
+      const [sx, sy] = across ? [fy, 1 - fx] : [fx, fy];
+      await page.mouse.move(box.x + box.width * sx, box.y + box.height * sy);
+      seen.push(await height());
+    }
+    /* oxlint-enable no-await-in-loop */
+    await page.mouse.move(2, 2);
+    seen.push(await height());
+    expect(Math.max(...seen) - Math.min(...seen), "the board must not resize as you aim").toBe(0);
+
+    // Nor when a result lands and the marquee gains a number.
+    await page.locator('[data-cell="red"]').click();
+    await page.getByRole("button", { name: "Spin", exact: true }).click();
+    await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
+    await page.waitForTimeout(2800);
+    expect(await height(), "nor when a spin settles").toBe(settled);
+  });
+
   test("the table fits the phone it is played on", async ({ page }) => {
     await sitDown(page);
     // The board takes every touch so a thumb can slide onto a line, which means
@@ -295,10 +358,15 @@ test.describe("roulette table", () => {
     expect(spin.height, "and stay a full-size primary control").toBeGreaterThanOrEqual(44);
     // A square has to be worth aiming at with a thumb.
     // The felt gets whatever the controls leave, and what matters about the
-    // result is that a square is still worth aiming at with a thumb.
+    // result is that a square is still worth aiming at with a thumb -- which is
+    // the same requirement whichever way the board is hung, and the reason the
+    // rows are fractions of the space rather than a fixed size.
     const square17 = await square(page, 17);
     expect(square17.height, "a square must stay tall enough to aim at").toBeGreaterThanOrEqual(25);
-    expect(square17.width).toBeGreaterThanOrEqual(60);
-    expect(box.height).toBeGreaterThan(square17.height * 15);
+    expect(square17.width, "and wide enough").toBeGreaterThanOrEqual(60);
+    // Against the room it is given rather than the viewport: the table is
+    // capped, because a board two thousand pixels across is not a nicer board.
+    const stage = await page.locator(".rl-felt").boundingBox();
+    expect(box.width, "the felt should take the width it is given").toBeGreaterThan(stage.width * 0.9);
   });
 });
