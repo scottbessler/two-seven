@@ -1,16 +1,63 @@
+//! Blackjack, played alone against the house.
+//!
+//! One game per player: your own shoe, your own dealer, and nobody to wait for.
+//! That is the whole shape of this module, and most of what it buys is what is
+//! *absent* — there are no seats to index, no round the table, no betting clock
+//! and no turn clock, because a clock only exists to stop one player holding up
+//! another. Every action is answered by the request that made it.
+//!
+//! Sitting down is the one thing that costs money up front. A player chooses
+//! the most they want to be able to bet, and buys in for ten times it; from
+//! then on the game moves chips between that stack and the house and the bank
+//! is not touched again until they get up. So a seated player's stack is the
+//! only money this module can win or lose for them, which is what keeps the
+//! chip conservation in SPEC §V1 to one number per player.
+
 use crate::{
     cards::{Card, Deck},
     money::Cents,
 };
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::sync::{Mutex, broadcast};
+use tokio::sync::Mutex;
 use uuid::Uuid;
+
+/// The rungs the max-bet slider stops on: a 1-2-5 ladder from $100 to
+/// $100,000. A slider that ran continuously would offer a $1,337 ceiling;
+/// these are the numbers a table would actually print, and every one of them
+/// divides into four whole-dollar wagers.
+pub const MAX_BETS: [Cents; 10] = [
+    10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000,
+];
+
+/// Ten times the ceiling: enough to lose four maximum bets and still have a
+/// table's worth of chips in front of you.
+pub fn buy_in_for(max_bet: Cents) -> Cents {
+    max_bet * 10
+}
+
+/// The only wagers a game offers, in quarter steps of its ceiling.
+pub fn bet_options(max_bet: Cents) -> [Cents; 4] {
+    [max_bet / 4, max_bet / 2, max_bet * 3 / 4, max_bet]
+}
+
+/// The rungs a balance can afford to sit down on, so the slider cannot be
+/// dragged past what the player has.
+pub fn affordable_max_bets(balance: Cents) -> Vec<Cents> {
+    MAX_BETS
+        .into_iter()
+        .filter(|max_bet| buy_in_for(*max_bet) <= balance)
+        .collect()
+}
+
+const MAX_HANDS: usize = 4;
+const SAFE_RESERVE_CARDS: usize = 20;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct BlackjackHandView {
@@ -79,13 +126,6 @@ pub enum BlackjackHandStatus {
     Blackjack,
 }
 
-#[derive(Clone)]
-pub struct BlackjackStore {
-    tables: Arc<Mutex<Vec<BlackjackTable>>>,
-    tables_path: Option<PathBuf>,
-    changed: broadcast::Sender<Uuid>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BlackjackHand {
     pub cards: Vec<Card>,
@@ -116,29 +156,13 @@ pub struct BlackjackDecision {
     pub recommended: Action,
 }
 
-const MAX_HANDS: usize = 4;
-const SAFE_RESERVE_CARDS: usize = 20;
-
-impl Default for BlackjackStore {
-    fn default() -> Self {
-        let (changed, _) = broadcast::channel(32);
-        Self {
-            tables: Arc::new(Mutex::new(
-                (0..TIER_MAX_BETS.len()).map(BlackjackTable::new).collect(),
-            )),
-            tables_path: None,
-            changed,
-        }
-    }
-}
-
 fn cut_card(total_cards: usize, penetration_percent: u8) -> usize {
     let maximum_cut = total_cards.saturating_sub(SAFE_RESERVE_CARDS);
     ((total_cards * usize::from(penetration_percent) + 50) / 100).clamp(4, maximum_cut.max(4))
 }
 
 impl BlackjackShoe {
-    pub fn table_default() -> Self {
+    pub fn fresh() -> Self {
         let decks = 8;
         let total_cards = usize::from(decks) * 52;
         Self {
@@ -291,25 +315,19 @@ fn recommended_action(dealer: &[Card], hand: &BlackjackHand, action: Action) -> 
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BlackjackError {
-    NotFound,
-    Finished,
-    ActiveGame,
-    IllegalAction(&'static str),
-}
 pub fn score(cards: &[Card]) -> (u8, bool) {
     let mut total = 0;
     let mut aces = 0;
     for c in cards {
-        total += match c.rank as u8 {
+        let v = match c.rank as u8 {
             14 => {
                 aces += 1;
                 11
             }
-            11..=13 => 10,
-            value => value,
+            r if r >= 10 => 10,
+            r => r,
         };
+        total += v;
     }
     while total > 21 && aces > 0 {
         total -= 10;
@@ -317,27 +335,24 @@ pub fn score(cards: &[Card]) -> (u8, bool) {
     }
     (total, aces > 0)
 }
-pub const TIER_MAX_BETS: [Cents; 4] = [10_000, 100_000, 1_000_000, 10_000_000];
-pub const TABLE_IDS: [Uuid; 4] = [
-    Uuid::from_u128(0x2a7b1a5e_0000_4b00_8000_000000000001),
-    Uuid::from_u128(0x2a7b1a5e_0000_4b00_8000_000000000002),
-    Uuid::from_u128(0x2a7b1a5e_0000_4b00_8000_000000000003),
-    Uuid::from_u128(0x2a7b1a5e_0000_4b00_8000_000000000004),
-];
-pub const SEAT_COUNT: usize = 5;
-pub const TURN_SECONDS: i64 = crate::table::TURN_SECONDS;
-pub const RESULT_PAUSE_SECONDS: i64 = 5;
 
-pub fn buy_in_for(max_bet: Cents) -> Cents {
-    max_bet * 10
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlackjackError {
+    NotFound,
+    Finished,
+    ActiveGame,
+    IllegalAction(&'static str),
 }
 
-pub fn bet_options(max_bet: Cents) -> [Cents; 4] {
-    [max_bet / 4, max_bet / 2, max_bet * 3 / 4, max_bet]
-}
-
-pub fn table_id(tier: usize) -> Uuid {
-    TABLE_IDS[tier]
+impl BlackjackError {
+    pub const fn message(self) -> &'static str {
+        match self {
+            BlackjackError::NotFound => "you are not sitting at a blackjack table",
+            BlackjackError::Finished => "that hand is over",
+            BlackjackError::ActiveGame => "finish the hand you are playing first",
+            BlackjackError::IllegalAction(message) => message,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -349,58 +364,62 @@ pub enum Phase {
     Settled,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BlackjackSeat {
+/// What one round did, on its way to the stats store.
+#[derive(Clone, Debug)]
+pub struct BlackjackSettlement {
     pub user: Uuid,
+    pub net: Cents,
+    pub outcome: crate::blackjack_stats::RoundOutcome,
+}
+
+/// One player's whole blackjack world: their shoe, their dealer, their stack.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlackjackGame {
+    pub id: Uuid,
+    pub user: Uuid,
+    pub max_bet: Cents,
     pub stack: Cents,
     pub bet: Option<Cents>,
     pub hands: Vec<BlackjackHand>,
     pub insurance: Cents,
     pub insurance_decided: bool,
-    pub leaving: bool,
-    pub settings: BlackjackTrainerSettings,
-    pub decisions: Vec<BlackjackDecision>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BlackjackTable {
-    pub id: Uuid,
-    pub tier: usize,
-    pub max_bet: Cents,
-    pub seats: Vec<Option<BlackjackSeat>>,
     pub shoe: BlackjackShoe,
     pub phase: Phase,
     pub dealer: Vec<Card>,
     pub dealer_peeked: bool,
-    pub current: Option<(usize, usize)>,
-    pub deadline: Option<DateTime<Utc>>,
+    pub current: Option<usize>,
     pub round_no: u64,
-    pub last_results: Vec<(usize, Cents, String)>,
+    #[serde(default)]
+    pub last_result: Option<String>,
+    pub settings: BlackjackTrainerSettings,
+    pub decisions: Vec<BlackjackDecision>,
     pub updated_at: DateTime<Utc>,
 }
 
+/// Everything the page draws, for a player who is sitting or one who is not.
 #[derive(Clone, Debug, Serialize)]
-pub struct BlackjackTableView {
-    pub id: Uuid,
-    pub tier: usize,
+pub struct BlackjackView {
+    pub seated: bool,
+    pub id: Option<Uuid>,
+    pub bank_balance: Cents,
+    /// Every rung the slider has, and the ones this balance can afford.
+    pub max_bets: Vec<Cents>,
+    pub affordable_max_bets: Vec<Cents>,
     pub max_bet: Cents,
     pub buy_in: Cents,
-    pub bet_options: [Cents; 4],
+    pub bet_options: Vec<Cents>,
     pub min_bet: Cents,
-    pub seat_count: usize,
     pub phase: Phase,
+    pub stack: Cents,
+    pub bet: Option<Cents>,
+    pub insurance: Cents,
+    pub hands: Vec<BlackjackHandView>,
+    pub current_hand: Option<usize>,
     pub dealer: Vec<Card>,
     pub dealer_hidden: bool,
     pub dealer_score: Option<u8>,
-    pub current_seat: Option<usize>,
-    pub current_hand: Option<usize>,
-    pub deadline: Option<DateTime<Utc>>,
-    pub turn_seconds: i64,
-    pub result_pause_seconds: i64,
-    pub seats: Vec<BlackjackSeatView>,
-    pub viewer_seat: Option<usize>,
-    pub bank_balance: Cents,
-    pub can_join: bool,
+    pub result: Option<String>,
+    pub can_sit: bool,
     pub can_leave: bool,
     pub can_rebuy: bool,
     pub can_bet: bool,
@@ -411,24 +430,10 @@ pub struct BlackjackTableView {
     pub can_double: bool,
     pub can_split: bool,
     pub message: String,
-    pub shoe: BlackjackShoeView,
+    pub shoe: Option<BlackjackShoeView>,
     pub trainer: Option<BlackjackTrainerView>,
+    pub settings: BlackjackTrainerSettings,
     pub fresh_shuffle: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct BlackjackSeatView {
-    pub index: usize,
-    pub user: Uuid,
-    pub display_name: String,
-    pub stack: Cents,
-    pub bet: Option<Cents>,
-    pub insurance: Cents,
-    pub leaving: bool,
-    pub hands: Vec<BlackjackHandView>,
-    pub is_viewer: bool,
-    pub result: Option<String>,
-    pub waiting: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -439,347 +444,206 @@ pub struct BlackjackTrainerView {
     pub quiz: Option<BlackjackCountQuiz>,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct BlackjackLobbyView {
-    pub tier: usize,
-    pub id: Uuid,
-    pub max_bet: Cents,
-    pub buy_in: Cents,
-    pub occupied: usize,
-    pub seat_count: usize,
-    pub your_seat: Option<usize>,
+/// What the player may do right now: hit, stand, double, split.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ActionFlags {
+    pub hit: bool,
+    pub stand: bool,
+    pub double: bool,
+    pub split: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct BlackjackSettlement {
-    pub user: Uuid,
-    pub net: Cents,
-    pub outcome: crate::blackjack_stats::RoundOutcome,
-}
-
-impl BlackjackTable {
-    pub fn bet_options(max_bet: Cents) -> [Cents; 4] {
-        bet_options(max_bet)
-    }
-
-    pub fn new(tier: usize) -> Self {
-        let max_bet = TIER_MAX_BETS.get(tier).copied().unwrap_or(TIER_MAX_BETS[0]);
+impl BlackjackGame {
+    pub fn new(id: Uuid, user: Uuid, max_bet: Cents, stack: Cents) -> Self {
         Self {
-            id: table_id(tier),
-            tier,
+            id,
+            user,
             max_bet,
-            seats: vec![None; SEAT_COUNT],
-            shoe: BlackjackShoe::table_default(),
+            stack,
+            bet: None,
+            hands: Vec::new(),
+            insurance: 0,
+            insurance_decided: false,
+            shoe: BlackjackShoe::fresh(),
             phase: Phase::Betting,
             dealer: Vec::new(),
             dealer_peeked: false,
             current: None,
-            deadline: None,
             round_no: 0,
-            last_results: Vec::new(),
+            last_result: None,
+            settings: BlackjackTrainerSettings::default(),
+            decisions: Vec::new(),
             updated_at: Utc::now(),
         }
     }
 
-    pub fn humans_in_play(&self) -> usize {
-        self.seats
-            .iter()
-            .filter(|seat| seat.as_ref().is_some_and(|seat| !seat.leaving))
-            .count()
+    /// True while chips are committed to the felt — the one time leaving or
+    /// rebuying has to wait.
+    pub fn in_round(&self) -> bool {
+        self.bet.is_some()
     }
 
-    pub fn seat_of(&self, user: Uuid) -> Option<usize> {
-        self.seats
-            .iter()
-            .position(|seat| seat.as_ref().is_some_and(|seat| seat.user == user))
-    }
-
-    fn round_seats(&self) -> Vec<usize> {
-        self.seats
-            .iter()
-            .enumerate()
-            .filter_map(|(index, seat)| {
-                seat.as_ref()
-                    .filter(|seat| seat.bet.is_some())
-                    .map(|_| index)
-            })
-            .collect()
-    }
-
-    fn finish_pause(&mut self, now: DateTime<Utc>, force: bool) {
-        if self.phase == Phase::Settled && (force || self.deadline.is_some_and(|at| at <= now)) {
-            self.phase = Phase::Betting;
-            self.deadline = None;
-            self.last_results.clear();
-            self.dealer.clear();
-            self.dealer_peeked = false;
-            self.current = None;
-            for seat in self.seats.iter_mut().flatten() {
-                seat.hands.clear();
-                seat.insurance = 0;
-                seat.insurance_decided = false;
-                seat.decisions.clear();
-            }
-        }
+    /// Clears a settled round off the felt. Nothing is on a clock here, so the
+    /// last hand stays visible until the player asks for another.
+    fn clear_round(&mut self) {
+        self.phase = Phase::Betting;
+        self.last_result = None;
+        self.dealer.clear();
+        self.dealer_peeked = false;
+        self.current = None;
+        self.hands.clear();
+        self.insurance = 0;
+        self.insurance_decided = false;
+        self.decisions.clear();
     }
 
     pub fn place_bet(
         &mut self,
-        user: Uuid,
         amount: Cents,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        self.updated_at = now;
-        let seat_index = self.seat_of(user).ok_or(BlackjackError::NotFound)?;
-        self.finish_pause(now, true);
+    ) -> Result<Option<BlackjackSettlement>, BlackjackError> {
+        if self.phase == Phase::Settled {
+            self.clear_round();
+        }
         if self.phase != Phase::Betting {
             return Err(BlackjackError::IllegalAction("betting is closed"));
         }
         if !bet_options(self.max_bet).contains(&amount) {
             return Err(BlackjackError::IllegalAction("that wager is not offered"));
         }
-        let seat = self.seats[seat_index].as_mut().expect("seat");
-        if seat.bet.is_some() {
+        if self.bet.is_some() {
             return Err(BlackjackError::IllegalAction("you already placed a bet"));
         }
-        if seat.stack < amount {
+        if self.stack < amount {
             return Err(BlackjackError::IllegalAction("insufficient table chips"));
         }
-        seat.stack -= amount;
-        seat.bet = Some(amount);
-        let active = self.humans_in_play();
-        if active < 2
-            || self
-                .seats
-                .iter()
-                .enumerate()
-                .filter(|(_, seat)| seat.as_ref().is_some_and(|seat| !seat.leaving))
-                .all(|(_, seat)| seat.as_ref().is_some_and(|seat| seat.bet.is_some()))
-        {
-            return self.deal(now);
-        }
-        if self.deadline.is_none() {
-            self.deadline = Some(now + Duration::seconds(TURN_SECONDS));
-        }
-        Ok(Vec::new())
+        self.stack -= amount;
+        self.bet = Some(amount);
+        self.deal()
     }
 
-    pub fn deal(&mut self, now: DateTime<Utc>) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        self.updated_at = now;
-        if self.phase != Phase::Betting {
-            return Err(BlackjackError::IllegalAction("cannot deal now"));
-        }
+    fn deal(&mut self) -> Result<Option<BlackjackSettlement>, BlackjackError> {
+        let bet = self
+            .bet
+            .ok_or(BlackjackError::IllegalAction("place a bet first"))?;
         self.shoe.fresh_shuffle = false;
-        self.deadline = None;
-        let seats = self.round_seats();
-        if seats.is_empty() {
-            self.deadline = None;
-            return Ok(Vec::new());
-        }
         self.round_no += 1;
         self.shoe.hands_dealt += 1;
         self.dealer.clear();
         self.dealer_peeked = false;
         self.current = None;
-        self.deadline = None;
-        for index in &seats {
-            let first = self.draw();
-            let second = self.draw();
-            let seat = self.seats[*index].as_mut().expect("seat");
-            seat.hands.clear();
-            seat.insurance = 0;
-            seat.insurance_decided = false;
-            seat.decisions.clear();
-            let cards = vec![first, second];
-            let natural = score(&cards).0 == 21;
-            seat.hands.push(BlackjackHand {
-                cards,
-                bet: seat.bet.expect("round bet"),
-                status: if natural {
-                    BlackjackHandStatus::Blackjack
-                } else {
-                    BlackjackHandStatus::Playing
-                },
-                split: false,
-                split_aces: false,
-                doubled: false,
-            });
-        }
+        self.hands.clear();
+        self.insurance = 0;
+        self.insurance_decided = false;
+        self.decisions.clear();
+        self.last_result = None;
+        let first = self.draw();
+        let second = self.draw();
+        let cards = vec![first, second];
+        let natural = score(&cards).0 == 21;
+        self.hands.push(BlackjackHand {
+            cards,
+            bet,
+            status: if natural {
+                BlackjackHandStatus::Blackjack
+            } else {
+                BlackjackHandStatus::Playing
+            },
+            split: false,
+            split_aces: false,
+            doubled: false,
+        });
         let dealer_up = self.draw();
         let dealer_hole = self.draw();
         self.dealer.push(dealer_up);
         self.dealer.push(dealer_hole);
-        if self.dealer[0].rank as u8 == 14
-            && seats.iter().any(|index| {
-                let seat = self.seats[*index].as_ref().expect("seat");
-                seat.hands
-                    .first()
-                    .is_some_and(|hand| seat.stack >= hand.bet / 2)
-            })
-        {
+        if self.dealer[0].rank as u8 == 14 && self.stack >= bet / 2 {
             self.phase = Phase::Insurance;
-            for index in seats {
-                let seat = self.seats[index].as_mut().expect("seat");
-                seat.insurance_decided = seat.stack < seat.bet.expect("bet") / 2;
-            }
-            if self
-                .round_seats()
-                .iter()
-                .all(|index| self.seats[*index].as_ref().expect("seat").insurance_decided)
-            {
-                return self.peek(now);
-            }
-            if self.round_seats().len() >= 2 {
-                self.deadline = Some(now + Duration::seconds(TURN_SECONDS));
-            }
-            return Ok(Vec::new());
+            return Ok(None);
         }
-        self.peek(now)
+        self.peek()
     }
 
     fn draw(&mut self) -> Card {
         if self.shoe.deck.dealt() >= self.shoe.cut_card {
-            self.shoe = BlackjackShoe::table_default();
+            self.shoe = BlackjackShoe::fresh();
             self.shoe.fresh_shuffle = true;
         }
         self.shoe.deck.deal().expect("fresh blackjack shoe")
     }
 
-    pub fn insure(
-        &mut self,
-        user: Uuid,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        self.updated_at = now;
-        let index = self.seat_of(user).ok_or(BlackjackError::NotFound)?;
+    pub fn insure(&mut self) -> Result<Option<BlackjackSettlement>, BlackjackError> {
         if self.phase != Phase::Insurance {
             return Err(BlackjackError::IllegalAction("insurance is not available"));
         }
-        let seat = self.seats[index].as_mut().expect("seat");
-        let amount = seat.bet.expect("bet") / 2;
-        if seat.insurance_decided || seat.stack < amount {
+        let amount = self.bet.unwrap_or_default() / 2;
+        if self.insurance_decided || self.stack < amount {
             return Err(BlackjackError::IllegalAction("insurance is not available"));
         }
-        seat.stack -= amount;
-        seat.insurance = amount;
-        seat.insurance_decided = true;
-        self.after_insurance(now)
+        self.stack -= amount;
+        self.insurance = amount;
+        self.insurance_decided = true;
+        self.peek()
     }
 
-    pub fn decline(
-        &mut self,
-        user: Uuid,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        self.updated_at = now;
-        let index = self.seat_of(user).ok_or(BlackjackError::NotFound)?;
+    pub fn decline(&mut self) -> Result<Option<BlackjackSettlement>, BlackjackError> {
         if self.phase != Phase::Insurance {
             return Err(BlackjackError::IllegalAction("insurance is not available"));
         }
-        let seat = self.seats[index].as_mut().expect("seat");
-        if seat.insurance_decided {
+        if self.insurance_decided {
             return Err(BlackjackError::IllegalAction(
                 "insurance is already decided",
             ));
         }
-        seat.insurance_decided = true;
-        self.after_insurance(now)
+        self.insurance_decided = true;
+        self.peek()
     }
 
-    fn after_insurance(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        if self
-            .round_seats()
-            .iter()
-            .any(|index| !self.seats[*index].as_ref().expect("seat").insurance_decided)
-        {
-            return Ok(Vec::new());
-        }
-        self.peek(now)
-    }
-
-    fn peek(&mut self, now: DateTime<Utc>) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
+    fn peek(&mut self) -> Result<Option<BlackjackSettlement>, BlackjackError> {
         self.dealer_peeked = true;
         if score(&self.dealer).0 == 21 {
-            for index in self.round_seats() {
-                let seat = self.seats[index].as_mut().expect("seat");
-                for hand in &mut seat.hands {
-                    hand.status = if hand.status == BlackjackHandStatus::Blackjack {
-                        BlackjackHandStatus::Push
-                    } else {
-                        BlackjackHandStatus::Loss
-                    };
-                }
+            for hand in &mut self.hands {
+                hand.status = if hand.status == BlackjackHandStatus::Blackjack {
+                    BlackjackHandStatus::Push
+                } else {
+                    BlackjackHandStatus::Loss
+                };
             }
-            return self.settle(now);
+            return self.settle();
         }
-        let first = self.round_seats().into_iter().find(|index| {
-            self.seats[*index].as_ref().is_some_and(|seat| {
-                seat.hands
-                    .iter()
-                    .any(|hand| hand.status == BlackjackHandStatus::Playing)
-            })
-        });
-        if let Some(index) = first {
-            self.phase = Phase::Playing;
-            let hand = self.seats[index]
-                .as_ref()
-                .expect("seat")
-                .hands
-                .iter()
-                .position(|hand| hand.status == BlackjackHandStatus::Playing)
-                .expect("hand");
-            self.current = Some((index, hand));
-            if self.round_seats().len() >= 2 {
-                self.deadline = Some(now + Duration::seconds(TURN_SECONDS));
+        match self
+            .hands
+            .iter()
+            .position(|hand| hand.status == BlackjackHandStatus::Playing)
+        {
+            Some(index) => {
+                self.phase = Phase::Playing;
+                self.current = Some(index);
+                Ok(None)
             }
-            Ok(Vec::new())
-        } else {
-            self.settle(now)
+            None => self.settle(),
         }
     }
 
-    pub fn act(
-        &mut self,
-        user: Uuid,
-        action: Action,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        self.updated_at = now;
-        let index = self.seat_of(user).ok_or(BlackjackError::NotFound)?;
-        let (current, hand_index) = self.current.ok_or(BlackjackError::Finished)?;
-        if self.phase != Phase::Playing || index != current {
+    pub fn act(&mut self, action: Action) -> Result<Option<BlackjackSettlement>, BlackjackError> {
+        let hand_index = self.current.ok_or(BlackjackError::Finished)?;
+        if self.phase != Phase::Playing {
             return Err(BlackjackError::IllegalAction("it is not your turn"));
         }
         let recommended = {
-            let seat = self.seats[index].as_ref().expect("seat");
-            let hand = seat.hands.get(hand_index).expect("hand");
+            let hand = self.hands.get(hand_index).expect("hand");
             recommended_action(&self.dealer, hand, action)
         };
-        self.seats[index]
-            .as_mut()
-            .expect("seat")
-            .decisions
-            .push(BlackjackDecision {
-                action,
-                recommended,
-            });
+        self.decisions.push(BlackjackDecision {
+            action,
+            recommended,
+        });
         match action {
             Action::Hit => {
-                let legal = self.seats[index]
-                    .as_ref()
-                    .expect("seat")
-                    .hands
-                    .get(hand_index)
-                    .is_some_and(|hand| !hand.split_aces);
-                if !legal {
+                if self.hands[hand_index].split_aces {
                     return Err(BlackjackError::IllegalAction("that action is not legal"));
                 }
                 let card = self.draw();
-                let seat = self.seats[index].as_mut().expect("seat");
-                let hand = seat.hands.get_mut(hand_index).expect("hand");
+                let hand = self.hands.get_mut(hand_index).expect("hand");
                 hand.cards.push(card);
                 match score(&hand.cards).0 {
                     21 => hand.status = BlackjackHandStatus::Stand,
@@ -788,30 +652,17 @@ impl BlackjackTable {
                 }
             }
             Action::Stand => {
-                self.seats[index]
-                    .as_mut()
-                    .expect("seat")
-                    .hands
-                    .get_mut(hand_index)
-                    .expect("hand")
-                    .status = BlackjackHandStatus::Stand
+                self.hands.get_mut(hand_index).expect("hand").status = BlackjackHandStatus::Stand;
             }
             Action::Double => {
-                let (legal, bet) = {
-                    let seat = self.seats[index].as_ref().expect("seat");
-                    let hand = seat.hands.get(hand_index).expect("hand");
-                    (
-                        hand.cards.len() == 2 && !hand.split_aces && seat.stack >= hand.bet,
-                        hand.bet,
-                    )
-                };
-                if !legal {
+                let hand = self.hands.get(hand_index).expect("hand");
+                let bet = hand.bet;
+                if hand.cards.len() != 2 || hand.split_aces || self.stack < bet {
                     return Err(BlackjackError::IllegalAction("that action is not legal"));
                 }
                 let card = self.draw();
-                let seat = self.seats[index].as_mut().expect("seat");
-                seat.stack -= bet;
-                let hand = seat.hands.get_mut(hand_index).expect("hand");
+                self.stack -= bet;
+                let hand = self.hands.get_mut(hand_index).expect("hand");
                 hand.bet *= 2;
                 hand.doubled = true;
                 hand.cards.push(card);
@@ -822,37 +673,32 @@ impl BlackjackTable {
                 };
             }
             Action::Split => {
-                let legal = {
-                    let seat = self.seats[index].as_ref().expect("seat");
-                    let hand = seat.hands.get(hand_index).expect("hand");
-                    hand.cards.len() == 2
-                        && hand.cards[0].rank == hand.cards[1].rank
-                        && seat.hands.len() < MAX_HANDS
-                        && seat.stack >= hand.bet
-                };
+                let hand = self.hands.get(hand_index).expect("hand");
+                let legal = hand.cards.len() == 2
+                    && hand.cards[0].rank == hand.cards[1].rank
+                    && self.hands.len() < MAX_HANDS
+                    && self.stack >= hand.bet;
                 if !legal {
                     return Err(BlackjackError::IllegalAction("that action is not legal"));
                 }
                 let first_card = self.draw();
                 let second_card = self.draw();
-                let seat = self.seats[index].as_mut().expect("seat");
-                let hand = seat.hands.get_mut(hand_index).expect("hand");
+                let hand = self.hands.get_mut(hand_index).expect("hand");
                 let bet = hand.bet;
                 let second = hand.cards.pop().expect("pair");
-                seat.stack -= bet;
                 let split_aces = second.rank as u8 == 14;
                 hand.split = true;
                 hand.cards.push(first_card);
                 hand.split_aces = split_aces;
-                let status = if score(&hand.cards).0 > 21 {
+                hand.status = if score(&hand.cards).0 > 21 {
                     BlackjackHandStatus::Bust
                 } else if split_aces {
                     BlackjackHandStatus::Stand
                 } else {
                     BlackjackHandStatus::Playing
                 };
-                hand.status = status;
-                seat.hands.insert(
+                self.stack -= bet;
+                self.hands.insert(
                     hand_index + 1,
                     BlackjackHand {
                         cards: vec![second, second_card],
@@ -870,81 +716,35 @@ impl BlackjackTable {
             }
             _ => return Err(BlackjackError::IllegalAction("that action is not legal")),
         }
-        self.advance_current(now)
+        self.advance_current()
     }
 
-    fn advance_current(
-        &mut self,
-        now: DateTime<Utc>,
-    ) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        let mut found = None;
-        for (index, seat) in self.seats.iter().enumerate() {
-            if !self.round_seats().contains(&index) {
-                continue;
-            }
-            if let Some(seat) = seat
-                && let Some(hand) = seat
-                    .hands
-                    .iter()
-                    .position(|hand| hand.status == BlackjackHandStatus::Playing)
-            {
-                found = Some((index, hand));
-                break;
-            }
-        }
-        self.current = found;
-        if let Some((_, _)) = found {
-            self.deadline =
-                (self.round_seats().len() >= 2).then_some(now + Duration::seconds(TURN_SECONDS));
-            Ok(Vec::new())
+    fn advance_current(&mut self) -> Result<Option<BlackjackSettlement>, BlackjackError> {
+        self.current = self
+            .hands
+            .iter()
+            .position(|hand| hand.status == BlackjackHandStatus::Playing);
+        if self.current.is_some() {
+            Ok(None)
         } else {
-            self.settle(now)
+            self.settle()
         }
     }
 
-    pub fn tick(&mut self, now: DateTime<Utc>) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
-        self.updated_at = now;
-        if self.deadline.is_none_or(|at| at > now) {
-            return Ok(Vec::new());
-        }
-        match self.phase {
-            Phase::Betting => self.deal(now),
-            Phase::Insurance => {
-                for index in self.round_seats() {
-                    self.seats[index].as_mut().expect("seat").insurance_decided = true;
-                }
-                self.after_insurance(now)
-            }
-            Phase::Playing => {
-                if let Some((index, _)) = self.current {
-                    self.seats[index]
-                        .as_mut()
-                        .expect("seat")
-                        .hands
-                        .iter_mut()
-                        .find(|hand| hand.status == BlackjackHandStatus::Playing)
-                        .expect("current hand")
-                        .status = BlackjackHandStatus::Stand;
-                }
-                self.advance_current(now)
-            }
-            Phase::Settled => {
-                self.finish_pause(now, false);
-                Ok(Vec::new())
-            }
+    fn insurance_payout(&self) -> Cents {
+        if self.insurance > 0 && score(&self.dealer).0 == 21 && self.dealer.len() == 2 {
+            self.insurance * 3
+        } else {
+            0
         }
     }
 
-    fn settle(&mut self, now: DateTime<Utc>) -> Result<Vec<BlackjackSettlement>, BlackjackError> {
+    fn settle(&mut self) -> Result<Option<BlackjackSettlement>, BlackjackError> {
         let visible_before_settlement = self.visible_cards();
-        let all_busted = self.round_seats().iter().all(|index| {
-            self.seats[*index]
-                .as_ref()
-                .expect("seat")
-                .hands
-                .iter()
-                .all(|hand| hand.status == BlackjackHandStatus::Bust)
-        });
+        let all_busted = self
+            .hands
+            .iter()
+            .all(|hand| hand.status == BlackjackHandStatus::Bust);
         if !all_busted {
             while score(&self.dealer).0 < 17 {
                 let card = self.draw();
@@ -960,226 +760,62 @@ impl BlackjackTable {
                 .map(|card| ("Dealer".into(), card)),
         );
         let dealer_score = score(&self.dealer).0;
-        let mut settlements = Vec::new();
-        self.last_results.clear();
-        for (index, seat) in self.seats.iter_mut().enumerate() {
-            let Some(seat) = seat else { continue };
-            let Some(_base_bet) = seat.bet else { continue };
-            let mut returned = seat.insurance_payout(self.dealer.as_slice());
-            for hand in &mut seat.hands {
-                if hand.status == BlackjackHandStatus::Stand {
-                    let player = score(&hand.cards).0;
-                    hand.status = if dealer_score > 21 || player > dealer_score {
-                        BlackjackHandStatus::Win
-                    } else if player < dealer_score {
-                        BlackjackHandStatus::Loss
-                    } else {
-                        BlackjackHandStatus::Push
-                    };
-                }
-                returned += match hand.status {
-                    BlackjackHandStatus::Win => hand.bet * 2,
-                    BlackjackHandStatus::Push => hand.bet,
-                    BlackjackHandStatus::Blackjack if !hand.split => hand.bet * 5 / 2,
-                    _ => 0,
+        let mut returned = self.insurance_payout();
+        for hand in &mut self.hands {
+            if hand.status == BlackjackHandStatus::Stand {
+                let player = score(&hand.cards).0;
+                hand.status = if dealer_score > 21 || player > dealer_score {
+                    BlackjackHandStatus::Win
+                } else if player < dealer_score {
+                    BlackjackHandStatus::Loss
+                } else {
+                    BlackjackHandStatus::Push
                 };
             }
-            seat.stack += returned;
-            let wagered = seat.hands.iter().map(|hand| hand.bet).sum::<Cents>() + seat.insurance;
-            let net = returned - wagered;
-            let summary = if net >= 0 {
-                format!("Won ${}", net / 100)
-            } else {
-                format!("Lost ${}", -net / 100)
+            returned += match hand.status {
+                BlackjackHandStatus::Win => hand.bet * 2,
+                BlackjackHandStatus::Push => hand.bet,
+                BlackjackHandStatus::Blackjack if !hand.split => hand.bet * 5 / 2,
+                _ => 0,
             };
-            self.last_results.push((index, net, summary.clone()));
-            settlements.push(BlackjackSettlement {
-                user: seat.user,
-                net,
-                outcome: outcome_for(seat, returned),
-            });
-            seat.bet = None;
         }
+        self.stack += returned;
+        let wagered = self.hands.iter().map(|hand| hand.bet).sum::<Cents>() + self.insurance;
+        let net = returned - wagered;
+        self.last_result = Some(if net >= 0 {
+            format!("Won ${}", net / 100)
+        } else {
+            format!("Lost ${}", -net / 100)
+        });
+        let settlement = BlackjackSettlement {
+            user: self.user,
+            net,
+            outcome: outcome_for(self, returned),
+        };
         self.shoe.running_count += count(&exposed_at_settlement);
         self.shoe.exposed_cards += exposed_at_settlement.len();
         self.phase = Phase::Settled;
         self.current = None;
-        self.deadline = Some(now + Duration::seconds(RESULT_PAUSE_SECONDS));
-        Ok(settlements)
+        self.bet = None;
+        Ok(Some(settlement))
     }
 
-    pub fn action_flags(&self, user: Uuid) -> (bool, bool, bool, bool, bool, bool, bool, bool) {
-        let Some(index) = self.seat_of(user) else {
-            return (false, false, false, false, false, false, false, false);
+    pub fn action_flags(&self) -> ActionFlags {
+        let Some(hand_index) = self.current else {
+            return ActionFlags::default();
         };
-        let Some((current, hand_index)) = self.current else {
-            return (false, false, false, false, false, false, false, false);
-        };
-        if current != index || self.phase != Phase::Playing {
-            return (false, false, false, false, false, false, false, false);
+        if self.phase != Phase::Playing {
+            return ActionFlags::default();
         }
-        let seat = self.seats[index].as_ref().expect("seat");
-        let hand = seat.hands.get(hand_index).expect("hand");
-        (
-            true,
-            true,
-            hand.cards.len() == 2 && !hand.split_aces && seat.stack >= hand.bet,
-            hand.cards.len() == 2
+        let hand = self.hands.get(hand_index).expect("hand");
+        ActionFlags {
+            hit: true,
+            stand: true,
+            double: hand.cards.len() == 2 && !hand.split_aces && self.stack >= hand.bet,
+            split: hand.cards.len() == 2
                 && hand.cards[0].rank == hand.cards[1].rank
-                && seat.hands.len() < MAX_HANDS
-                && seat.stack >= hand.bet,
-            false,
-            false,
-            false,
-            false,
-        )
-    }
-
-    pub fn view(&self, viewer: Option<Uuid>, bank_balance: Cents) -> BlackjackTableView {
-        let viewer_seat = viewer.and_then(|user| self.seat_of(user));
-        let (can_hit, can_stand, can_double, can_split, _, _, _, _) = viewer.map_or(
-            (false, false, false, false, false, false, false, false),
-            |user| self.action_flags(user),
-        );
-        let can_insure = viewer_seat.is_some_and(|index| {
-            self.phase == Phase::Insurance
-                && self.seats[index].as_ref().is_some_and(|seat| {
-                    !seat.insurance_decided && seat.stack >= seat.bet.unwrap_or_default() / 2
-                })
-        });
-        let can_decline = can_insure;
-        let shoe = BlackjackShoeView {
-            decks: 8,
-            total_cards: 416,
-            dealt_cards: 416usize.saturating_sub(self.shoe.deck.remaining()),
-            remaining_cards: self.shoe.deck.remaining(),
-            cut_card: self.shoe.cut_card,
-            penetration_percent: 50,
-            hands_dealt: self.shoe.hands_dealt,
-            fresh_shuffle: self.shoe.fresh_shuffle,
-        };
-        let seats = self
-            .seats
-            .iter()
-            .enumerate()
-            .filter_map(|(index, seat)| {
-                let seat = seat.as_ref()?;
-                let result = self
-                    .last_results
-                    .iter()
-                    .find(|result| result.0 == index)
-                    .map(|result| result.2.clone());
-                Some(BlackjackSeatView {
-                    index,
-                    user: seat.user,
-                    display_name: format!("Player {}", index + 1),
-                    stack: seat.stack,
-                    bet: seat.bet,
-                    insurance: seat.insurance,
-                    leaving: seat.leaving,
-                    hands: seat
-                        .hands
-                        .iter()
-                        .map(|hand| BlackjackHandView {
-                            cards: hand.cards.clone(),
-                            bet: hand.bet,
-                            score: score(&hand.cards).0,
-                            status: hand.status,
-                            blackjack: hand.status == BlackjackHandStatus::Blackjack && !hand.split,
-                        })
-                        .collect(),
-                    is_viewer: viewer == Some(seat.user),
-                    result,
-                    waiting: (self.phase != Phase::Betting
-                        && seat.bet.is_none()
-                        && seat.hands.is_empty())
-                        || (self.phase == Phase::Betting && seat.bet.is_none()),
-                })
-            })
-            .collect();
-        let trainer = viewer_seat.and_then(|index| {
-            let seat = self.seats[index].as_ref()?;
-            let cards = self.visible_cards();
-            let running = if self.phase == Phase::Settled {
-                self.shoe.running_count
-            } else {
-                self.shoe.running_count + count(&cards)
-            };
-            Some(BlackjackTrainerView {
-                count: (seat.settings.counting_tutor || seat.settings.counting_quiz)
-                    .then(|| count_view(running, cards.len(), shoe.dealt_cards)),
-                log: if seat.settings.counting_tutor {
-                    count_log(&cards, self.shoe.running_count)
-                } else {
-                    Vec::new()
-                },
-                analysis: if seat.settings.bet_analyzer {
-                    seat.decisions
-                        .iter()
-                        .filter(|decision| decision.action != decision.recommended)
-                        .map(|decision| {
-                            format!(
-                                "{} was off; basic strategy prefers {} here.",
-                                decision.action.label(),
-                                decision.recommended.label()
-                            )
-                        })
-                        .collect()
-                } else {
-                    Vec::new()
-                },
-                quiz: (seat.settings.counting_quiz && self.phase == Phase::Settled)
-                    .then(|| count_quiz(running)),
-            })
-        });
-        BlackjackTableView {
-            id: self.id,
-            tier: self.tier,
-            max_bet: self.max_bet,
-            buy_in: buy_in_for(self.max_bet),
-            bet_options: bet_options(self.max_bet),
-            min_bet: self.max_bet / 4,
-            seat_count: SEAT_COUNT,
-            phase: self.phase,
-            dealer: if self.phase == Phase::Playing || self.phase == Phase::Insurance {
-                self.dealer.first().copied().into_iter().collect()
-            } else {
-                self.dealer.clone()
-            },
-            dealer_hidden: matches!(self.phase, Phase::Insurance | Phase::Playing)
-                && self.dealer.len() > 1,
-            dealer_score: (self.phase == Phase::Settled).then(|| score(&self.dealer).0),
-            current_seat: self.current.map(|current| current.0),
-            current_hand: self.current.map(|current| current.1),
-            deadline: self.deadline,
-            turn_seconds: TURN_SECONDS,
-            result_pause_seconds: RESULT_PAUSE_SECONDS,
-            seats,
-            viewer_seat,
-            bank_balance,
-            can_join: viewer_seat.is_none(),
-            can_leave: viewer_seat.is_some(),
-            can_rebuy: viewer_seat.is_some_and(|index| {
-                self.seats[index]
-                    .as_ref()
-                    .is_some_and(|seat| seat.bet.is_none() && seat.stack < buy_in_for(self.max_bet))
-            }),
-            can_bet: viewer_seat.is_some_and(|index| {
-                matches!(self.phase, Phase::Betting | Phase::Settled)
-                    && self.seats[index].as_ref().is_some_and(|seat| {
-                        !seat.leaving && seat.bet.is_none() && seat.stack >= self.max_bet / 4
-                    })
-            }),
-            can_insure,
-            can_decline,
-            can_hit,
-            can_stand,
-            can_double,
-            can_split,
-            message: self.status_message(),
-            shoe,
-            trainer,
-            fresh_shuffle: self.shoe.fresh_shuffle,
+                && self.hands.len() < MAX_HANDS
+                && self.stack >= hand.bet,
         }
     }
 
@@ -1199,17 +835,8 @@ impl BlackjackTable {
                     .map(|card| ("Dealer".into(), card)),
             );
         }
-        for (index, seat) in self.seats.iter().enumerate() {
-            if let Some(seat) = seat {
-                for hand in &seat.hands {
-                    cards.extend(
-                        hand.cards
-                            .iter()
-                            .copied()
-                            .map(|card| (format!("Seat {}", index + 1), card)),
-                    );
-                }
-            }
+        for hand in &self.hands {
+            cards.extend(hand.cards.iter().copied().map(|card| ("You".into(), card)));
         }
         cards
     }
@@ -1218,479 +845,175 @@ impl BlackjackTable {
         match self.phase {
             Phase::Betting => "Place your bet".into(),
             Phase::Insurance => "Dealer shows an Ace — insurance?".into(),
-            Phase::Settled => "Round settled".into(),
-            Phase::Playing => self.current.map_or_else(
-                || "Dealer is playing".into(),
-                |(index, _)| format!("Seat {} to act", index + 1),
-            ),
+            Phase::Playing => "Your move".into(),
+            Phase::Settled => self
+                .last_result
+                .clone()
+                .unwrap_or_else(|| "Round settled".into()),
         }
     }
-}
 
-impl BlackjackSeat {
-    fn insurance_payout(&self, dealer: &[Card]) -> Cents {
-        if self.insurance > 0 && score(dealer).0 == 21 && dealer.len() == 2 {
-            self.insurance * 3
+    pub fn view(&self, bank_balance: Cents) -> BlackjackView {
+        let flags = self.action_flags();
+        let can_insure = self.phase == Phase::Insurance
+            && !self.insurance_decided
+            && self.stack >= self.bet.unwrap_or_default() / 2;
+        let dealt_cards = 416usize.saturating_sub(self.shoe.deck.remaining());
+        let shoe = BlackjackShoeView {
+            decks: self.shoe.decks,
+            total_cards: 416,
+            dealt_cards,
+            remaining_cards: self.shoe.deck.remaining(),
+            cut_card: self.shoe.cut_card,
+            penetration_percent: 50,
+            hands_dealt: self.shoe.hands_dealt,
+            fresh_shuffle: self.shoe.fresh_shuffle,
+        };
+        let cards = self.visible_cards();
+        let running = if self.phase == Phase::Settled {
+            self.shoe.running_count
         } else {
-            0
-        }
-    }
-}
-
-impl BlackjackStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_tables(tables: Vec<BlackjackTable>) -> Self {
-        let (changed, _) = broadcast::channel(32);
-        Self {
-            tables: Arc::new(Mutex::new(tables)),
-            tables_path: None,
-            changed,
-        }
-    }
-
-    pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
-        let dir = root.as_ref().join("blackjack");
-        tokio::fs::create_dir_all(&dir).await?;
-        if tokio::fs::try_exists(dir.join("games.json"))
-            .await
-            .unwrap_or(false)
-        {
-            tracing::warn!("ignoring legacy blackjack/games.json persistence");
-        }
-        if tokio::fs::try_exists(dir.join("shoes.json"))
-            .await
-            .unwrap_or(false)
-        {
-            tracing::warn!("ignoring legacy blackjack/shoes.json persistence");
-        }
-        let tables_path = dir.join("tables.json");
-        let mut tables = match tokio::fs::read(&tables_path).await {
-            Ok(bytes) => serde_json::from_slice::<Vec<BlackjackTable>>(&bytes)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(error) => return Err(error.into()),
+            self.shoe.running_count + count(&cards)
         };
-        for tier in 0..TIER_MAX_BETS.len() {
-            if !tables.iter().any(|table| table.tier == tier) {
-                tables.push(BlackjackTable::new(tier));
-            }
-        }
-        for table in &mut tables {
-            if table.phase != Phase::Betting {
-                for seat in table.seats.iter_mut().flatten() {
-                    seat.stack +=
-                        seat.hands.iter().map(|hand| hand.bet).sum::<Cents>() + seat.insurance;
-                    seat.bet = None;
-                    seat.insurance = 0;
-                    seat.insurance_decided = false;
-                    seat.hands.clear();
-                    seat.decisions.clear();
-                }
-                table.phase = Phase::Betting;
-                table.dealer.clear();
-                table.dealer_peeked = false;
-                table.current = None;
-                table.deadline = None;
-                table.last_results.clear();
-            }
-        }
-        tables.sort_by_key(|table| table.tier);
-        let (changed, _) = broadcast::channel(32);
-        Ok(Self {
-            tables: Arc::new(Mutex::new(tables)),
-            tables_path: Some(tables_path),
-            changed,
-        })
-    }
-
-    pub async fn persist(&self) -> Result<(), anyhow::Error> {
-        self.persist_tables().await
-    }
-
-    pub fn subscribe(&self) -> broadcast::Receiver<Uuid> {
-        self.changed.subscribe()
-    }
-
-    pub async fn ids(&self) -> Vec<Uuid> {
-        self.tables
-            .lock()
-            .await
-            .iter()
-            .map(|table| table.id)
-            .collect()
-    }
-
-    pub async fn lobby(&self, viewer: Option<Uuid>) -> Vec<BlackjackLobbyView> {
-        self.tables
-            .lock()
-            .await
-            .iter()
-            .map(|table| BlackjackLobbyView {
-                tier: table.tier,
-                id: table.id,
-                max_bet: table.max_bet,
-                buy_in: buy_in_for(table.max_bet),
-                occupied: table.seats.iter().flatten().count(),
-                seat_count: SEAT_COUNT,
-                your_seat: viewer.and_then(|user| table.seat_of(user)),
-            })
-            .collect()
-    }
-
-    pub async fn view(
-        &self,
-        id: Uuid,
-        viewer: Option<Uuid>,
-        balance: Cents,
-    ) -> Result<BlackjackTableView, BlackjackError> {
-        let tables = self.tables.lock().await;
-        let table = tables
-            .iter()
-            .find(|table| table.id == id)
-            .ok_or(BlackjackError::NotFound)?;
-        let mut view = table.view(viewer, balance);
-        view.can_join =
-            viewer.is_some_and(|user| !tables.iter().any(|table| table.seat_of(user).is_some()));
-        Ok(view)
-    }
-
-    async fn persist_tables(&self) -> Result<(), anyhow::Error> {
-        let Some(path) = &self.tables_path else {
-            return Ok(());
-        };
-        let body = serde_json::to_vec_pretty(&*self.tables.lock().await)?;
-        let tmp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
-        tokio::fs::write(&tmp, body).await?;
-        tokio::fs::rename(tmp, path).await?;
-        Ok(())
-    }
-
-    async fn changed(&self, id: Uuid) -> Result<(), anyhow::Error> {
-        self.persist_tables().await?;
-        let _ = self.changed.send(id);
-        Ok(())
-    }
-
-    pub async fn join(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        settings: BlackjackTrainerSettings,
-        bank: &crate::bank::BankStore,
-    ) -> Result<(), BlackjackError> {
-        let buy_in = {
-            let tables = self.tables.lock().await;
-            if tables.iter().any(|table| table.seat_of(user).is_some()) {
-                return Err(BlackjackError::ActiveGame);
-            }
-            let table = tables
-                .iter()
-                .find(|table| table.id == id)
-                .ok_or(BlackjackError::NotFound)?;
-            if table.seats.iter().flatten().count() >= SEAT_COUNT {
-                return Err(BlackjackError::IllegalAction("table is full"));
-            }
-            buy_in_for(table.max_bet)
-        };
-        bank.blackjack_buy_in(crate::bank::AccountOwner::User(user), id, buy_in)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("insufficient funds"))?;
-        let mut tables = self.tables.lock().await;
-        let table = tables
-            .iter_mut()
-            .find(|table| table.id == id)
-            .ok_or(BlackjackError::NotFound)?;
-        if table.seat_of(user).is_some() || table.seats.iter().flatten().count() >= SEAT_COUNT {
-            let _ = bank
-                .blackjack_cash_out(crate::bank::AccountOwner::User(user), id, buy_in)
-                .await;
-            return Err(BlackjackError::IllegalAction(
-                "table is full or you are already seated",
-            ));
-        }
-        let index = table
-            .seats
-            .iter()
-            .position(Option::is_none)
-            .expect("seat available");
-        table.seats[index] = Some(BlackjackSeat {
-            user,
-            stack: buy_in,
-            bet: None,
-            hands: Vec::new(),
-            insurance: 0,
-            insurance_decided: false,
-            leaving: false,
-            settings: settings.sanitized(),
-            decisions: Vec::new(),
-        });
-        drop(tables);
-        self.changed(id)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("could not persist table"))
-    }
-
-    pub async fn leave(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        bank: &crate::bank::BankStore,
-    ) -> Result<(), BlackjackError> {
-        let (amount, immediate) = {
-            let mut tables = self.tables.lock().await;
-            let table = tables
-                .iter_mut()
-                .find(|table| table.id == id)
-                .ok_or(BlackjackError::NotFound)?;
-            let index = table.seat_of(user).ok_or(BlackjackError::NotFound)?;
-            let seat = table.seats[index].as_mut().expect("seat");
-            let immediate = seat.bet.is_none();
-            if immediate {
-                let amount = seat.stack;
-                table.updated_at = Utc::now();
-                table.seats[index] = None;
-                (amount, true)
+        let trainer = BlackjackTrainerView {
+            count: (self.settings.counting_tutor || self.settings.counting_quiz)
+                .then(|| count_view(running, cards.len(), dealt_cards)),
+            log: if self.settings.counting_tutor {
+                count_log(&cards, self.shoe.running_count)
             } else {
-                table.updated_at = Utc::now();
-                seat.leaving = true;
-                (0, false)
-            }
+                Vec::new()
+            },
+            analysis: if self.settings.bet_analyzer {
+                self.decisions
+                    .iter()
+                    .filter(|decision| decision.action != decision.recommended)
+                    .map(|decision| {
+                        format!(
+                            "{} was off; basic strategy prefers {} here.",
+                            decision.action.label(),
+                            decision.recommended.label()
+                        )
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            quiz: (self.settings.counting_quiz && self.phase == Phase::Settled)
+                .then(|| count_quiz(running)),
         };
-        if immediate {
-            bank.blackjack_cash_out(crate::bank::AccountOwner::User(user), id, amount)
-                .await
-                .map_err(|_| BlackjackError::IllegalAction("cash out failed"))?;
-        }
-        self.changed(id)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("could not persist table"))
-    }
-
-    pub async fn rebuy(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        bank: &crate::bank::BankStore,
-    ) -> Result<(), BlackjackError> {
-        let amount = {
-            let tables = self.tables.lock().await;
-            let table = tables
+        BlackjackView {
+            seated: true,
+            id: Some(self.id),
+            bank_balance,
+            max_bets: MAX_BETS.to_vec(),
+            affordable_max_bets: affordable_max_bets(bank_balance),
+            max_bet: self.max_bet,
+            buy_in: buy_in_for(self.max_bet),
+            bet_options: bet_options(self.max_bet).to_vec(),
+            min_bet: self.max_bet / 4,
+            phase: self.phase,
+            stack: self.stack,
+            bet: self.bet,
+            insurance: self.insurance,
+            hands: self
+                .hands
                 .iter()
-                .find(|table| table.id == id)
-                .ok_or(BlackjackError::NotFound)?;
-            let seat = table
-                .seats
-                .iter()
-                .flatten()
-                .find(|seat| seat.user == user)
-                .ok_or(BlackjackError::NotFound)?;
-            if seat.bet.is_some() {
-                return Err(BlackjackError::IllegalAction(
-                    "rebuy is unavailable during a round",
-                ));
-            }
-            buy_in_for(table.max_bet).saturating_sub(seat.stack)
-        };
-        if amount == 0 {
-            return Err(BlackjackError::IllegalAction("your stack is already full"));
+                .map(|hand| BlackjackHandView {
+                    cards: hand.cards.clone(),
+                    bet: hand.bet,
+                    score: score(&hand.cards).0,
+                    status: hand.status,
+                    blackjack: hand.status == BlackjackHandStatus::Blackjack && !hand.split,
+                })
+                .collect(),
+            current_hand: self.current,
+            dealer: if matches!(self.phase, Phase::Playing | Phase::Insurance) {
+                self.dealer.first().copied().into_iter().collect()
+            } else {
+                self.dealer.clone()
+            },
+            dealer_hidden: matches!(self.phase, Phase::Insurance | Phase::Playing)
+                && self.dealer.len() > 1,
+            dealer_score: (self.phase == Phase::Settled).then(|| score(&self.dealer).0),
+            result: self.last_result.clone(),
+            can_sit: false,
+            can_leave: !self.in_round(),
+            can_rebuy: !self.in_round() && self.stack < buy_in_for(self.max_bet),
+            can_bet: matches!(self.phase, Phase::Betting | Phase::Settled)
+                && self.bet.is_none()
+                && self.stack >= self.max_bet / 4,
+            can_insure,
+            can_decline: can_insure,
+            can_hit: flags.hit,
+            can_stand: flags.stand,
+            can_double: flags.double,
+            can_split: flags.split,
+            message: self.status_message(),
+            shoe: Some(shoe),
+            trainer: Some(trainer),
+            settings: self.settings.clone(),
+            fresh_shuffle: self.shoe.fresh_shuffle,
         }
-        bank.blackjack_buy_in(crate::bank::AccountOwner::User(user), id, amount)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("insufficient funds"))?;
-        let mut tables = self.tables.lock().await;
-        let table = tables
-            .iter_mut()
-            .find(|table| table.id == id)
-            .ok_or(BlackjackError::NotFound)?;
-        let seat = table
-            .seats
-            .iter_mut()
-            .flatten()
-            .find(|seat| seat.user == user)
-            .expect("seat");
-        seat.stack += amount;
-        table.updated_at = Utc::now();
-        drop(tables);
-        self.changed(id)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("could not persist table"))
-    }
-
-    async fn resolve(
-        &self,
-        id: Uuid,
-        action: impl FnOnce(
-            &mut BlackjackTable,
-            DateTime<Utc>,
-        ) -> Result<Vec<BlackjackSettlement>, BlackjackError>,
-        now: DateTime<Utc>,
-        bank: &crate::bank::BankStore,
-        stats: &crate::blackjack_stats::BlackjackStatsStore,
-    ) -> Result<(), BlackjackError> {
-        let settlements = {
-            let mut tables = self.tables.lock().await;
-            let table = tables
-                .iter_mut()
-                .find(|table| table.id == id)
-                .ok_or(BlackjackError::NotFound)?;
-            action(table, now)?
-        };
-        for settlement in settlements {
-            let _ = stats.record(settlement.user, settlement.outcome).await;
-        }
-        let leaving = {
-            let mut tables = self.tables.lock().await;
-            let table = tables
-                .iter_mut()
-                .find(|table| table.id == id)
-                .expect("table");
-            let mut leaving = Vec::new();
-            for seat in &mut table.seats {
-                if seat
-                    .as_ref()
-                    .is_some_and(|seat| seat.leaving && seat.bet.is_none())
-                {
-                    let seat = seat.take().expect("seat");
-                    leaving.push((seat.user, seat.stack));
-                }
-            }
-            leaving
-        };
-        for (user, amount) in leaving {
-            let _ = bank
-                .blackjack_cash_out(crate::bank::AccountOwner::User(user), id, amount)
-                .await;
-        }
-        self.changed(id)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("could not persist table"))
-    }
-
-    pub async fn bet(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        amount: Cents,
-        now: DateTime<Utc>,
-        bank: &crate::bank::BankStore,
-        stats: &crate::blackjack_stats::BlackjackStatsStore,
-    ) -> Result<(), BlackjackError> {
-        self.resolve(
-            id,
-            |table, now| table.place_bet(user, amount, now),
-            now,
-            bank,
-            stats,
-        )
-        .await
-    }
-    pub async fn insure(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        now: DateTime<Utc>,
-        bank: &crate::bank::BankStore,
-        stats: &crate::blackjack_stats::BlackjackStatsStore,
-    ) -> Result<(), BlackjackError> {
-        self.resolve(id, |table, now| table.insure(user, now), now, bank, stats)
-            .await
-    }
-    pub async fn decline(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        now: DateTime<Utc>,
-        bank: &crate::bank::BankStore,
-        stats: &crate::blackjack_stats::BlackjackStatsStore,
-    ) -> Result<(), BlackjackError> {
-        self.resolve(id, |table, now| table.decline(user, now), now, bank, stats)
-            .await
-    }
-    pub async fn act(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        action: Action,
-        now: DateTime<Utc>,
-        bank: &crate::bank::BankStore,
-        stats: &crate::blackjack_stats::BlackjackStatsStore,
-    ) -> Result<(), BlackjackError> {
-        self.resolve(
-            id,
-            |table, now| table.act(user, action, now),
-            now,
-            bank,
-            stats,
-        )
-        .await
-    }
-    pub async fn update_settings(
-        &self,
-        id: Uuid,
-        user: Uuid,
-        settings: BlackjackTrainerSettings,
-    ) -> Result<(), BlackjackError> {
-        let mut tables = self.tables.lock().await;
-        let table = tables
-            .iter_mut()
-            .find(|table| table.id == id)
-            .ok_or(BlackjackError::NotFound)?;
-        let seat = table
-            .seats
-            .iter_mut()
-            .flatten()
-            .find(|seat| seat.user == user)
-            .ok_or(BlackjackError::NotFound)?;
-        seat.settings = settings.sanitized();
-        table.updated_at = Utc::now();
-        drop(tables);
-        self.changed(id)
-            .await
-            .map_err(|_| BlackjackError::IllegalAction("could not persist table"))
-    }
-
-    pub async fn tick(
-        &self,
-        now: DateTime<Utc>,
-        bank: &crate::bank::BankStore,
-        stats: &crate::blackjack_stats::BlackjackStatsStore,
-    ) -> Vec<Uuid> {
-        let ids = self.ids().await;
-        let mut changed = Vec::new();
-        for id in ids {
-            let due = self
-                .tables
-                .lock()
-                .await
-                .iter()
-                .find(|table| table.id == id)
-                .is_some_and(|table| table.deadline.is_some_and(|deadline| deadline <= now));
-            if due
-                && self
-                    .resolve(id, |table, now| table.tick(now), now, bank, stats)
-                    .await
-                    .is_ok()
-            {
-                changed.push(id);
-            }
-        }
-        changed
     }
 }
 
-fn outcome_for(seat: &BlackjackSeat, returned: Cents) -> crate::blackjack_stats::RoundOutcome {
+/// The view a player who has not sat down yet sees: the slider, and nothing
+/// else that would need a game to exist.
+fn empty_view(bank_balance: Cents) -> BlackjackView {
+    let affordable = affordable_max_bets(bank_balance);
+    let max_bet = affordable.first().copied().unwrap_or(MAX_BETS[0]);
+    BlackjackView {
+        seated: false,
+        id: None,
+        bank_balance,
+        max_bets: MAX_BETS.to_vec(),
+        affordable_max_bets: affordable.clone(),
+        max_bet,
+        buy_in: buy_in_for(max_bet),
+        bet_options: bet_options(max_bet).to_vec(),
+        min_bet: max_bet / 4,
+        phase: Phase::Betting,
+        stack: 0,
+        bet: None,
+        insurance: 0,
+        hands: Vec::new(),
+        current_hand: None,
+        dealer: Vec::new(),
+        dealer_hidden: false,
+        dealer_score: None,
+        result: None,
+        can_sit: !affordable.is_empty(),
+        can_leave: false,
+        can_rebuy: false,
+        can_bet: false,
+        can_insure: false,
+        can_decline: false,
+        can_hit: false,
+        can_stand: false,
+        can_double: false,
+        can_split: false,
+        message: if affordable.is_empty() {
+            "You need more in the bank to sit down".into()
+        } else {
+            "Choose your maximum bet".into()
+        },
+        shoe: None,
+        trainer: None,
+        settings: BlackjackTrainerSettings::default(),
+        fresh_shuffle: false,
+    }
+}
+
+fn outcome_for(game: &BlackjackGame, returned: Cents) -> crate::blackjack_stats::RoundOutcome {
     let mut outcome = crate::blackjack_stats::RoundOutcome {
-        hands: seat.hands.len() as u64,
-        splits: seat.hands.len().saturating_sub(1) as u64,
-        insured: seat.insurance > 0,
-        wagered: seat.hands.iter().map(|hand| hand.bet).sum::<Cents>() + seat.insurance,
+        hands: game.hands.len() as u64,
+        splits: game.hands.len().saturating_sub(1) as u64,
+        insured: game.insurance > 0,
+        wagered: game.hands.iter().map(|hand| hand.bet).sum::<Cents>() + game.insurance,
         returned,
         ..Default::default()
     };
-    for hand in &seat.hands {
+    for hand in &game.hands {
         match hand.status {
             BlackjackHandStatus::Win => outcome.won += 1,
             BlackjackHandStatus::Push => outcome.push += 1,
@@ -1709,39 +1032,353 @@ fn outcome_for(seat: &BlackjackSeat, returned: Cents) -> crate::blackjack_stats:
     outcome
 }
 
+/// Every game in play, keyed by the player it belongs to.
+#[derive(Clone, Default)]
+pub struct BlackjackStore {
+    games: Arc<Mutex<HashMap<Uuid, BlackjackGame>>>,
+    path: Option<PathBuf>,
+}
+
+impl BlackjackStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_games(games: Vec<BlackjackGame>) -> Self {
+        Self {
+            games: Arc::new(Mutex::new(
+                games.into_iter().map(|game| (game.user, game)).collect(),
+            )),
+            path: None,
+        }
+    }
+
+    pub async fn load(root: impl AsRef<Path>) -> Result<Self, anyhow::Error> {
+        let dir = root.as_ref().join("blackjack");
+        tokio::fs::create_dir_all(&dir).await?;
+        let path = dir.join("solo.json");
+        let mut games: HashMap<Uuid, BlackjackGame> = match tokio::fs::read(&path).await {
+            Ok(bytes) => serde_json::from_slice::<Vec<BlackjackGame>>(&bytes)?
+                .into_iter()
+                .map(|game| (game.user, game))
+                .collect(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+            Err(error) => return Err(error.into()),
+        };
+        let migrated = migrate_shared_tables(&dir, &mut games).await?;
+        // A hand can only have been interrupted by a restart, so it never
+        // resumes: the chips on the felt go back to the stack they came from,
+        // which is what keeps §V1 true across a restart.
+        for game in games.values_mut() {
+            if game.phase != Phase::Betting {
+                game.stack +=
+                    game.hands.iter().map(|hand| hand.bet).sum::<Cents>() + game.insurance;
+                game.bet = None;
+                game.clear_round();
+            }
+        }
+        let store = Self {
+            games: Arc::new(Mutex::new(games)),
+            path: Some(path),
+        };
+        if migrated {
+            store.persist().await?;
+        }
+        Ok(store)
+    }
+
+    pub async fn persist(&self) -> Result<(), anyhow::Error> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        let games = self.games.lock().await;
+        let mut rows: Vec<&BlackjackGame> = games.values().collect();
+        rows.sort_by_key(|game| game.user);
+        let body = serde_json::to_vec_pretty(&rows)?;
+        drop(games);
+        let tmp = path.with_extension(format!("tmp-{}", Uuid::new_v4()));
+        tokio::fs::write(&tmp, body).await?;
+        tokio::fs::rename(tmp, path).await?;
+        Ok(())
+    }
+
+    pub async fn view(&self, user: Option<Uuid>, balance: Cents) -> BlackjackView {
+        let games = self.games.lock().await;
+        match user.and_then(|user| games.get(&user)) {
+            Some(game) => game.view(balance),
+            None => empty_view(balance),
+        }
+    }
+
+    /// Buys in at ten times the chosen ceiling. The bank is touched here and
+    /// on the way out, and nowhere in between.
+    pub async fn sit(
+        &self,
+        user: Uuid,
+        max_bet: Cents,
+        settings: BlackjackTrainerSettings,
+        bank: &crate::bank::BankStore,
+    ) -> Result<(), BlackjackError> {
+        if !MAX_BETS.contains(&max_bet) {
+            return Err(BlackjackError::IllegalAction(
+                "that maximum bet is not offered",
+            ));
+        }
+        if self.games.lock().await.contains_key(&user) {
+            return Err(BlackjackError::ActiveGame);
+        }
+        let id = Uuid::new_v4();
+        let buy_in = buy_in_for(max_bet);
+        bank.blackjack_buy_in(crate::bank::AccountOwner::User(user), id, buy_in)
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("insufficient funds"))?;
+        {
+            let mut games = self.games.lock().await;
+            if games.contains_key(&user) {
+                drop(games);
+                let _ = bank
+                    .blackjack_cash_out(crate::bank::AccountOwner::User(user), id, buy_in)
+                    .await;
+                return Err(BlackjackError::ActiveGame);
+            }
+            let mut game = BlackjackGame::new(id, user, max_bet, buy_in);
+            game.settings = settings.sanitized();
+            games.insert(user, game);
+        }
+        self.persist()
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("could not persist the game"))
+    }
+
+    pub async fn leave(
+        &self,
+        user: Uuid,
+        bank: &crate::bank::BankStore,
+    ) -> Result<(), BlackjackError> {
+        let (id, stack) = {
+            let mut games = self.games.lock().await;
+            let game = games.get(&user).ok_or(BlackjackError::NotFound)?;
+            if game.in_round() {
+                return Err(BlackjackError::IllegalAction(
+                    "finish the hand you are playing first",
+                ));
+            }
+            let game = games.remove(&user).expect("game");
+            (game.id, game.stack)
+        };
+        bank.blackjack_cash_out(crate::bank::AccountOwner::User(user), id, stack)
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("cash out failed"))?;
+        self.persist()
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("could not persist the game"))
+    }
+
+    pub async fn rebuy(
+        &self,
+        user: Uuid,
+        bank: &crate::bank::BankStore,
+    ) -> Result<(), BlackjackError> {
+        let (id, amount) = {
+            let games = self.games.lock().await;
+            let game = games.get(&user).ok_or(BlackjackError::NotFound)?;
+            if game.in_round() {
+                return Err(BlackjackError::IllegalAction(
+                    "rebuy is unavailable during a round",
+                ));
+            }
+            (game.id, buy_in_for(game.max_bet).saturating_sub(game.stack))
+        };
+        if amount == 0 {
+            return Err(BlackjackError::IllegalAction("your stack is already full"));
+        }
+        bank.blackjack_buy_in(crate::bank::AccountOwner::User(user), id, amount)
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("insufficient funds"))?;
+        {
+            let mut games = self.games.lock().await;
+            let game = games.get_mut(&user).ok_or(BlackjackError::NotFound)?;
+            game.stack += amount;
+            game.updated_at = Utc::now();
+        }
+        self.persist()
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("could not persist the game"))
+    }
+
+    async fn resolve(
+        &self,
+        user: Uuid,
+        action: impl FnOnce(&mut BlackjackGame) -> Result<Option<BlackjackSettlement>, BlackjackError>,
+        stats: &crate::blackjack_stats::BlackjackStatsStore,
+    ) -> Result<(), BlackjackError> {
+        let settlement = {
+            let mut games = self.games.lock().await;
+            let game = games.get_mut(&user).ok_or(BlackjackError::NotFound)?;
+            let settlement = action(game)?;
+            game.updated_at = Utc::now();
+            settlement
+        };
+        if let Some(settlement) = settlement {
+            let _ = stats.record(settlement.user, settlement.outcome).await;
+        }
+        self.persist()
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("could not persist the game"))
+    }
+
+    pub async fn bet(
+        &self,
+        user: Uuid,
+        amount: Cents,
+        stats: &crate::blackjack_stats::BlackjackStatsStore,
+    ) -> Result<(), BlackjackError> {
+        self.resolve(user, |game| game.place_bet(amount), stats)
+            .await
+    }
+
+    pub async fn insure(
+        &self,
+        user: Uuid,
+        stats: &crate::blackjack_stats::BlackjackStatsStore,
+    ) -> Result<(), BlackjackError> {
+        self.resolve(user, BlackjackGame::insure, stats).await
+    }
+
+    pub async fn decline(
+        &self,
+        user: Uuid,
+        stats: &crate::blackjack_stats::BlackjackStatsStore,
+    ) -> Result<(), BlackjackError> {
+        self.resolve(user, BlackjackGame::decline, stats).await
+    }
+
+    pub async fn act(
+        &self,
+        user: Uuid,
+        action: Action,
+        stats: &crate::blackjack_stats::BlackjackStatsStore,
+    ) -> Result<(), BlackjackError> {
+        self.resolve(user, |game| game.act(action), stats).await
+    }
+
+    pub async fn update_settings(
+        &self,
+        user: Uuid,
+        settings: BlackjackTrainerSettings,
+    ) -> Result<(), BlackjackError> {
+        {
+            let mut games = self.games.lock().await;
+            let game = games.get_mut(&user).ok_or(BlackjackError::NotFound)?;
+            game.settings = settings.sanitized();
+            game.updated_at = Utc::now();
+        }
+        self.persist()
+            .await
+            .map_err(|_| BlackjackError::IllegalAction("could not persist the game"))
+    }
+}
+
+/// The shared-table era, read only so its chips can be handed back.
+///
+/// Seats were bought in against the *table's* id, so each imported game keeps
+/// that id: the cash-out that eventually closes it lands in the same player's
+/// ledger against the same game, and §V1 never sees the money go missing.
+#[derive(Deserialize)]
+struct LegacyTable {
+    id: Uuid,
+    max_bet: Cents,
+    seats: Vec<Option<LegacySeat>>,
+}
+
+#[derive(Deserialize)]
+struct LegacySeat {
+    user: Uuid,
+    stack: Cents,
+    #[serde(default)]
+    hands: Vec<LegacyHand>,
+    #[serde(default)]
+    insurance: Cents,
+    #[serde(default)]
+    settings: BlackjackTrainerSettings,
+}
+
+#[derive(Deserialize)]
+struct LegacyHand {
+    bet: Cents,
+}
+
+async fn migrate_shared_tables(
+    dir: &Path,
+    games: &mut HashMap<Uuid, BlackjackGame>,
+) -> Result<bool, anyhow::Error> {
+    let path = dir.join("tables.json");
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let tables: Vec<LegacyTable> = serde_json::from_slice(&bytes)?;
+    let mut imported = 0usize;
+    for table in tables {
+        let max_bet = MAX_BETS
+            .into_iter()
+            .find(|rung| *rung >= table.max_bet)
+            .unwrap_or(MAX_BETS[MAX_BETS.len() - 1]);
+        for seat in table.seats.into_iter().flatten() {
+            if games.contains_key(&seat.user) {
+                continue;
+            }
+            let live = seat.hands.iter().map(|hand| hand.bet).sum::<Cents>() + seat.insurance;
+            let mut game = BlackjackGame::new(table.id, seat.user, max_bet, seat.stack + live);
+            game.settings = seat.settings.sanitized();
+            games.insert(seat.user, game);
+            imported += 1;
+        }
+    }
+    tokio::fs::rename(&path, dir.join("tables.migrated.json")).await?;
+    tracing::info!(imported, "carried blackjack seats into solo games");
+    Ok(true)
+}
+
 #[cfg(test)]
-mod shared_table_tests {
+mod tests {
     use super::*;
 
     fn card(rank: crate::cards::Rank) -> Card {
         Card::new(rank, crate::cards::Suit::Spades)
     }
 
-    fn seat(user: Uuid, stack: Cents) -> BlackjackSeat {
-        BlackjackSeat {
-            user,
-            stack,
-            bet: None,
-            hands: Vec::new(),
-            insurance: 0,
-            insurance_decided: false,
-            leaving: false,
-            settings: Default::default(),
-            decisions: Vec::new(),
-        }
+    fn game(stack: Cents) -> BlackjackGame {
+        BlackjackGame::new(Uuid::new_v4(), Uuid::new_v4(), 10_000, stack)
     }
 
-    fn rig(table: &mut BlackjackTable, cards: Vec<Card>) {
-        table.shoe.deck = Deck::from_cards(cards);
-        table.shoe.cut_card = usize::MAX;
+    /// Stacks the shoe and moves the cut card out of reach, so a rigged deal
+    /// is not reshuffled out from under the test.
+    fn rig(game: &mut BlackjackGame, cards: Vec<Card>) {
+        game.shoe.deck = Deck::from_cards(cards);
+        game.shoe.cut_card = usize::MAX;
     }
 
     #[test]
-    fn shared_table_constants_are_stable() {
+    fn the_slider_prices_a_seat() {
         assert_eq!(bet_options(10_000), [2_500, 5_000, 7_500, 10_000]);
         assert_eq!(buy_in_for(10_000_000), 100_000_000);
-        assert_eq!(table_id(0), TABLE_IDS[0]);
-        assert_eq!(table_id(3), TABLE_IDS[3]);
+        // Every rung divides into four whole-dollar wagers.
+        for max_bet in MAX_BETS {
+            for option in bet_options(max_bet) {
+                assert_eq!(option % 100, 0, "{max_bet} pays a fraction of a dollar");
+            }
+        }
+        // A balance buys every rung it can cover ten times over, and no more.
+        assert_eq!(affordable_max_bets(0), Vec::<Cents>::new());
+        assert_eq!(affordable_max_bets(99_999), Vec::<Cents>::new());
+        assert_eq!(affordable_max_bets(100_000), vec![10_000]);
+        assert_eq!(
+            affordable_max_bets(1_000_000),
+            vec![10_000, 20_000, 50_000, 100_000]
+        );
     }
 
     #[test]
@@ -1760,200 +1397,123 @@ mod shared_table_tests {
     }
 
     #[test]
-    fn settled_view_retains_hands_until_pause_finishes() {
-        let user = Uuid::new_v4();
-        let mut table = BlackjackTable::new(0);
-        table.seats[0] = Some(BlackjackSeat {
-            user,
-            stack: 10_000,
-            bet: None,
-            hands: vec![BlackjackHand {
-                cards: vec![Card::new(
-                    crate::cards::Rank::Ten,
-                    crate::cards::Suit::Clubs,
-                )],
-                bet: 2_500,
-                status: BlackjackHandStatus::Win,
-                split: false,
-                split_aces: false,
-                doubled: false,
-            }],
-            insurance: 0,
-            insurance_decided: false,
-            leaving: false,
-            settings: Default::default(),
-            decisions: Vec::new(),
-        });
-        table.phase = Phase::Settled;
-        table.deadline = Some(Utc::now() + Duration::seconds(5));
-        assert_eq!(table.view(Some(user), 0).seats[0].hands.len(), 1);
-        table.finish_pause(Utc::now(), true);
-        assert!(table.seats[0].as_ref().expect("seat").hands.is_empty());
+    fn a_bet_deals_immediately_and_nothing_is_on_a_clock() {
+        let mut game = game(100_000);
+        rig(
+            &mut game,
+            vec![
+                card(crate::cards::Rank::Ten),
+                card(crate::cards::Rank::Eight),
+                card(crate::cards::Rank::Nine),
+                card(crate::cards::Rank::Seven),
+            ],
+        );
+        assert!(game.place_bet(2_500).unwrap().is_none());
+        assert_eq!(game.phase, Phase::Playing);
+        assert_eq!(game.current, Some(0));
+        assert_eq!(game.stack, 97_500);
+        assert_eq!(game.hands[0].cards.len(), 2);
+        // The hole card stays face down while the hand is live.
+        let view = game.view(0);
+        assert_eq!(view.dealer.len(), 1);
+        assert!(view.dealer_hidden);
     }
 
     #[test]
-    fn two_bets_deal_once_with_a_turn_clock() {
-        let users = [Uuid::new_v4(), Uuid::new_v4()];
-        let mut table = BlackjackTable::new(0);
-        table.seats[0] = Some(seat(users[0], 10_000));
-        table.seats[1] = Some(seat(users[1], 10_000));
-        rig(
-            &mut table,
-            vec![
-                card(crate::cards::Rank::Two),
-                card(crate::cards::Rank::Three),
-                card(crate::cards::Rank::Four),
-                card(crate::cards::Rank::Five),
-                card(crate::cards::Rank::Six),
-                card(crate::cards::Rank::Ten),
-            ],
-        );
-        let now = Utc::now();
-        table.place_bet(users[0], 2_500, now).unwrap();
-        table.place_bet(users[1], 2_500, now).unwrap();
-        assert_eq!(table.round_no, 1);
-        assert_eq!(table.phase, Phase::Playing);
-        assert!(table.deadline.is_some());
-    }
-
-    #[test]
-    fn solo_bet_deals_without_a_deadline() {
-        let user = Uuid::new_v4();
-        let mut table = BlackjackTable::new(0);
-        table.seats[0] = Some(seat(user, 10_000));
-        rig(
-            &mut table,
-            vec![
-                card(crate::cards::Rank::Two),
-                card(crate::cards::Rank::Three),
-                card(crate::cards::Rank::Six),
-                card(crate::cards::Rank::Ten),
-            ],
-        );
-        table.place_bet(user, 2_500, Utc::now()).unwrap();
-        assert_eq!(table.round_no, 1);
-        assert!(table.deadline.is_none());
-    }
-
-    #[test]
-    fn betting_timeout_sits_out_unbet_seat() {
-        let users = [Uuid::new_v4(), Uuid::new_v4()];
-        let mut table = BlackjackTable::new(0);
-        table.seats[0] = Some(seat(users[0], 10_000));
-        table.seats[1] = Some(seat(users[1], 10_000));
-        rig(
-            &mut table,
-            vec![
-                card(crate::cards::Rank::Two),
-                card(crate::cards::Rank::Three),
-                card(crate::cards::Rank::Six),
-                card(crate::cards::Rank::Ten),
-            ],
-        );
-        let now = Utc::now();
-        table.place_bet(users[0], 2_500, now).unwrap();
-        let deadline = table.deadline.unwrap();
-        table.tick(deadline + Duration::seconds(1)).unwrap();
-        assert_eq!(table.round_no, 1);
-        assert!(table.view(Some(users[1]), 0).seats[1].waiting);
-    }
-
-    #[test]
-    fn only_current_seat_may_act_and_timeout_advances_turn() {
-        let users = [Uuid::new_v4(), Uuid::new_v4()];
-        let mut table = BlackjackTable::new(0);
-        table.seats[0] = Some(seat(users[0], 10_000));
-        table.seats[1] = Some(seat(users[1], 10_000));
-        rig(
-            &mut table,
-            vec![
-                card(crate::cards::Rank::Two),
-                card(crate::cards::Rank::Three),
-                card(crate::cards::Rank::Four),
-                card(crate::cards::Rank::Five),
-                card(crate::cards::Rank::Six),
-                card(crate::cards::Rank::Ten),
-            ],
-        );
-        let now = Utc::now();
-        table.place_bet(users[0], 2_500, now).unwrap();
-        table.place_bet(users[1], 2_500, now).unwrap();
-        assert!(table.act(users[1], Action::Hit, now).is_err());
-        let deadline = table.deadline.unwrap();
-        table.tick(deadline + Duration::seconds(1)).unwrap();
+    fn an_unoffered_wager_is_refused_and_the_stack_is_untouched() {
+        let mut game = game(100_000);
         assert_eq!(
-            table.seats[0].as_ref().unwrap().hands[0].status,
-            BlackjackHandStatus::Stand
+            game.place_bet(99).unwrap_err(),
+            BlackjackError::IllegalAction("that wager is not offered")
         );
-        assert_eq!(table.current, Some((1, 0)));
+        assert_eq!(game.stack, 100_000);
+        assert_eq!(game.phase, Phase::Betting);
     }
 
     #[test]
-    fn settlement_pays_win_push_and_natural_then_clears_after_pause() {
-        let users = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
-        let mut table = BlackjackTable::new(0);
-        for (index, user) in users.into_iter().enumerate() {
-            let mut player = seat(user, 7_500);
-            player.bet = Some(2_500);
-            player.hands = vec![BlackjackHand {
-                cards: if index == 2 {
-                    vec![
-                        card(crate::cards::Rank::Ace),
-                        card(crate::cards::Rank::King),
-                    ]
-                } else if index == 0 {
-                    vec![
-                        card(crate::cards::Rank::Ten),
-                        card(crate::cards::Rank::Eight),
-                    ]
-                } else {
-                    vec![
-                        card(crate::cards::Rank::Ten),
-                        card(crate::cards::Rank::Seven),
-                    ]
-                },
+    fn settlement_pays_a_win_a_push_and_a_natural() {
+        for (cards, status, expected) in [
+            (
+                [crate::cards::Rank::Ten, crate::cards::Rank::Eight],
+                BlackjackHandStatus::Stand,
+                12_500,
+            ),
+            (
+                [crate::cards::Rank::Ten, crate::cards::Rank::Seven],
+                BlackjackHandStatus::Stand,
+                10_000,
+            ),
+            (
+                [crate::cards::Rank::Ace, crate::cards::Rank::King],
+                BlackjackHandStatus::Blackjack,
+                13_750,
+            ),
+        ] {
+            let mut game = game(7_500);
+            game.bet = Some(2_500);
+            game.hands = vec![BlackjackHand {
+                cards: cards.into_iter().map(card).collect(),
                 bet: 2_500,
-                status: if index == 2 {
-                    BlackjackHandStatus::Blackjack
-                } else {
-                    BlackjackHandStatus::Stand
-                },
+                status,
                 split: false,
                 split_aces: false,
                 doubled: false,
             }];
-            table.seats[index] = Some(player);
+            game.dealer = vec![
+                card(crate::cards::Rank::Ten),
+                card(crate::cards::Rank::Seven),
+            ];
+            game.phase = Phase::Playing;
+            let settlement = game.settle().unwrap().expect("settlement");
+            assert_eq!(game.stack, expected);
+            assert_eq!(settlement.net, expected - 10_000);
+            assert_eq!(game.phase, Phase::Settled);
+            assert!(game.bet.is_none());
+            assert!(game.last_result.is_some());
         }
-        table.dealer = vec![
+    }
+
+    #[test]
+    fn a_settled_round_stays_on_the_felt_until_the_next_bet() {
+        let mut game = game(7_500);
+        game.bet = Some(2_500);
+        game.hands = vec![BlackjackHand {
+            cards: vec![
+                card(crate::cards::Rank::Ten),
+                card(crate::cards::Rank::Eight),
+            ],
+            bet: 2_500,
+            status: BlackjackHandStatus::Stand,
+            split: false,
+            split_aces: false,
+            doubled: false,
+        }];
+        game.dealer = vec![
             card(crate::cards::Rank::Ten),
             card(crate::cards::Rank::Seven),
         ];
-        table.phase = Phase::Playing;
-        let now = Utc::now();
-        table.settle(now).unwrap();
-        assert_eq!(table.seats[0].as_ref().unwrap().stack, 12_500);
-        assert_eq!(table.seats[1].as_ref().unwrap().stack, 10_000);
-        assert_eq!(table.seats[2].as_ref().unwrap().stack, 13_750);
-        assert_eq!(table.phase, Phase::Settled);
-        let deadline = table.deadline.unwrap();
-        table.tick(deadline + Duration::seconds(1)).unwrap();
-        assert_eq!(table.phase, Phase::Betting);
-        assert!(
-            table
-                .seats
-                .iter()
-                .flatten()
-                .all(|seat| seat.hands.is_empty())
+        game.phase = Phase::Playing;
+        game.settle().unwrap();
+        assert_eq!(game.view(0).hands.len(), 1);
+        rig(
+            &mut game,
+            vec![
+                card(crate::cards::Rank::Two),
+                card(crate::cards::Rank::Three),
+                card(crate::cards::Rank::Four),
+                card(crate::cards::Rank::Five),
+            ],
         );
+        game.place_bet(2_500).unwrap();
+        assert_eq!(game.hands.len(), 1);
+        assert_eq!(game.hands[0].cards[0].rank, crate::cards::Rank::Two);
     }
 
     #[test]
     fn action_flags_require_stack_for_double_and_split() {
-        let user = Uuid::new_v4();
-        let mut table = BlackjackTable::new(0);
-        let mut player = seat(user, 2_499);
-        player.bet = Some(2_500);
-        player.hands = vec![BlackjackHand {
+        let mut game = game(2_499);
+        game.bet = Some(2_500);
+        game.hands = vec![BlackjackHand {
             cards: vec![
                 card(crate::cards::Rank::Eight),
                 card(crate::cards::Rank::Eight),
@@ -1964,147 +1524,143 @@ mod shared_table_tests {
             split_aces: false,
             doubled: false,
         }];
-        table.seats[0] = Some(player);
-        table.phase = Phase::Playing;
-        table.current = Some((0, 0));
-        let (_, _, can_double, can_split, _, _, _, _) = table.action_flags(user);
-        assert!(!can_double);
-        assert!(!can_split);
+        game.phase = Phase::Playing;
+        game.current = Some(0);
+        let flags = game.action_flags();
+        assert!(flags.hit && flags.stand);
+        assert!(!flags.double);
+        assert!(!flags.split);
+    }
+
+    #[test]
+    fn an_ace_up_offers_insurance_and_a_dealer_natural_pays_it() {
+        let mut game = game(100_000);
+        rig(
+            &mut game,
+            vec![
+                card(crate::cards::Rank::Ten),
+                card(crate::cards::Rank::Eight),
+                card(crate::cards::Rank::Ace),
+                card(crate::cards::Rank::King),
+            ],
+        );
+        game.place_bet(2_500).unwrap();
+        assert_eq!(game.phase, Phase::Insurance);
+        game.insure().unwrap();
+        // Insurance pays 2:1 (the stake plus twice it) and the hand is lost.
+        assert_eq!(game.insurance, 1_250);
+        assert_eq!(game.stack, 97_500 - 1_250 + 3_750);
+        assert_eq!(game.hands[0].status, BlackjackHandStatus::Loss);
+        assert_eq!(game.phase, Phase::Settled);
     }
 
     #[tokio::test]
-    async fn store_leave_after_a_live_round_cash_out_is_recorded() {
-        let root = std::env::temp_dir().join(format!("blackjack-leave-{}", Uuid::new_v4()));
+    async fn sitting_buys_in_and_leaving_cashes_out_the_stack() {
+        let root = std::env::temp_dir().join(format!("blackjack-solo-{}", Uuid::new_v4()));
         let bank = crate::bank::BankStore::load(&root).await.unwrap();
-        let stats = crate::blackjack_stats::BlackjackStatsStore::new();
+        let store = BlackjackStore::load(&root).await.unwrap();
         let user = Uuid::new_v4();
-        let mut table = BlackjackTable::new(0);
-        table.seats[0] = Some(BlackjackSeat {
-            user,
-            stack: 7_500,
-            bet: Some(2_500),
-            hands: vec![BlackjackHand {
-                cards: vec![
-                    card(crate::cards::Rank::Ten),
-                    card(crate::cards::Rank::Eight),
-                ],
-                bet: 2_500,
-                status: BlackjackHandStatus::Playing,
-                split: false,
-                split_aces: false,
-                doubled: false,
-            }],
-            insurance: 0,
-            insurance_decided: false,
-            leaving: false,
-            settings: Default::default(),
-            decisions: Vec::new(),
-        });
-        table.phase = Phase::Playing;
-        table.current = Some((0, 0));
-        let store = BlackjackStore::from_tables(vec![table]);
-        let now = Utc::now();
-        let table = store.view(table_id(0), Some(user), 0).await.unwrap();
-        assert!(table.seats[0].bet.is_some());
-        store.leave(table_id(0), user, &bank).await.unwrap();
-        let table = store.view(table_id(0), Some(user), 0).await.unwrap();
-        assert!(table.seats[0].leaving);
-        store
-            .act(table_id(0), user, Action::Stand, now, &bank, &stats)
+        bank.re_up(crate::bank::AccountOwner::User(user))
             .await
             .unwrap();
-        assert!(
-            store
-                .view(table_id(0), Some(user), 0)
+        let before = bank
+            .account(crate::bank::AccountOwner::User(user))
+            .await
+            .unwrap()
+            .balance;
+        store
+            .sit(user, 10_000, BlackjackTrainerSettings::default(), &bank)
+            .await
+            .unwrap();
+        assert_eq!(
+            bank.account(crate::bank::AccountOwner::User(user))
                 .await
                 .unwrap()
-                .seats
-                .iter()
-                .all(|seat| seat.user != user)
+                .balance,
+            before - 100_000
         );
-        let account = bank
-            .account(crate::bank::AccountOwner::User(user))
-            .await
-            .unwrap();
-        assert!(account.entries.iter().any(|entry| {
-            entry.kind == crate::bank::LedgerKind::BlackjackCashOut { table: table_id(0) }
-        }));
+        assert_eq!(store.view(Some(user), 0).await.stack, 100_000);
+        assert_eq!(
+            store
+                .sit(user, 10_000, BlackjackTrainerSettings::default(), &bank)
+                .await,
+            Err(BlackjackError::ActiveGame)
+        );
+        store.leave(user, &bank).await.unwrap();
+        assert_eq!(
+            bank.account(crate::bank::AccountOwner::User(user))
+                .await
+                .unwrap()
+                .balance,
+            before
+        );
+        assert!(!store.view(Some(user), 0).await.seated);
+        tokio::fs::remove_dir_all(&root).await.ok();
     }
 
     #[tokio::test]
-    async fn high_tier_buy_in_and_mid_round_persistence_refund() {
-        let root = std::env::temp_dir().join(format!("blackjack-persist-{}", Uuid::new_v4()));
+    async fn leaving_mid_hand_is_refused_rather_than_deferred() {
+        let root = std::env::temp_dir().join(format!("blackjack-midhand-{}", Uuid::new_v4()));
         let bank = crate::bank::BankStore::load(&root).await.unwrap();
-        let user = Uuid::new_v4();
-        bank.append(
-            crate::bank::AccountOwner::User(user),
-            crate::bank::LedgerKind::Adjustment,
-            100_000_000,
-            "seed".into(),
-        )
-        .await
-        .unwrap();
-        bank.blackjack_buy_in(
-            crate::bank::AccountOwner::User(user),
-            table_id(3),
-            buy_in_for(10_000_000),
-        )
-        .await
-        .unwrap();
-        let account = bank
-            .account(crate::bank::AccountOwner::User(user))
-            .await
-            .unwrap();
-        assert_eq!(account.balance, 0);
+        let mut game = game(7_500);
+        game.bet = Some(2_500);
+        let user = game.user;
+        let store = BlackjackStore::from_games(vec![game]);
+        assert_eq!(
+            store.leave(user, &bank).await,
+            Err(BlackjackError::IllegalAction(
+                "finish the hand you are playing first"
+            ))
+        );
+        assert!(store.view(Some(user), 0).await.seated);
+        tokio::fs::remove_dir_all(&root).await.ok();
+    }
 
-        let table = BlackjackTable {
-            id: table_id(0),
-            tier: 0,
-            max_bet: 10_000,
-            seats: vec![
-                Some(BlackjackSeat {
-                    user,
-                    stack: 7_500,
-                    bet: Some(2_500),
-                    hands: vec![BlackjackHand {
-                        cards: vec![card(crate::cards::Rank::Ten)],
-                        bet: 2_500,
-                        status: BlackjackHandStatus::Playing,
-                        split: false,
-                        split_aces: false,
-                        doubled: false,
-                    }],
-                    insurance: 1_250,
-                    insurance_decided: true,
-                    leaving: false,
-                    settings: Default::default(),
-                    decisions: Vec::new(),
-                });
-                SEAT_COUNT
-            ],
-            shoe: BlackjackShoe::table_default(),
-            phase: Phase::Playing,
-            dealer: vec![card(crate::cards::Rank::Ace)],
-            dealer_peeked: false,
-            current: Some((0, 0)),
-            deadline: Some(Utc::now() + Duration::seconds(10)),
-            round_no: 1,
-            last_results: Vec::new(),
-            updated_at: Utc::now(),
-        };
+    /// The shared-table era left seats with chips in front of them; those chips
+    /// are the same money after the move, live bets included (SPEC §V1).
+    #[tokio::test]
+    async fn shared_table_seats_become_solo_games_without_losing_a_cent() {
+        let root = std::env::temp_dir().join(format!("blackjack-migrate-{}", Uuid::new_v4()));
         let dir = root.join("blackjack");
         tokio::fs::create_dir_all(&dir).await.unwrap();
+        let table = Uuid::new_v4();
+        let user = Uuid::new_v4();
         tokio::fs::write(
             dir.join("tables.json"),
-            serde_json::to_vec(&vec![table]).unwrap(),
+            serde_json::to_vec(&serde_json::json!([{
+                "id": table,
+                "max_bet": 10_000,
+                "seats": [
+                    null,
+                    {
+                        "user": user,
+                        "stack": 7_500,
+                        "insurance": 1_250,
+                        "hands": [{"bet": 2_500}],
+                        "settings": {"counting_tutor": true},
+                    },
+                ],
+            }]))
+            .unwrap(),
         )
         .await
         .unwrap();
-        let loaded = BlackjackStore::load(&root).await.unwrap();
-        let view = loaded.view(table_id(0), Some(user), 0).await.unwrap();
-        assert_eq!(view.phase, Phase::Betting);
-        assert_eq!(view.seats[0].stack, 11_250);
-        assert!(view.seats[0].hands.is_empty());
-        assert_eq!(view.seats[0].insurance, 0);
+        let store = BlackjackStore::load(&root).await.unwrap();
+        let view = store.view(Some(user), 0).await;
+        assert!(view.seated);
+        assert_eq!(view.stack, 7_500 + 2_500 + 1_250);
+        assert_eq!(view.max_bet, 10_000);
+        assert!(view.settings.counting_tutor);
+        // The seat keeps its table's id so the cash-out pairs with the buy-in.
+        assert_eq!(view.id, Some(table));
+        assert!(
+            !tokio::fs::try_exists(dir.join("tables.json"))
+                .await
+                .unwrap()
+        );
+        // A second load finds the games already carried over, not the seats.
+        let store = BlackjackStore::load(&root).await.unwrap();
+        assert_eq!(store.view(Some(user), 0).await.stack, 11_250);
+        tokio::fs::remove_dir_all(&root).await.ok();
     }
 }

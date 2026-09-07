@@ -435,12 +435,13 @@ fn shared_card_settings_preserve_storage_contract() {
 #[test]
 fn blackjack_island_has_game_contracts() {
     for literal in [
-        "/blackjack/tables/",
+        "/blackjack/state",
+        "affordable_max_bets",
+        "blackjack-sit-slider",
         "can_bet",
         "Bet ${wholeDollarMoney(amount)}",
         "dealer_score",
         "dealer_hidden",
-        "turn-clock",
         "Sit down",
         "Dealer",
         "deal-action",
@@ -456,9 +457,6 @@ fn blackjack_island_has_game_contracts() {
         "blackjack-status-row",
         "blackjack-shoe",
         "blackjack-shoe-bar",
-        "blackjack-seats",
-        "blackjack-seat",
-        "blackjack-turn-clock",
         "blackjack-own-hands",
     ] {
         assert!(
@@ -478,8 +476,8 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-status-row",
         ".blackjack-shoe",
         ".blackjack-shoe-bar",
-        ".blackjack-seats",
-        ".blackjack-seat.acting",
+        ".blackjack-sit",
+        ".blackjack-sit-slider",
     ] {
         assert!(
             ACTIVE_CSS.contains(literal),
