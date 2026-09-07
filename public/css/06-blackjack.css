@@ -119,8 +119,11 @@ html:has(.blackjack-shell),body:has(.blackjack-shell){height:100vh;overflow:hidd
 .blackjack-sit-slider{width:100%;min-height:var(--control-h);margin:0;accent-color:var(--accent)}
 .blackjack-sit-scale{display:flex;justify-content:space-between;color:var(--muted);font-size:var(--text-label);font-variant-numeric:tabular-nums}
 .blackjack-sit-note{margin:0;color:var(--muted);font-size:var(--text-small);text-align:center}
-/* One button holding a whole buy-in reads "Sit down · $1,000,000" at the top of
-   the ladder, which no phone fits on a line; it wraps rather than clipping. */
 .blackjack-sit .blackjack-actions button{white-space:normal;padding:.35rem .5rem;line-height:1.15}
+/* Five wagers, and a ceiling that goes as high as the bank does, so a label
+   reads "Bet $34,345" rather than "Bet $25". Five of those never share a phone
+   line: the bet row is the one action row allowed to wrap, sized by the widest
+   label it has to hold rather than by how many buttons there are. */
+.blackjack-bet-row{grid-template-columns:repeat(auto-fit,minmax(6.5rem,1fr))}
 /* Money lines up as a column wherever it is shown. */
 :where(.blackjack-status-row b,.blackjack-shoe-text,.blackjack-actions){font-variant-numeric:tabular-nums}

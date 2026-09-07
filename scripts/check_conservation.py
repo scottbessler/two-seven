@@ -81,7 +81,8 @@ for path in sorted(glob.glob(os.path.join(root, "tables", "*.json"))):
 # Chips bought at a house game have left the bank and are sitting at a table,
 # so §V1 only balances if they are counted back. Roulette keeps a player's whole
 # worth in `stack` -- chips on the felt are a claim on it, not a withdrawal --
-# and a blackjack game spreads one across its stack, its live bets and insurance.
+# while blackjack keeps no stack at all: only a live round's bets and insurance
+# are out of the bank, and only until it settles.
 house_stacks = 0
 roulette_path = os.path.join(root, "roulette", "tables.json")
 if os.path.exists(roulette_path):
@@ -91,8 +92,12 @@ if os.path.exists(roulette_path):
 blackjack_path = os.path.join(root, "blackjack", "solo.json")
 if os.path.exists(blackjack_path):
     for game in json.load(open(blackjack_path)):
-        house_stacks += game["stack"] + game.get("insurance", 0)
-        house_stacks += sum(hand["bet"] for hand in game.get("hands", []))
+        house_stacks += game.get("stack", 0)
+        # A settled round is still on the felt to be looked at, but it was paid
+        # out when it settled; only a live one (`bet` set) is out of the bank.
+        if game.get("bet") is not None:
+            house_stacks += game.get("insurance", 0)
+            house_stacks += sum(hand["bet"] for hand in game.get("hands", []))
 
 total = bank_total + cash_stacks + pots + escrow + house_stacks
 if total:

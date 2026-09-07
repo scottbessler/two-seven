@@ -90,11 +90,11 @@ function ShoeVisualization({ shoe }) {
   </section>`;
 }
 
-// Sitting down is the one decision that costs money before a card is dealt:
-// the slider picks the ceiling, and the buy-in is ten times it. Only the rungs
-// the bank can cover are on the track, so it cannot be dragged past them.
+// Sitting down costs nothing: the slider picks a ceiling, and the ceiling is
+// only the ladder the five wagers are cut from. The last rung is the whole
+// bank, so it cannot be dragged past what the player actually has.
 function SitDown({ state, busy, pending, onSit }) {
-  const rungs = state.affordable_max_bets;
+  const rungs = state.max_bets;
   // The slider starts at the cheapest seat: the ceiling is what you are asking
   // to be able to lose, so the safe end is the one to have to drag away from.
   const [index, setIndex] = useState(0);
@@ -102,13 +102,13 @@ function SitDown({ state, busy, pending, onSit }) {
   const maxBet = rungs[pick];
   if (!rungs.length) {
     return html`<section class="blackjack-sit" aria-label="Sit down">
-      <p class="deal-broke">You need ${wholeDollarMoney(state.max_bets[0] * 10)} in the bank to sit down.</p>
+      <p class="deal-broke">You need ${wholeDollarMoney(state.max_bet)} in the bank to sit down.</p>
     </section>`;
   }
   return html`<section class="blackjack-sit" aria-label="Sit down">
     <div class="blackjack-sit-stakes">
       <span><b>${wholeDollarMoney(maxBet)}</b> max bet</span>
-      <span><b>${wholeDollarMoney(maxBet * 10)}</b> buy-in</span>
+      <span><b>${wholeDollarMoney(maxBet / 5)}</b> min bet</span>
     </div>
     <input
       class="blackjack-sit-slider"
@@ -122,9 +122,9 @@ function SitDown({ state, busy, pending, onSit }) {
       onInput=${(event) => setIndex(Number(event.currentTarget.value))}
     />
     <div class="blackjack-sit-scale"><span>${wholeDollarMoney(rungs[0])}</span><span>${wholeDollarMoney(rungs[rungs.length - 1])}</span></div>
-    <p class="blackjack-sit-note">Wagers run ${wholeDollarMoney(maxBet / 4)} to ${wholeDollarMoney(maxBet)}.</p>
+    <p class="blackjack-sit-note">Five wagers, ${wholeDollarMoney(maxBet / 5)} to ${wholeDollarMoney(maxBet)}.</p>
     <div class="actions blackjack-actions">
-      <button class="deal-action" type="button" disabled=${busy} aria-busy=${pending === "sit"} onClick=${() => onSit(maxBet)}>Sit down · ${wholeDollarMoney(maxBet * 10)}</button>
+      <button class="deal-action" type="button" disabled=${busy} aria-busy=${pending === "sit"} onClick=${() => onSit(maxBet)}>Sit down</button>
     </div>
   </section>`;
 }
@@ -190,15 +190,13 @@ function App() {
   }
 
   const myTurn = state.phase === "playing";
-  const broke = state.phase !== "playing" && state.bet == null && state.stack < state.min_bet;
+  const broke = state.phase !== "playing" && state.bet == null && state.bank_balance < state.min_bet;
 
   let actions;
   if (broke) {
-    actions = state.can_rebuy
-      ? [html`<button class="deal-action" type="button" disabled=${busy} aria-busy=${pending === "rebuy"} onClick=${() => post("rebuy")}>Add chips · ${wholeDollarMoney(state.buy_in - state.stack)}</button>`]
-      : [html`<span class="deal-broke">Not enough chips for the ${wholeDollarMoney(state.min_bet)} minimum.</span>`];
+    actions = [html`<span class="deal-broke">Not enough in the bank for the ${wholeDollarMoney(state.min_bet)} minimum.</span>`];
   } else if (state.can_bet) {
-    actions = state.bet_options.map((amount) => html`<button class="deal-action" type="button" disabled=${busy || amount > state.stack} aria-busy=${pending === "bet"} onClick=${() => post("bet", { amount })}>Bet ${wholeDollarMoney(amount)}</button>`);
+    actions = state.bet_options.map((amount) => html`<button class="deal-action" type="button" disabled=${busy || amount > state.bank_balance} aria-busy=${pending === "bet"} onClick=${() => post("bet", { amount })}>Bet ${wholeDollarMoney(amount)}</button>`);
   } else if (state.can_insure) {
     actions = [
       html`<button type="button" disabled=${busy} aria-busy=${pending === "action"} onClick=${() => post("action", { kind: "insure" })}>Insurance</button>`,
@@ -217,7 +215,7 @@ function App() {
     <section class="blackjack-table" data-phase=${state.phase}>
       <div class="blackjack-status-row">
         <span><b>${money(state.max_bet)}</b> table max</span>
-        <span><b>${money(state.stack)}</b> your chips</span>
+        <span><b>${money(state.bank_balance)}</b> your bank</span>
         <span><b>${state.bet == null ? "—" : money(state.bet)}</b> your bet</span>
       </div>
       <${ShoeVisualization} shoe=${state.shoe} />
@@ -233,10 +231,9 @@ function App() {
         <p class=${`blitz-feedback${myTurn ? " blackjack-turn-announcement" : ""}`}>${state.message}</p>
       </div>
       <${TrainerPanel} trainer=${state.trainer} quizChoice=${quizChoice} setQuizChoice=${setQuizChoice} />
-      <div class="actions blackjack-actions" style=${`--action-count:${Math.max(1, actions.length)}`}>${actions}</div>
+      <div class=${`actions blackjack-actions${state.can_bet ? " blackjack-bet-row" : ""}`} style=${`--action-count:${Math.max(1, actions.length)}`}>${actions}</div>
       <nav class="blackjack-controls">
         ${error ? html`<p class="error" role="alert">${error}</p>` : html`<span></span>`}
-        ${state.can_rebuy && !broke ? html`<button type="button" disabled=${busy} onClick=${() => post("rebuy")}>Add chips</button>` : null}
         ${state.can_leave ? html`<button type="button" disabled=${busy} onClick=${() => post("leave")}>Leave table</button>` : null}
       </nav>
     </section>

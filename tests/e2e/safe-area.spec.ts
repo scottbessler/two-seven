@@ -72,15 +72,13 @@ test("Hand Blitz keeps its fixed shell clear of the device chrome", async ({ pag
 const seatedTable = {
   seated: true,
   id: "mock",
-  bank_balance: 0,
+  bank_balance: 100_000,
   max_bets: [10_000, 20_000, 50_000, 100_000],
-  affordable_max_bets: [10_000, 20_000, 50_000, 100_000],
   max_bet: 10_000,
-  buy_in: 100_000,
-  bet_options: [2_500, 5_000, 7_500, 10_000],
-  min_bet: 2_500,
+  bet_options: [2_000, 4_000, 6_000, 8_000, 10_000],
+  min_bet: 2_000,
   phase: "betting",
-  stack: 100_000,
+  staked: 0,
   bet: null,
   insurance: 0,
   hands: [],
@@ -91,7 +89,6 @@ const seatedTable = {
   result: null,
   can_sit: false,
   can_leave: true,
-  can_rebuy: false,
   can_bet: true,
   can_insure: false,
   can_decline: false,
@@ -115,11 +112,12 @@ const splitTable = {
   dealer_hidden: true,
   dealer_score: null,
   current_hand: 0,
-  stack: 90_000,
-  bet: 2_500,
+  bank_balance: 96_000,
+  staked: 4_000,
+  bet: 2_000,
   hands: [
-    { cards: ["8h", "3c"], score: 11, bet: 2_500, status: "Playing", blackjack: false },
-    { cards: ["8d", "Kc", "2s"], score: 20, bet: 2_500, status: "Playing", blackjack: false },
+    { cards: ["8h", "3c"], score: 11, bet: 2_000, status: "Playing", blackjack: false },
+    { cards: ["8d", "Kc", "2s"], score: 20, bet: 2_000, status: "Playing", blackjack: false },
   ],
   can_bet: false,
   can_hit: true,
@@ -129,13 +127,27 @@ const splitTable = {
   message: "Your move",
 };
 
+// The ceiling runs as high as the bank does, so the five wagers are as wide as
+// money on this table ever gets. This is the row that decides whether the bet
+// buttons fit a phone at all.
+const richTable = {
+  ...seatedTable,
+  bank_balance: 17_172_500,
+  max_bets: [10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 17_172_500],
+  max_bet: 17_172_500,
+  bet_options: [3_434_500, 6_869_000, 10_303_500, 13_738_000, 17_172_500],
+  min_bet: 3_434_500,
+};
+
 // The slider before any of that: nothing is seated, so the page is the ladder.
+// The bank itself is the last rung, cents and all.
 const sitting = {
   ...seatedTable,
   seated: false,
   id: null,
-  bank_balance: 250_000,
-  stack: 0,
+  bank_balance: 250_080,
+  max_bets: [10_000, 20_000, 50_000, 100_000, 200_000, 250_000],
+  staked: 0,
   can_sit: true,
   can_leave: false,
   can_bet: false,
@@ -144,14 +156,21 @@ const sitting = {
   trainer: null,
 };
 
+// The chips are the bank account now, so the coin menu and the table read the
+// same number: a mocked table whose balance the real (empty) account overwrote
+// would measure "$0.00 your bank" instead of the widest thing the row holds.
 async function mountBlackjack(page, state) {
   await page.unroute("**/blackjack/state");
+  await page.unroute("**/api/bank");
   await page.route("**/blackjack/state", (route) => route.fulfill({ json: state }));
+  await page.route("**/api/bank", (route) => route.fulfill({
+    json: { owner: { User: "mock" }, balance: state.bank_balance, loan_count: 0, entries: [], loan_debt: 0, net_balance: state.bank_balance, can_re_up: false, next_repayment_amount: null, repayable_loans: 0 },
+  }));
   await page.goto("/blackjack");
   await expect(page.locator(".blackjack-table")).toBeVisible();
 }
 
-for (const [label, state, marker] of [["sitting down", sitting, /Sit down/], ["placing a bet", seatedTable, "Bet $25"], ["playing a split", splitTable, "Stand"]] as const) {
+for (const [label, state, marker] of [["sitting down", sitting, /Sit down/], ["placing a bet", seatedTable, "Bet $20"], ["betting the whole bank", richTable, "Bet $34,345"], ["playing a split", splitTable, "Stand"]] as const) {
   test(`the blackjack table fits the phone while ${label}`, async ({ page }) => {
     test.skip((page.viewportSize()?.width || 0) > 640, "V54: only the phone project pins insets");
     await signIn(page, "BjPhone");

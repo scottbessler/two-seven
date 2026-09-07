@@ -436,8 +436,9 @@ fn shared_card_settings_preserve_storage_contract() {
 fn blackjack_island_has_game_contracts() {
     for literal in [
         "/blackjack/state",
-        "affordable_max_bets",
+        "max_bets",
         "blackjack-sit-slider",
+        "blackjack-bet-row",
         "can_bet",
         "Bet ${wholeDollarMoney(amount)}",
         "dealer_score",
@@ -478,6 +479,7 @@ fn blackjack_island_has_game_contracts() {
         ".blackjack-shoe-bar",
         ".blackjack-sit",
         ".blackjack-sit-slider",
+        ".blackjack-bet-row",
     ] {
         assert!(
             ACTIVE_CSS.contains(literal),

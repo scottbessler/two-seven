@@ -237,21 +237,7 @@ pub async fn blackjack_leave(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
 ) -> Result<Json<BlackjackView>, AppError> {
-    s.blackjack
-        .leave(user, &s.bank)
-        .await
-        .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user)).await))
-}
-
-pub async fn blackjack_rebuy(
-    AuthUser(user): AuthUser,
-    State(s): State<AppState>,
-) -> Result<Json<BlackjackView>, AppError> {
-    s.blackjack
-        .rebuy(user, &s.bank)
-        .await
-        .map_err(blackjack_error)?;
+    s.blackjack.leave(user).await.map_err(blackjack_error)?;
     Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
@@ -261,7 +247,7 @@ pub async fn blackjack_bet(
     Json(input): Json<BlackjackBetRequest>,
 ) -> Result<Json<BlackjackView>, AppError> {
     s.blackjack
-        .bet(user, input.amount, &s.blackjack_stats)
+        .bet(user, input.amount, &s.bank, &s.blackjack_stats)
         .await
         .map_err(blackjack_error)?;
     Ok(Json(blackjack_view(&s, Some(user)).await))
@@ -274,9 +260,9 @@ pub async fn blackjack_action(
 ) -> Result<Json<BlackjackView>, AppError> {
     let kind = input.kind.to_ascii_lowercase();
     if kind == "insure" {
-        s.blackjack.insure(user, &s.blackjack_stats).await
+        s.blackjack.insure(user, &s.bank, &s.blackjack_stats).await
     } else if kind == "decline" {
-        s.blackjack.decline(user, &s.blackjack_stats).await
+        s.blackjack.decline(user, &s.bank, &s.blackjack_stats).await
     } else {
         let action = match kind.as_str() {
             "hit" => BlackjackAction::Hit,
@@ -285,7 +271,9 @@ pub async fn blackjack_action(
             "split" => BlackjackAction::Split,
             _ => return Err(AppError::bad_request("unknown blackjack action")),
         };
-        s.blackjack.act(user, action, &s.blackjack_stats).await
+        s.blackjack
+            .act(user, action, &s.bank, &s.blackjack_stats)
+            .await
     }
     .map_err(blackjack_error)?;
     Ok(Json(blackjack_view(&s, Some(user)).await))

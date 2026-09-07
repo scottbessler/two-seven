@@ -76,7 +76,8 @@ Rules
 
 - A new user's account starts at **$0**. Bot accounts are created lazily, also at $0.
 - Every debit must leave the account balance ≥ $0; each gameplay buy-in, entry,
-  or wager ≤ $10,000.
+  or wager ≤ $1,000,000 (`MAX_GAME_ENTRY`), which is what the top of the cash
+  ladder costs and what a blackjack ceiling may climb to.
 - A signed-in user may re-up $1,000 when their balance is < $1,000. Each re-up
   appends a `ReUp` ledger entry and increments `loan_count`.
 - A bot's first shortfall-funded buy-in appends a `HouseStake` entry rounded up
@@ -147,20 +148,23 @@ things: how many hole cards a seat is dealt, and how a hand is read at showdown
 - Actions: `fold`, `check`, `call`, `bet`, `raise`, plus implicit all-in when a
   player cannot cover.
 - **Blackjack:** Played alone against the house, one game per player: your own
-  shoe, your own dealer, and nobody to wait for. Sitting down is the one thing
-  that costs money up front — a slider picks the maximum bet from a fixed
-  ladder (a 1-2-5 run from $100 to $100,000, every rung dividing into four
-  whole-dollar wagers) and buys in for 10× it as one `BlackjackBuyIn` ledger
-  row; only rungs the bank covers are offered. Cashing out returns the
-  whole stack as one `BlackjackCashOut`. A game offers exactly four wagers — ¼,
-  ½, ¾ and the max bet — and a bet is dealt at once. Nothing runs on a clock:
-  a settled round stays on the felt until the next bet clears it, and the
-  driver does not tick blackjack at all. Double and split require another bet
-  of the active hand to remain in the stack; insurance requires half that bet.
-  The same affordability rules govern displayed action flags and server
-  validation. Seated players can Add chips (another buy-in) or Leave; both are
-  refused outright while a hand is live, rather than deferred. Changing the
-  ceiling means leaving and sitting down again.
+  shoe, your own dealer, and nobody to wait for. There is no buy-in and no
+  table stack: the chips are the bank account. Sitting down is free and picks
+  only a maximum bet — a slider stopping on a 1-2-5 ladder from $100 with the
+  whole bank as its last rung, every stop a multiple of $5 and no higher than
+  the §V10 single-stake ceiling. A game offers exactly five wagers — ⅕, ⅖, ⅗,
+  ⅘ and the max bet — and a bet is dealt at once. Every stake (the wager,
+  a double, a split, insurance) leaves the bank as one `BlackjackBet` when it
+  is made, and a settled round returns everything it pays as one
+  `BlackjackPayout`; so the only money the table holds is what is on the felt,
+  and a restart that cannot resume a round hands that back as one
+  `BlackjackCashOut`. Nothing runs on a clock: a settled round stays on the
+  felt until the next bet clears it, and the driver does not tick blackjack at
+  all. Double and split require another bet of the active hand to remain in
+  the bank; insurance requires half that bet. The same affordability rules
+  govern displayed action flags and server validation. Leaving is refused
+  outright while a hand is live, rather than deferred, and moves no money.
+  Changing the ceiling means leaving and sitting down again.
 - **Roulette:** A single-zero (European) wheel, played alone against the house
   at a private table per player. Buy-in slider offers $1,000 / $10,000 /
   $100,000 / $1,000,000; selected amount leaves bank as one
@@ -399,7 +403,8 @@ Mark each milestone done here as it lands.
 - **V8** Every `/card-test` suit row keeps the in-game card dimensions while
   wrapping all 13 cards within its visible width; no suit row scrolls horizontally.
 - **V9** ∀ positive configured stake, blind, ante, buy-in, entry fee, or wager ≥ 100 cents.
-- **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 1,000,000 cents;
+- **V10** ∀ single gameplay buy-in, entry, rebuy, or wager ≤ 100,000,000 cents,
+  which is also what bounds a blackjack ceiling and so every wager cut from it;
   a buy-in auto-loan adds one `loan_count` per required $1,000 loan, except
   the first shortfall-funded bot buy-in uses `HouseStake` instead. A person's
   buy-in only auto-loans at a seat costing ≤ $1,000; above that an uncovered
@@ -698,6 +703,13 @@ Mark each milestone done here as it lands.
   `prefers-reduced-motion: reduce` stops it as soon as there is nothing left to
   animate, and every rebuild after that — the resize observer's first delivery,
   the dock opening for a spin, the font arriving — would leave a blank disc.
+- **V76** Blackjack holds no stack: a seat costs nothing, every stake is a
+  `BlackjackBet` debit at the moment it is made and every settlement a
+  `BlackjackPayout` credit, so bank + felt is constant across a round (§V1). A
+  round a restart cannot resume returns its felt as one `BlackjackCashOut`, as
+  does a stack saved by the buy-in era, before the file is rewritten without
+  it. The max-bet ladder starts at $100, ends at the whole bank, steps in $5,
+  and prices five whole-dollar wagers at every stop.
 - **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
   fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
   board then owns the full stage width (no side rails) and all-in odds become
@@ -784,6 +796,7 @@ T52|x|roulette: wheel, felt and betting|V68,V69,V70,V71
 T53|x|return blackjack to one game per player, sat down with a max-bet slider|V24,V25,V26,V27,V63,V72
 T54|x|fix roulette buy-in, bet anchors, wheel interaction and control layout|V1,V2,V68,V69,V70,V71,V73,V74
 T55|x|draw the wheel on a rebuild, so reduced motion does not leave an empty disc|V75
+T56|x|drop the blackjack buy-in, run the max bet up to the whole bank and cut five wagers from it|V1,V2,V9,V10,V24,V25,V27,V63,V76
 
 ## §B Bug log
 
