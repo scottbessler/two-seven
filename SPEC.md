@@ -146,23 +146,21 @@ things: how many hole cards a seat is dealt, and how a hand is read at showdown
   modelled (irrelevant with a shuffled deck).
 - Actions: `fold`, `check`, `call`, `bet`, `raise`, plus implicit all-in when a
   player cannot cover.
-- **Blackjack:** Four fixed shared tables with max bets $100 / $1,000 /
-  $10,000 / $100,000; the buy-in is 10× the max bet and comes out of the bank
-  as one `BlackjackBuyIn` ledger row (cash-out returns the seat stack as one
-  `BlackjackCashOut`). Each table offers exactly four wagers — ¼, ½, ¾ and
-  the max bet — and up to five human seats; a user holds at most one blackjack
-  seat at a time. The shoe and dealer hand are shared: everyone who has bet
-  when the round starts is dealt in from the same shoe against the same dealer.
-  A lone seated player is dealt as soon as they bet; with two or more seated
-  players the first bet starts a betting clock, and seats that have not bet when
-  it expires sit that round out. Insurance and hand actions run on the poker
-  turn clock; a timed-out insurance decision declines and a timed-out hand
-  stands. Double and split require another bet of the active hand to remain
-  in the seat stack; insurance requires half that bet. The same affordability
-  rules govern displayed action flags and server validation. Results stay on
-  the table for a short pause before the next betting round. Seated players can
-  Add chips (another buy-in) or Leave; with a live bet both wait for settlement
-  and the seat visibly remains Leaving until then.
+- **Blackjack:** Played alone against the house, one game per player: your own
+  shoe, your own dealer, and nobody to wait for. Sitting down is the one thing
+  that costs money up front — a slider picks the maximum bet from a fixed
+  ladder (a 1-2-5 run from $100 to $100,000, every rung dividing into four
+  whole-dollar wagers) and buys in for 10× it as one `BlackjackBuyIn` ledger
+  row; only rungs the bank covers are offered. Cashing out returns the
+  whole stack as one `BlackjackCashOut`. A game offers exactly four wagers — ¼,
+  ½, ¾ and the max bet — and a bet is dealt at once. Nothing runs on a clock:
+  a settled round stays on the felt until the next bet clears it, and the
+  driver does not tick blackjack at all. Double and split require another bet
+  of the active hand to remain in the stack; insurance requires half that bet.
+  The same affordability rules govern displayed action flags and server
+  validation. Seated players can Add chips (another buy-in) or Leave; both are
+  refused outright while a hand is live, rather than deferred. Changing the
+  ceiling means leaving and sitting down again.
 - **Roulette:** A single-zero (European) wheel, played alone against the house
   at a private table per player. The buy-in is $1,000 out of the bank as one
   `RouletteBuyIn` ledger row; cashing out returns the whole stack as one
@@ -461,13 +459,18 @@ Mark each milestone done here as it lands.
 - **V26** Blackjack peeks at deal time unless an ace-up hand has a real
   insurance decision; ace-up decisions peek immediately after insurance or any
   other action, player/dealer naturals push, and insurance pays 3× its stake.
-- **V27** Each user holds at most one blackjack seat across the four tables;
-  a live bet defers leave/rebuy until settlement, and a seated player's stack
-  is the only money a table can win or lose for them.
-- **V63** Blackjack tables are shared: one shoe and one dealer hand per round,
-  every seat that bet is dealt from it, the betting clock exists only with two
-  or more seated players, unbet seats sit the round out, and betting/insurance/
-  action deadlines are enforced by the driver (decline insurance, stand).
+- **V27** Each user holds at most one blackjack game; a live bet refuses
+  leave/rebuy until the hand is over, and a seated player's stack is the only
+  money the game can win or lose for them.
+- **V63** Blackjack is played alone: one game per player, with its own shoe and
+  its own dealer. Nothing is on a clock — no betting clock, no turn clock, no
+  result pause and no driver tick — because a clock only exists to stop one
+  player holding up another; a bet deals at once and a settled round stays on
+  the felt until the next bet clears it.
+- **V72** Sitting down chooses a maximum bet from a fixed ladder and buys in for
+  ten times it. Only rungs the bank balance covers are offered, wagers are the
+  four quarter-steps of that ceiling, and the ceiling cannot change without
+  leaving the table.
 - **V28** Blackjack and Hand Blitz islands render only legal controls and show
   server error text; shared island helpers remain behavior-compatible.
 - **V24** Blackjack tables (seats, stacks, shoe) survive process restart
@@ -665,7 +668,7 @@ Mark each milestone done here as it lands.
 - **V69** A roulette table is worth exactly its `stack` between spins: chips on
   the felt are a claim on it, `staked <= stack`, and a spin moves
   `returned - staked` in one step. `scripts/check_conservation.py` counts house
-  stacks (roulette, and blackjack seats' stacks, live bets and insurance)
+  stacks (roulette, and a blackjack game's stack, live bets and insurance)
   toward §V1.
 - **V70** The roulette table needs no scrolling on the phone it is played on:
   the board takes every touch so a thumb can slide onto a line, so nothing may
@@ -763,6 +766,7 @@ T49|x|keep unbounded stores off the hot paths: seat ledgers, standings, chart po
 T50|x|fill the five-handed portrait seat grid|V37,V48,V53,V66
 T51|x|add Omaha alongside Hold'em: variant-aware deal and showdown, a ladder per game, and a directory of games at the front door|V67
 T52|x|roulette: wheel, felt and betting|V68,V69,V70,V71
+T53|x|return blackjack to one game per player, sat down with a max-bet slider|V24,V25,V26,V27,V63,V72
 
 ## §B Bug log
 

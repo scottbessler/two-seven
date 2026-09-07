@@ -2,7 +2,7 @@ use crate::{
     app::AppState,
     bank::AccountOwner,
     blackjack::{
-        Action as BlackjackAction, BlackjackError, BlackjackTableView, BlackjackTrainerSettings,
+        Action as BlackjackAction, BlackjackError, BlackjackTrainerSettings, BlackjackView,
     },
     blitz::{BlitzAnswerError, BlitzDifficulty},
     error::AppError,
@@ -177,93 +177,35 @@ fn roulette_error(error: crate::roulette::RouletteError) -> AppError {
         other => AppError::bad_request(other.message()),
     }
 }
-pub async fn blackjack(MaybeUser(user): MaybeUser, State(s): State<AppState>) -> Html<String> {
-    Html(render::blackjack_lobby(&s.blackjack.lobby(user).await))
+pub async fn blackjack(AuthUser(_user): AuthUser) -> Html<String> {
+    Html(render::blackjack_table())
 }
 
-pub async fn blackjack_table_page(
-    AuthUser(_user): AuthUser,
-    State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Html<String>, AppError> {
-    s.blackjack
-        .view(id, None, 0)
-        .await
-        .map_err(blackjack_error)?;
-    Ok(Html(render::blackjack_table(id)))
-}
-
-async fn blackjack_view(
-    s: &AppState,
-    user: Option<Uuid>,
-    id: Uuid,
-) -> Result<BlackjackTableView, AppError> {
+async fn blackjack_view(s: &AppState, user: Option<Uuid>) -> BlackjackView {
     let balance = match user {
         Some(user) => balance_of(s, user).await,
         None => 0,
     };
-    let mut view = s
-        .blackjack
-        .view(id, user, balance)
-        .await
-        .map_err(blackjack_error)?;
-    for seat in &mut view.seats {
-        if let Some(player) = s.users.get(seat.user).await {
-            seat.display_name = player.display_name;
-        }
-    }
-    Ok(view)
+    s.blackjack.view(user, balance).await
 }
 
-pub async fn blackjack_table_state(
+pub async fn blackjack_state(
     MaybeUser(user): MaybeUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<BlackjackTableView>, AppError> {
-    Ok(Json(blackjack_view(&s, user, id).await?))
-}
-
-pub async fn blackjack_table_events(
-    MaybeUser(user): MaybeUser,
-    State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, AppError> {
-    let snapshot =
-        serde_json::to_string(&blackjack_view(&s, user, id).await?).map_err(AppError::internal)?;
-    let rx = s.blackjack.subscribe();
-    let state = s.clone();
-    let events = stream::unfold((Some(snapshot), rx), move |(first, mut rx)| {
-        let state = state.clone();
-        async move {
-            if let Some(snapshot) = first {
-                return Some((
-                    Ok(Event::default().event("state").data(snapshot)),
-                    (None, rx),
-                ));
-            }
-            loop {
-                match rx.recv().await {
-                    Ok(changed) if changed == id => {
-                        let data = blackjack_view(&state, user, id)
-                            .await
-                            .and_then(|view| {
-                                serde_json::to_string(&view).map_err(AppError::internal)
-                            })
-                            .unwrap_or_else(|_| "{}".into());
-                        return Some((Ok(Event::default().event("state").data(data)), (None, rx)));
-                    }
-                    Ok(_) => continue,
-                    Err(_) => return None,
-                }
-            }
-        }
-    });
-    Ok(Sse::new(events)
-        .keep_alive(axum::response::sse::KeepAlive::new().interval(Duration::from_secs(15))))
+) -> Json<BlackjackView> {
+    Json(blackjack_view(&s, user).await)
 }
 
 #[derive(Deserialize, Default)]
 pub struct BlackjackSettingsRequest {
+    #[serde(flatten)]
+    #[serde(default)]
+    pub settings: BlackjackTrainerSettings,
+}
+
+#[derive(Deserialize)]
+pub struct BlackjackSitRequest {
+    pub max_bet: i64,
     #[serde(flatten)]
     #[serde(default)]
     pub settings: BlackjackTrainerSettings,
@@ -279,78 +221,62 @@ pub struct BlackjackTableActionRequest {
     pub kind: String,
 }
 
-pub async fn blackjack_join(
+pub async fn blackjack_sit(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(input): Json<BlackjackSettingsRequest>,
-) -> Result<Json<BlackjackTableView>, AppError> {
+    Json(input): Json<BlackjackSitRequest>,
+) -> Result<Json<BlackjackView>, AppError> {
     s.blackjack
-        .join(id, user, input.settings, &s.bank)
+        .sit(user, input.max_bet, input.settings, &s.bank)
         .await
         .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+    Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
 pub async fn blackjack_leave(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<BlackjackTableView>, AppError> {
+) -> Result<Json<BlackjackView>, AppError> {
     s.blackjack
-        .leave(id, user, &s.bank)
+        .leave(user, &s.bank)
         .await
         .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+    Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
 pub async fn blackjack_rebuy(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<Json<BlackjackTableView>, AppError> {
+) -> Result<Json<BlackjackView>, AppError> {
     s.blackjack
-        .rebuy(id, user, &s.bank)
+        .rebuy(user, &s.bank)
         .await
         .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+    Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
 pub async fn blackjack_bet(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
     Json(input): Json<BlackjackBetRequest>,
-) -> Result<Json<BlackjackTableView>, AppError> {
+) -> Result<Json<BlackjackView>, AppError> {
     s.blackjack
-        .bet(
-            id,
-            user,
-            input.amount,
-            Utc::now(),
-            &s.bank,
-            &s.blackjack_stats,
-        )
+        .bet(user, input.amount, &s.blackjack_stats)
         .await
         .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+    Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
 pub async fn blackjack_action(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
     Json(input): Json<BlackjackTableActionRequest>,
-) -> Result<Json<BlackjackTableView>, AppError> {
+) -> Result<Json<BlackjackView>, AppError> {
     let kind = input.kind.to_ascii_lowercase();
     if kind == "insure" {
-        s.blackjack
-            .insure(id, user, Utc::now(), &s.bank, &s.blackjack_stats)
-            .await
+        s.blackjack.insure(user, &s.blackjack_stats).await
     } else if kind == "decline" {
-        s.blackjack
-            .decline(id, user, Utc::now(), &s.bank, &s.blackjack_stats)
-            .await
+        s.blackjack.decline(user, &s.blackjack_stats).await
     } else {
         let action = match kind.as_str() {
             "hit" => BlackjackAction::Hit,
@@ -359,25 +285,22 @@ pub async fn blackjack_action(
             "split" => BlackjackAction::Split,
             _ => return Err(AppError::bad_request("unknown blackjack action")),
         };
-        s.blackjack
-            .act(id, user, action, Utc::now(), &s.bank, &s.blackjack_stats)
-            .await
+        s.blackjack.act(user, action, &s.blackjack_stats).await
     }
     .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+    Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
 pub async fn blackjack_settings(
     AuthUser(user): AuthUser,
     State(s): State<AppState>,
-    Path(id): Path<Uuid>,
     Json(input): Json<BlackjackSettingsRequest>,
-) -> Result<Json<BlackjackTableView>, AppError> {
+) -> Result<Json<BlackjackView>, AppError> {
     s.blackjack
-        .update_settings(id, user, input.settings)
+        .update_settings(user, input.settings)
         .await
         .map_err(blackjack_error)?;
-    Ok(Json(blackjack_view(&s, Some(user), id).await?))
+    Ok(Json(blackjack_view(&s, Some(user)).await))
 }
 
 pub async fn admin_page(State(_s): State<AppState>) -> Html<String> {
