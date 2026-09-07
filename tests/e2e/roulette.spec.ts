@@ -139,7 +139,7 @@ test.describe("roulette wheel", () => {
     await expect(page.locator(".roulette-chip.big")).toHaveClass(/green/);
   });
 
-  test("holds its host-stable layout (V73)", async ({ page }) => {
+  test("holds its host-stable layout (V74)", async ({ page }) => {
     await page.goto("/roulette-test");
     await page.waitForFunction(() => Boolean(window.rouletteWheel));
     await expectLayout(page, "roulette-page", LAYOUT);

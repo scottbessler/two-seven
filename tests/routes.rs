@@ -2406,14 +2406,14 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
 }
 
 #[tokio::test]
-async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
+async fn blackjack_routes_buy_in_on_sit_and_cash_out_on_leave() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
         .insert(User {
             id: user,
-            username: "blackjack-table".into(),
-            display_name: "Blackjack Table".into(),
+            username: "blackjack-solo".into(),
+            display_name: "Blackjack Solo".into(),
             credentials: vec![],
             settings: UserSettings::default(),
             created_at: chrono::Utc::now(),
@@ -2422,37 +2422,41 @@ async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
         .unwrap();
     t.bank.re_up(AccountOwner::User(user)).await.unwrap();
     let cookie_value = cookie(&t.key, user);
-    let table = two_seven::blackjack::TABLE_IDS[0];
-    let other_table = two_seven::blackjack::TABLE_IDS[1];
 
-    let join = t
+    let sit = t
         .router
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/blackjack/tables/{table}/join"))
+                .uri("/blackjack/sit")
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from("{}"))
+                .body(Body::from(r#"{"max_bet":10000}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(join.status(), StatusCode::OK);
+    assert_eq!(sit.status(), StatusCode::OK);
     let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
-    assert!(account.entries.iter().any(|entry| {
-        matches!(entry.kind, LedgerKind::BlackjackBuyIn { table: id } if id == table)
-            && entry.delta == -100_000
-    }));
+    let game = account
+        .entries
+        .iter()
+        .find_map(|entry| match entry.kind {
+            LedgerKind::BlackjackBuyIn { table } if entry.delta == -100_000 => Some(table),
+            _ => None,
+        })
+        .expect("buy-in entry");
 
+    // The slider ceiling is the only wager ladder: a stray amount is refused
+    // and the stack is untouched.
     let invalid_bet = t
         .router
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/blackjack/tables/{table}/bet"))
+                .uri("/blackjack/bet")
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"amount":99}"#))
@@ -2461,24 +2465,27 @@ async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
         .await
         .unwrap();
     assert_eq!(invalid_bet.status(), StatusCode::BAD_REQUEST);
-    let state = t.state.blackjack.view(table, Some(user), 0).await.unwrap();
-    assert_eq!(state.seats[0].stack, 100_000);
+    let state = t.state.blackjack.view(Some(user), 0).await;
+    assert!(state.seated);
+    assert_eq!(state.stack, 100_000);
+    assert_eq!(state.max_bet, 10_000);
+    assert_eq!(state.bet_options, vec![2_500, 5_000, 7_500, 10_000]);
 
-    let second_join = t
+    let second_sit = t
         .router
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/blackjack/tables/{other_table}/join"))
+                .uri("/blackjack/sit")
                 .header(header::COOKIE, &cookie_value)
                 .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from("{}"))
+                .body(Body::from(r#"{"max_bet":10000}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(second_join.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(second_sit.status(), StatusCode::BAD_REQUEST);
 
     let leave = t
         .router
@@ -2486,7 +2493,7 @@ async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/blackjack/tables/{table}/leave"))
+                .uri("/blackjack/leave")
                 .header(header::COOKIE, &cookie_value)
                 .body(Body::empty())
                 .unwrap(),
@@ -2496,7 +2503,7 @@ async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
     assert_eq!(leave.status(), StatusCode::OK);
     let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
     assert!(account.entries.iter().any(|entry| {
-        matches!(entry.kind, LedgerKind::BlackjackCashOut { table: id } if id == table)
+        matches!(entry.kind, LedgerKind::BlackjackCashOut { table: id } if id == game)
             && entry.delta == 100_000
     }));
 
@@ -2505,7 +2512,7 @@ async fn blackjack_table_routes_use_shared_buyins_and_cashouts() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/blackjack/tables/{table}/action"))
+                .uri("/blackjack/action")
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(r#"{"kind":"hit"}"#))
                 .unwrap(),

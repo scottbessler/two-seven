@@ -11,10 +11,6 @@ async function signIn(page, name: string) {
   await page.click("#register-form button");
   await page.waitForTimeout(300);
 }
-async function tableUrl(page, index = 0) {
-  await page.goto("/blackjack");
-  return page.locator('a[href^="/blackjack/tables/"]').nth(index).getAttribute("href");
-}
 // A look at the table for whoever is reading the run, filed with the rest of
 // the run's artifacts rather than at a path from the machine it was written on.
 // The path comes from `test.info()` rather than a threaded parameter: a helper
@@ -23,28 +19,23 @@ async function shot(page, name: string) {
   await page.screenshot({ path: test.info().outputPath(`blackjack-${name}.png`), fullPage: true });
 }
 
-test("blackjack lobby lists all four fixed tiers", async ({ page }) => {
-  await signIn(page, "Lobby");
+// Sits down at the lowest ceiling the slider offers, which after one re-up is
+// the only one $1,000 covers.
+async function sitDown(page: Page, maxBet: string) {
   await page.goto("/blackjack");
-  /* oxlint-disable no-await-in-loop */
-  for (const label of ["Max bet $100", "Max bet $1,000", "Max bet $10,000", "Max bet $100,000", "Buy-in $1,000", "Buy-in $10,000", "Buy-in $100,000", "Buy-in $1,000,000"]) {
-    await expect(page.locator("h2, p").filter({ hasText: label }).first()).toBeVisible();
-  }
-  /* oxlint-enable no-await-in-loop */
-  await expect(page.locator('a[href^="/blackjack/tables/"]')).toHaveCount(4);
-  await shot(page, "lobby");
-});
+  await expect(page.locator(".blackjack-sit-slider")).toBeVisible();
+  await page.locator(".blackjack-sit-slider").fill("0");
+  await expect(page.locator(".blackjack-sit-stakes")).toContainText(maxBet);
+  await page.getByRole("button", { name: /Sit down/ }).click();
+  await expect(page.getByText("your chips")).toBeVisible();
+}
 
-// The four blackjack tables are fixed and shared by every signed-in user, so
-// the table tests run once, in one project, to keep them from seating each
-// other's players mid-round. The lobby test is read-only and runs everywhere.
-// Plays the viewer's hands to completion — declining insurance and standing —
-// until the table has settled and reopened for betting.
-async function finishRound(page: Page, url: string): Promise<void> {
-  const stateUrl = `${url}/state`;
+// Plays the hand to completion — declining insurance and standing — until the
+// game has settled and reopened for betting.
+async function finishRound(page: Page): Promise<void> {
   await expect.poll(async () => {
-    const state = await (await page.request.get(stateUrl)).json();
-    if (state.phase === "betting") return true;
+    const state = await (await page.request.get("/blackjack/state")).json();
+    if (state.can_bet) return true;
     const decline = page.getByRole("button", { name: "No insurance" });
     const stand = page.getByRole("button", { name: "Stand" });
     if (await decline.count()) await decline.first().click();
@@ -53,29 +44,47 @@ async function finishRound(page: Page, url: string): Promise<void> {
   }, { timeout: 20_000, intervals: [250] }).toBe(true);
 }
 
-const tableTests = test.extend({});
-tableTests.skip(({ isMobile }) => Boolean(isMobile), "shared tables are exercised once, on desktop");
+test("the slider offers only the stakes the bank can cover", async ({ page }) => {
+  await signIn(page, "Slider");
+  await page.goto("/blackjack");
+  // A new account has nothing, and the cheapest seat is ten times $100.
+  await expect(page.locator(".blackjack-sit-slider")).toHaveCount(0);
+  await expect(page.getByText("You need $1,000 in the bank to sit down.")).toBeVisible();
+  await page.request.post("/api/bank", { data: {} });
+  await page.goto("/blackjack");
+  // One re-up covers exactly the bottom rung, so that is the whole ladder.
+  await expect(page.locator(".blackjack-sit-scale")).toHaveText("$100$100");
+  await expect(page.locator(".blackjack-sit-stakes")).toContainText("$1,000");
+  await expect(page.getByRole("button", { name: "Sit down · $1,000" })).toBeVisible();
+  await expect(page.locator(".blackjack-sit-note")).toHaveText("Wagers run $25 to $100.");
+  await shot(page, "sit-down");
+});
 
-tableTests("a solo player sees fixed wagers and deals immediately", async ({ page }) => {
+test("a player sits down, sees fixed wagers and is dealt at once", async ({ page }) => {
   await signIn(page, "Solo");
   await page.request.post("/api/bank", { data: {} });
-  const url = await tableUrl(page, 0);
-  await page.goto(url!);
-  await page.getByRole("button", { name: /Sit down · \$1,000/ }).click();
-  await expect(page.getByText("your chips")).toBeVisible();
+  await sitDown(page, "$100");
   await expect(page.locator(".turn-clock")).toHaveCount(0);
   await shot(page, "betting");
   /* oxlint-disable no-await-in-loop */
   for (const label of ["Bet $25", "Bet $50", "Bet $75", "Bet $100"]) await expect(page.getByRole("button", { name: label })).toBeVisible();
   /* oxlint-enable no-await-in-loop */
   await Promise.all([
-    page.waitForResponse((response) => response.url().includes("/bet") && response.request().method() === "POST"),
+    page.waitForResponse((response) => response.url().includes("/blackjack/bet") && response.request().method() === "POST"),
     page.getByRole("button", { name: "Bet $25" }).click(),
   ]);
-  const stateUrl = `${url}/state`;
-  await expect.poll(async () => (await (await page.request.get(stateUrl)).json()).phase !== "betting", { timeout: 5_000 }).toBe(true);
+  // A solo bet deals in the same request that placed it.
+  const state = await (await page.request.get("/blackjack/state")).json();
+  expect(state.phase).not.toBe("betting");
   if (await page.getByRole("button", { name: "No insurance" }).count()) await page.getByRole("button", { name: "No insurance" }).click();
-  if (await page.getByRole("button", { name: "Stand" }).count()) await expect(page.locator(".blackjack-player-hand.active")).toBeVisible();
+  // The deal decides whether there is a turn to take: a natural on either side
+  // settles the hand before the player is asked for anything.
+  if (await page.getByRole("button", { name: "Stand" }).count()) {
+    await expect(page.locator(".blackjack-player-hand.active")).toBeVisible();
+    // The turn announcement is for screen readers only.
+    await expect(page.locator(".blackjack-turn-announcement")).toHaveText("Your move");
+    await expect(page.locator(".blackjack-turn-announcement")).toHaveCSS("opacity", "0");
+  }
   await expect(page.locator(".blackjack-player-summary")).toContainText("You");
   const playerLayout = await page.locator(".blackjack-player-hand").evaluate((hand) => {
     const tray = hand.getBoundingClientRect();
@@ -88,51 +97,25 @@ tableTests("a solo player sees fixed wagers and deals immediately", async ({ pag
   });
   expect(playerLayout.centerDelta, "cards and player info should be centered together").toBeLessThanOrEqual(2);
   expect(playerLayout.gap, "player info should sit directly beside the cards").toBeLessThanOrEqual(16);
-  await expect(page.getByText("Your turn", { exact: true })).toHaveCSS("opacity", "0");
   await expect(page.locator(".blackjack-dealer-hand")).toHaveAttribute("aria-label", /Dealer/);
   await shot(page, "player-tray");
-  await finishRound(page, url);
+  await finishRound(page);
+  // A settled round stays on the felt: nothing clears it but the next bet.
+  await expect(page.locator(".blackjack-player-hand")).toBeVisible();
   await page.getByRole("button", { name: "Leave table" }).click();
+  // Whether the slider comes back depends on how the hand went: a losing round
+  // can leave the stack short of the cheapest buy-in.
+  await expect(page.locator(".blackjack-sit")).toBeVisible();
 });
 
-tableTests("two players share a table and the unbet player sits out", async ({ browser }) => {
-  const first = await browser.newPage();
-  const second = await browser.newPage();
-  await signIn(first, "Alice");
-  await signIn(second, "Bob");
-  await first.request.post("/api/bank", { data: {} });
-  await second.request.post("/api/bank", { data: {} });
-  const url = await tableUrl(first, 0);
-  await first.goto(url!); await second.goto(url!);
-  await first.getByRole("button", { name: /Sit down/ }).click();
-  await second.getByRole("button", { name: /Sit down/ }).click();
-  await expect(second.locator(".blackjack-seat").filter({ hasText: "Alice" }).first()).toBeVisible();
-  await first.getByRole("button", { name: "Bet $25" }).click();
-  await expect(second.locator(".turn-clock")).toBeVisible();
-  await shot(second, "mid-round-two-player");
-  const stateUrl = `${url}/state`;
-  await expect.poll(async () => {
-    const response = await second.request.get(stateUrl);
-    const state = await response.json();
-    return state.phase !== "betting" && state.seats.some((seat: { waiting: boolean }) => seat.waiting);
-  }, { timeout: 16_000 }).toBe(true);
-  await expect(second.locator(".blackjack-own-note")).toHaveText("Sitting this round out");
-  await finishRound(first, url);
-  await first.getByRole("button", { name: "Leave table" }).click();
-  await second.goto(url);
-  await second.getByRole("button", { name: "Leave table" }).click();
-  await first.close(); await second.close();
-});
-
-tableTests("leaving a blackjack table returns to the lobby", async ({ page }) => {
+test("leaving returns the stack and the slider", async ({ page }) => {
   await signIn(page, "Leaving");
   await page.request.post("/api/bank", { data: {} });
-  const url = await tableUrl(page, 0);
-  await page.goto(url!);
-  await page.getByRole("button", { name: /Sit down/ }).click();
+  const before = (await (await page.request.get("/api/bank")).json()).balance;
+  await sitDown(page, "$100");
   await page.getByRole("button", { name: "Leave table" }).click();
-  await expect(page).toHaveURL(/\/blackjack$/);
-  await expect(page.locator(".lobby")).toBeVisible();
+  await expect(page.locator(".blackjack-sit-slider")).toBeVisible();
+  await expect.poll(async () => (await (await page.request.get("/api/bank")).json()).balance).toBe(before);
 });
 
 // The phone's own layout is measured in `safe-area.spec.ts`, against the

@@ -63,36 +63,33 @@ test("Hand Blitz keeps its fixed shell clear of the device chrome", async ({ pag
 });
 
 /**
- * The four blackjack tables are shared fixtures, which is why #76 made every
- * table test desktop-only and left the phone with one 412x915 zero-inset check
- * -- the notchless phone `B9` was recorded for. The layout is measured here
- * against mocked state instead: the same island, the real stylesheet, the
- * phone's own insets, and no seat taken at a table another project is playing.
+ * Blackjack is one game per player now, so the phone could play it for real --
+ * but a layout test that deals cards measures whatever the shoe happened to
+ * give it. The layout is measured against mocked state instead: the same
+ * island, the real stylesheet, the phone's own insets, and a hand that is
+ * always the densest one the table can show.
  */
 const seatedTable = {
+  seated: true,
   id: "mock",
-  tier: 0,
+  bank_balance: 0,
+  max_bets: [10_000, 20_000, 50_000, 100_000],
+  affordable_max_bets: [10_000, 20_000, 50_000, 100_000],
   max_bet: 10_000,
   buy_in: 100_000,
   bet_options: [2_500, 5_000, 7_500, 10_000],
   min_bet: 2_500,
-  seat_count: 5,
   phase: "betting",
+  stack: 100_000,
+  bet: null,
+  insurance: 0,
+  hands: [],
+  current_hand: null,
   dealer: [],
   dealer_hidden: false,
   dealer_score: null,
-  current_seat: null,
-  current_hand: null,
-  deadline: null,
-  turn_seconds: 10,
-  result_pause_seconds: 5,
-  seats: [
-    { index: 0, user: "u0", display_name: "You", stack: 100_000, bet: null, insurance: 0, leaving: false, hands: [], is_viewer: true, result: null, waiting: true },
-    { index: 1, user: "u1", display_name: "Mina", stack: 84_000, bet: null, insurance: 0, leaving: false, hands: [], is_viewer: false, result: null, waiting: true },
-  ],
-  viewer_seat: 0,
-  bank_balance: 0,
-  can_join: false,
+  result: null,
+  can_sit: false,
   can_leave: true,
   can_rebuy: false,
   can_bet: true,
@@ -105,25 +102,24 @@ const seatedTable = {
   message: "Place your bet",
   shoe: { decks: 8, total_cards: 416, dealt_cards: 0, remaining_cards: 416, cut_card: 208, penetration_percent: 50, hands_dealt: 0, fresh_shuffle: false },
   trainer: { count: null, log: [], analysis: [], quiz: null },
+  settings: { counting_tutor: false, counting_quiz: false, bet_analyzer: false },
   fresh_shuffle: false,
 };
 
-// The densest surface the table has: a split viewer against a dealt dealer,
-// every hand action live, and another seat holding cards of its own.
+// The densest surface the table has: a split hand against a dealt dealer with
+// every hand action live.
 const splitTable = {
   ...seatedTable,
   phase: "playing",
   dealer: ["Ts"],
   dealer_hidden: true,
-  dealer_score: 10,
-  current_seat: 0,
+  dealer_score: null,
   current_hand: 0,
-  turn_seconds: 10,
-  seats: [
-    { index: 0, user: "u0", display_name: "You", stack: 90_000, bet: 2_500, insurance: 0, leaving: false, is_viewer: true, result: null, waiting: false,
-      hands: [{ cards: ["8h", "3c"], score: 11, bet: 2_500, done: false, result: null }, { cards: ["8d", "Kc", "2s"], score: 20, bet: 2_500, done: false, result: null }] },
-    { index: 1, user: "u1", display_name: "Mina", stack: 81_500, bet: 2_500, insurance: 0, leaving: false, is_viewer: false, result: null, waiting: false,
-      hands: [{ cards: ["9s", "7h"], score: 16, bet: 2_500, done: false, result: null }] },
+  stack: 90_000,
+  bet: 2_500,
+  hands: [
+    { cards: ["8h", "3c"], score: 11, bet: 2_500, status: "Playing", blackjack: false },
+    { cards: ["8d", "Kc", "2s"], score: 20, bet: 2_500, status: "Playing", blackjack: false },
   ],
   can_bet: false,
   can_hit: true,
@@ -133,19 +129,29 @@ const splitTable = {
   message: "Your move",
 };
 
+// The slider before any of that: nothing is seated, so the page is the ladder.
+const sitting = {
+  ...seatedTable,
+  seated: false,
+  id: null,
+  bank_balance: 250_000,
+  stack: 0,
+  can_sit: true,
+  can_leave: false,
+  can_bet: false,
+  message: "Choose your maximum bet",
+  shoe: null,
+  trainer: null,
+};
+
 async function mountBlackjack(page, state) {
-  await page.unroute("**/blackjack/tables/*/state");
-  await page.unroute("**/blackjack/tables/*/events");
-  await page.route("**/blackjack/tables/*/state", (route) => route.fulfill({ json: state }));
-  await page.route("**/blackjack/tables/*/events", (route) =>
-    route.fulfill({ contentType: "text/event-stream", body: `event: state\ndata: ${JSON.stringify(state)}\n\n` }));
+  await page.unroute("**/blackjack/state");
+  await page.route("**/blackjack/state", (route) => route.fulfill({ json: state }));
   await page.goto("/blackjack");
-  const url = await page.locator('a[href^="/blackjack/tables/"]').first().getAttribute("href");
-  await page.goto(url!);
   await expect(page.locator(".blackjack-table")).toBeVisible();
 }
 
-for (const [label, state, marker] of [["placing a bet", seatedTable, "Bet $25"], ["playing a split", splitTable, "Stand"]] as const) {
+for (const [label, state, marker] of [["sitting down", sitting, /Sit down/], ["placing a bet", seatedTable, "Bet $25"], ["playing a split", splitTable, "Stand"]] as const) {
   test(`the blackjack table fits the phone while ${label}`, async ({ page }) => {
     test.skip((page.viewportSize()?.width || 0) > 640, "V54: only the phone project pins insets");
     await signIn(page, "BjPhone");
