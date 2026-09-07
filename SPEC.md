@@ -692,6 +692,12 @@ Mark each milestone done here as it lands.
   rendered chip centre = geometric spot/line/corner anchor in both orientations.
 - **V74** Roulette wheel-study control row width = `min(25.25rem,100%)`;
   host font metrics ⊥ change geometry snapshot.
+- **V75** The wheel is on screen whenever it has a box to be drawn in, whatever
+  the reader has asked motion to do. Resizing the canvas clears it, so whatever
+  rebuilds it owes it a frame: the animation loop is not that thing, ∵
+  `prefers-reduced-motion: reduce` stops it as soon as there is nothing left to
+  animate, and every rebuild after that — the resize observer's first delivery,
+  the dock opening for a spin, the font arriving — would leave a blank disc.
 - **V66** Portrait phone, 5 opponents: seats regrid to 3 columns, so 3 + 2 tiles
   fill both rows and Pot + Current Bet take the 6th cell. No cell is empty. The
   board then owns the full stage width (no side rails) and all-in odds become
@@ -777,6 +783,7 @@ T51|x|add Omaha alongside Hold'em: variant-aware deal and showdown, a ladder per
 T52|x|roulette: wheel, felt and betting|V68,V69,V70,V71
 T53|x|return blackjack to one game per player, sat down with a max-bet slider|V24,V25,V26,V27,V63,V72
 T54|x|fix roulette buy-in, bet anchors, wheel interaction and control layout|V1,V2,V68,V69,V70,V71,V73,V74
+T55|x|draw the wheel on a rebuild, so reduced motion does not leave an empty disc|V75
 
 ## §B Bug log
 
@@ -934,3 +941,4 @@ B27|2026-09-04|a revealed opponent hand is taller than a face-down one and the c
 B28|2026-09-04|emote drift came from live `:nth-child`, so sibling removal jumped bubbles between lanes; JS removal matched CSS duration exactly, so it could delete before the final transparent frame painted|V64
 B29|2026-09-04|every table state read and every SSE push carried each seat's whole bank ledger — the client renders 3 lines, the server sent all of them — so a state read grew a line per hand forever: 228KB in prod (98% ledger), 1.7MB against a table seating the oldest house accounts. `elapsed_ms` never showed it ∵ it stops when the handler returns, ⊥ when the bytes land|V64
 B30|2026-09-06|wheel-study controls sized from host font metrics → 1px desktop geometry drift|V74
+B31|2026-09-07|the roulette wheel painted only from the rAF loop, and `prefers-reduced-motion: reduce` stops that loop once the ball is at rest — so the observer's first delivery, sized to the same box, cleared the canvas by resizing it and nothing ever redrew: a phone with Reduce Motion on showed an empty disc in the dock and an empty disc when it opened for a spin, while the sound, the result and the payout all arrived normally ∵ `pump` re-requests its frame before it draws|V75
