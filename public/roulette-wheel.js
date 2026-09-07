@@ -344,6 +344,17 @@ export function createWheel(canvas, options = {}) {
     const rotorLayer = layer(rotorSide, dpr);
     paintRotor(rotorLayer.ctx, unit, colors);
     rotor = rotorLayer.canvas;
+    // Resizing the backing store wiped the canvas, so a rebuild owes it a
+    // frame. The loop cannot be relied on to supply one: reduced motion stops
+    // it as soon as there is nothing left to animate, and every later
+    // rebuild -- the observer's first delivery, the dock opening, the font
+    // arriving -- would then clear the wheel and leave it cleared.
+    repaint();
+  }
+
+  /** Draw one frame at wherever the wheel is now, frozen time included. */
+  function repaint() {
+    draw(frozen != null ? startedAt + frozen * 1000 : performance.now());
   }
 
   /** How fast the ball is actually travelling, in metres per second. */
@@ -544,7 +555,6 @@ export function createWheel(canvas, options = {}) {
     setView(view) {
       settings = { ...settings, ...view };
       build();
-      if (frozen != null) draw(performance.now());
     },
     plan: () => plan,
     time: () => (plan ? elapsed(performance.now()) : 0),
