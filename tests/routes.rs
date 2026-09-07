@@ -41,7 +41,7 @@ async fn appx() -> T {
     let state = app::AppState {
         users: users.clone(),
         bank: bank.clone(),
-        blackjack: two_seven::blackjack::BlackjackStore::load(&dir)
+        blackjack: two_seven::blackjack::BlackjackStore::load(&dir, &bank)
             .await
             .unwrap(),
         blackjack_stats: two_seven::blackjack_stats::BlackjackStatsStore::load(&dir)
@@ -2406,7 +2406,7 @@ async fn table_join_starts_hand_and_redacts_opponent_cards() {
 }
 
 #[tokio::test]
-async fn blackjack_routes_buy_in_on_sit_and_cash_out_on_leave() {
+async fn blackjack_routes_seat_for_free_and_wager_against_the_bank() {
     let t = appx().await;
     let user = Uuid::new_v4();
     t.users
@@ -2438,18 +2438,18 @@ async fn blackjack_routes_buy_in_on_sit_and_cash_out_on_leave() {
         .await
         .unwrap();
     assert_eq!(sit.status(), StatusCode::OK);
-    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
-    let game = account
-        .entries
-        .iter()
-        .find_map(|entry| match entry.kind {
-            LedgerKind::BlackjackBuyIn { table } if entry.delta == -100_000 => Some(table),
-            _ => None,
-        })
-        .expect("buy-in entry");
+    // Sitting down is free: one re-up is still the whole balance.
+    let seated = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    assert_eq!(seated.balance, 100_000);
+    assert!(
+        !seated
+            .entries
+            .iter()
+            .any(|entry| matches!(entry.kind, LedgerKind::BlackjackBet { .. }))
+    );
 
     // The slider ceiling is the only wager ladder: a stray amount is refused
-    // and the stack is untouched.
+    // and the bank is untouched.
     let invalid_bet = t
         .router
         .clone()
@@ -2465,11 +2465,54 @@ async fn blackjack_routes_buy_in_on_sit_and_cash_out_on_leave() {
         .await
         .unwrap();
     assert_eq!(invalid_bet.status(), StatusCode::BAD_REQUEST);
-    let state = t.state.blackjack.view(Some(user), 0).await;
+    let state = t.state.blackjack.view(Some(user), 100_000).await;
     assert!(state.seated);
-    assert_eq!(state.stack, 100_000);
+    assert_eq!(state.staked, 0);
     assert_eq!(state.max_bet, 10_000);
-    assert_eq!(state.bet_options, vec![2_500, 5_000, 7_500, 10_000]);
+    assert_eq!(state.bet_options, vec![2_000, 4_000, 6_000, 8_000, 10_000]);
+    // The whole bank is the top of the ladder now, so a $1,000 balance reaches
+    // the $1,000 ceiling.
+    assert_eq!(state.max_bets.last(), Some(&100_000));
+
+    // A real wager leaves the bank as one `BlackjackBet` against the game, and
+    // whatever the shoe did, the bank plus the felt is still the whole balance.
+    let bet = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/blackjack/bet")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"amount":2000}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bet.status(), StatusCode::OK);
+    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    let game = account
+        .entries
+        .iter()
+        .find_map(|entry| match entry.kind {
+            LedgerKind::BlackjackBet { game } if entry.delta == -2_000 => Some(game),
+            _ => None,
+        })
+        .expect("wager entry");
+    assert_eq!(state.id, Some(game));
+    // A natural can settle in the same request, so the payout is read from the
+    // ledger rather than assumed away: bank + felt is what was there before the
+    // wager, less what is still on it (§V1).
+    let returned: i64 = account
+        .entries
+        .iter()
+        .filter(|entry| matches!(entry.kind, LedgerKind::BlackjackPayout { .. }))
+        .map(|entry| entry.delta)
+        .sum();
+    let played = t.state.blackjack.view(Some(user), account.balance).await;
+    assert_eq!(account.balance, 100_000 - 2_000 + returned);
+    assert_eq!(played.staked, if returned > 0 { 0 } else { 2_000 });
 
     let second_sit = t
         .router
@@ -2487,6 +2530,23 @@ async fn blackjack_routes_buy_in_on_sit_and_cash_out_on_leave() {
         .unwrap();
     assert_eq!(second_sit.status(), StatusCode::BAD_REQUEST);
 
+    // A ceiling past the bank is refused outright.
+    let greedy_sit = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/blackjack/sit")
+                .header(header::COOKIE, &cookie_value)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"max_bet":100000000}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(greedy_sit.status(), StatusCode::BAD_REQUEST);
+
     let leave = t
         .router
         .clone()
@@ -2500,12 +2560,17 @@ async fn blackjack_routes_buy_in_on_sit_and_cash_out_on_leave() {
         )
         .await
         .unwrap();
-    assert_eq!(leave.status(), StatusCode::OK);
-    let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
-    assert!(account.entries.iter().any(|entry| {
-        matches!(entry.kind, LedgerKind::BlackjackCashOut { table: id } if id == game)
-            && entry.delta == 100_000
-    }));
+    // Getting up is refused mid-hand and free otherwise: no cash-out, because
+    // there was never a stack to cash out.
+    let before_leaving = t.bank.account(AccountOwner::User(user)).await.unwrap();
+    if leave.status() == StatusCode::OK {
+        let account = t.bank.account(AccountOwner::User(user)).await.unwrap();
+        assert_eq!(account.entries.len(), before_leaving.entries.len());
+        assert!(!t.state.blackjack.view(Some(user), 0).await.seated);
+    } else {
+        assert_eq!(leave.status(), StatusCode::BAD_REQUEST);
+        assert!(t.state.blackjack.view(Some(user), 0).await.bet.is_some());
+    }
 
     let unauthenticated = t
         .router

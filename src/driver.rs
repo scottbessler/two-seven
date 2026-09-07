@@ -1475,8 +1475,10 @@ mod tests {
         let user = Uuid::new_v4();
         let state = AppState {
             users,
-            bank,
-            blackjack: crate::blackjack::BlackjackStore::load(&root).await.unwrap(),
+            bank: bank.clone(),
+            blackjack: crate::blackjack::BlackjackStore::load(&root, &bank)
+                .await
+                .unwrap(),
             blackjack_stats: crate::blackjack_stats::BlackjackStatsStore::new(),
             blitz: blitz.clone(),
             roulette: crate::roulette::RouletteStore::new(),

@@ -19,15 +19,15 @@ async function shot(page, name: string) {
   await page.screenshot({ path: test.info().outputPath(`blackjack-${name}.png`), fullPage: true });
 }
 
-// Sits down at the lowest ceiling the slider offers, which after one re-up is
-// the only one $1,000 covers.
+// Sits down at the lowest ceiling the slider offers, which is $100 whatever
+// the bank holds.
 async function sitDown(page: Page, maxBet: string) {
   await page.goto("/blackjack");
   await expect(page.locator(".blackjack-sit-slider")).toBeVisible();
   await page.locator(".blackjack-sit-slider").fill("0");
   await expect(page.locator(".blackjack-sit-stakes")).toContainText(maxBet);
   await page.getByRole("button", { name: /Sit down/ }).click();
-  await expect(page.getByText("your chips")).toBeVisible();
+  await expect(page.getByText("your bank")).toBeVisible();
 }
 
 // Plays the hand to completion — declining insurance and standing — until the
@@ -44,20 +44,29 @@ async function finishRound(page: Page): Promise<void> {
   }, { timeout: 20_000, intervals: [250] }).toBe(true);
 }
 
-test("the slider offers only the stakes the bank can cover", async ({ page }) => {
+test("the slider runs from $100 to the whole bank and nothing is bought in", async ({ page }) => {
   await signIn(page, "Slider");
   await page.goto("/blackjack");
-  // A new account has nothing, and the cheapest seat is ten times $100.
+  // A new account has nothing, and the cheapest ceiling is $100.
   await expect(page.locator(".blackjack-sit-slider")).toHaveCount(0);
-  await expect(page.getByText("You need $1,000 in the bank to sit down.")).toBeVisible();
+  await expect(page.getByText("You need $100 in the bank to sit down.")).toBeVisible();
+  const before = (await (await page.request.get("/api/bank")).json()).balance;
   await page.request.post("/api/bank", { data: {} });
   await page.goto("/blackjack");
-  // One re-up covers exactly the bottom rung, so that is the whole ladder.
-  await expect(page.locator(".blackjack-sit-scale")).toHaveText("$100$100");
-  await expect(page.locator(".blackjack-sit-stakes")).toContainText("$1,000");
-  await expect(page.getByRole("button", { name: "Sit down · $1,000" })).toBeVisible();
-  await expect(page.locator(".blackjack-sit-note")).toHaveText("Wagers run $25 to $100.");
+  // One re-up is $1,000, so the ladder runs $100 to the whole $1,000.
+  await expect(page.locator(".blackjack-sit-scale")).toHaveText("$100$1,000");
+  await expect(page.locator(".blackjack-sit-stakes")).toContainText("$100");
+  await expect(page.locator(".blackjack-sit-stakes")).toContainText("$20");
+  await expect(page.getByRole("button", { name: "Sit down", exact: true })).toBeVisible();
+  await expect(page.locator(".blackjack-sit-note")).toHaveText("Five wagers, $20 to $100.");
   await shot(page, "sit-down");
+  // Dragging to the top asks for the whole bank as the ceiling.
+  await page.locator(".blackjack-sit-slider").fill("3");
+  await expect(page.locator(".blackjack-sit-stakes")).toContainText("$1,000");
+  await page.getByRole("button", { name: "Sit down", exact: true }).click();
+  await expect(page.getByText("your bank")).toBeVisible();
+  // Taking the seat cost nothing: the bank is exactly the re-up.
+  expect((await (await page.request.get("/api/bank")).json()).balance).toBe(before + 100_000);
 });
 
 test("a player sits down, sees fixed wagers and is dealt at once", async ({ page }) => {
@@ -67,11 +76,11 @@ test("a player sits down, sees fixed wagers and is dealt at once", async ({ page
   await expect(page.locator(".turn-clock")).toHaveCount(0);
   await shot(page, "betting");
   /* oxlint-disable no-await-in-loop */
-  for (const label of ["Bet $25", "Bet $50", "Bet $75", "Bet $100"]) await expect(page.getByRole("button", { name: label })).toBeVisible();
+  for (const label of ["Bet $20", "Bet $40", "Bet $60", "Bet $80", "Bet $100"]) await expect(page.getByRole("button", { name: label })).toBeVisible();
   /* oxlint-enable no-await-in-loop */
   await Promise.all([
     page.waitForResponse((response) => response.url().includes("/blackjack/bet") && response.request().method() === "POST"),
-    page.getByRole("button", { name: "Bet $25" }).click(),
+    page.getByRole("button", { name: "Bet $20" }).click(),
   ]);
   // A solo bet deals in the same request that placed it.
   const state = await (await page.request.get("/blackjack/state")).json();
@@ -103,19 +112,29 @@ test("a player sits down, sees fixed wagers and is dealt at once", async ({ page
   // A settled round stays on the felt: nothing clears it but the next bet.
   await expect(page.locator(".blackjack-player-hand")).toBeVisible();
   await page.getByRole("button", { name: "Leave table" }).click();
-  // Whether the slider comes back depends on how the hand went: a losing round
-  // can leave the stack short of the cheapest buy-in.
   await expect(page.locator(".blackjack-sit")).toBeVisible();
 });
 
-test("leaving returns the stack and the slider", async ({ page }) => {
+test("a round moves the bank and leaving moves nothing", async ({ page }) => {
   await signIn(page, "Leaving");
   await page.request.post("/api/bank", { data: {} });
   const before = (await (await page.request.get("/api/bank")).json()).balance;
   await sitDown(page, "$100");
+  // Sitting down is free.
+  expect((await (await page.request.get("/api/bank")).json()).balance).toBe(before);
+  // A wager leaves the bank the moment it is staked.
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/blackjack/bet") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Bet $100" }).click(),
+  ]);
+  await finishRound(page);
+  const settled = (await (await page.request.get("/api/bank")).json()).balance;
+  // Won, lost or pushed, the round is worth a whole wager either way.
+  expect([before - 10_000, before, before + 10_000, before + 15_000]).toContain(settled);
   await page.getByRole("button", { name: "Leave table" }).click();
   await expect(page.locator(".blackjack-sit-slider")).toBeVisible();
-  await expect.poll(async () => (await (await page.request.get("/api/bank")).json()).balance).toBe(before);
+  // Getting up is free too.
+  expect((await (await page.request.get("/api/bank")).json()).balance).toBe(settled);
 });
 
 // The phone's own layout is measured in `safe-area.spec.ts`, against the
