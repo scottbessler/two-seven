@@ -173,6 +173,16 @@ async function sitDown(page) {
   await expect(page.locator(".rl-board")).toBeVisible();
 }
 
+/** How much of the wheel's canvas has anything painted on it, in pixels. */
+async function painted(page): Promise<number> {
+  return page.locator(".rl-wheel-trigger .roulette-canvas").evaluate((canvas: HTMLCanvasElement) => {
+    const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    let opaque = 0;
+    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 8) opaque++;
+    return opaque;
+  });
+}
+
 /** The box of a numbered square, which is where every inside bet is aimed. */
 async function square(page, n: number) {
   const box = await page.locator(`[data-cell="${Math.floor((n - 1) / 3)},${(n - 1) % 3}"]`).boundingBox();
@@ -279,6 +289,25 @@ test.describe("roulette table", () => {
     await page.waitForTimeout(250);
     const zoomed = await wheel.boundingBox();
     expect(zoomed.width).toBeGreaterThan(resting.width * 1.5);
+  });
+
+  test("the wheel is drawn, docked and open, with motion turned off", async ({ page }) => {
+    // Reduce Motion stops the animation loop the moment there is nothing left
+    // to animate, so anything that clears the canvas after that -- and resizing
+    // the backing store to fit a new box clears it -- has to redraw it itself.
+    // Without that the phone shows an empty disc where the wheel should be.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await sitDown(page);
+    expect(await painted(page), "the wheel is drawn in its dock").toBeGreaterThan(0);
+
+    await page.locator('[data-cell="red"]').click();
+    await page.getByRole("button", { name: "Spin the roulette wheel" }).click();
+    await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
+    await expect(page.locator(".rl-wheel-dock")).toHaveClass(/open/);
+    // The dock grows to open, which rebuilds the wheel at the larger size.
+    await expect
+      .poll(() => painted(page), { message: "the opened wheel is drawn" })
+      .toBeGreaterThan(0);
   });
 
   test("a spin pays what the board says it pays", async ({ page }) => {
