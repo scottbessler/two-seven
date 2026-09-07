@@ -139,7 +139,7 @@ test.describe("roulette wheel", () => {
     await expect(page.locator(".roulette-chip.big")).toHaveClass(/green/);
   });
 
-  test("holds its layout", async ({ page }) => {
+  test("holds its host-stable layout (V73)", async ({ page }) => {
     await page.goto("/roulette-test");
     await page.waitForFunction(() => Boolean(window.rouletteWheel));
     await expectLayout(page, "roulette-page", LAYOUT);
@@ -147,7 +147,7 @@ test.describe("roulette wheel", () => {
 });
 
 let player = 0;
-async function sitDown(page) {
+async function openRoulette(page) {
   player += 1;
   await page.goto("/");
   const suffix = `${Date.now()}${player}${Math.random().toString(36).slice(2, 7)}`;
@@ -164,7 +164,12 @@ async function sitDown(page) {
     }),
   );
   await page.goto("/roulette");
-  await page.getByRole("button", { name: /Buy in/ }).click();
+}
+
+async function sitDown(page) {
+  await openRoulette(page);
+  await page.getByRole("button", { name: "Choose buy-in" }).click();
+  await page.getByRole("button", { name: "Buy in for $1,000.00" }).click();
   await expect(page.locator(".rl-board")).toBeVisible();
 }
 
@@ -197,6 +202,19 @@ async function drop(page, n: number, fx: number, fy: number) {
 }
 
 test.describe("roulette table", () => {
+  test("the buy-in dialog offers the logarithmic stack ladder", async ({ page }) => {
+    await openRoulette(page);
+    await page.getByRole("button", { name: "Choose buy-in" }).click();
+    const dialog = page.getByRole("dialog", { name: "Choose your stack" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(".rl-buy-in-rungs span")).toHaveText([
+      "$1,000", "$10,000", "$100,000", "$1,000,000",
+    ]);
+    await dialog.getByRole("slider").fill("1");
+    await expect(dialog.locator("output")).toHaveText("$10,000.00");
+    await expect(dialog.getByRole("button", { name: "Buy in for $10,000.00" })).toBeVisible();
+  });
+
   test("the board can only name bets the server will price", async ({ page }) => {
     await sitDown(page);
     // The felt's geometry and the server's catalogue are two descriptions of one
@@ -233,6 +251,36 @@ test.describe("roulette table", () => {
     await expect(page.locator(".rl-chip")).toHaveCount(8);
   });
 
+  test("chips sit on the exact spot or line that was aimed at", async ({ page }) => {
+    await sitDown(page);
+    const centre = await square(page, 17);
+    await drop(page, 17, 0.5, 0.5);
+    let chip = await page.locator(".rl-chip").boundingBox();
+    expect(chip.x + chip.width / 2).toBeCloseTo(centre.x + centre.width / 2, 0);
+    expect(chip.y + chip.height / 2).toBeCloseTo(centre.y + centre.height / 2, 0);
+
+    await page.getByRole("button", { name: "Clear" }).click();
+    const cell = await square(page, 17);
+    const across = (await page.locator(".rl-board.across").count()) > 0;
+    await drop(page, 17, 0.5, 0.98);
+    chip = await page.locator(".rl-chip").boundingBox();
+    const expected = across
+      ? { x: cell.x + cell.width, y: cell.y + cell.height / 2 }
+      : { x: cell.x + cell.width / 2, y: cell.y + cell.height };
+    expect(Math.abs(chip.x + chip.width / 2 - expected.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(chip.y + chip.height / 2 - expected.y)).toBeLessThanOrEqual(1);
+  });
+
+  test("the compact wheel zooms on hover", async ({ page }) => {
+    await sitDown(page);
+    const wheel = page.locator(".rl-wheel-dock");
+    const resting = await wheel.boundingBox();
+    await page.getByRole("button", { name: "Spin the roulette wheel" }).hover();
+    await page.waitForTimeout(250);
+    const zoomed = await wheel.boundingBox();
+    expect(zoomed.width).toBeGreaterThan(resting.width * 1.5);
+  });
+
   test("a spin pays what the board says it pays", async ({ page }) => {
     await sitDown(page);
     await page.locator('[data-cell="red"]').click();
@@ -240,8 +288,10 @@ test.describe("roulette table", () => {
     // Backing both colours cannot win and cannot lose: one of them is paid
     // even money and the other is taken, unless the zero comes up.
     await expect(page.locator(".rl-money")).toContainText("$10.00");
-    await page.getByRole("button", { name: "Spin", exact: true }).click();
+    await page.getByRole("button", { name: "Spin the roulette wheel" }).click();
     await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
+    await expect(page.locator(".rl-wheel-dock")).toHaveClass(/open/);
+    await expect(page.locator(".rl-felt")).toBeVisible();
     const settled = await page.evaluate(async () => {
       const state = await (await fetch("/roulette/state", { headers: { Accept: "application/json" } })).json();
       return { stack: state.stack, last: state.last, staked: state.staked };
@@ -276,7 +326,7 @@ test.describe("roulette table", () => {
     await expect(page.locator(".rl-chip")).toHaveCount(0);
 
     await page.locator('[data-cell="red"]').click();
-    await page.getByRole("button", { name: "Spin", exact: true }).click();
+    await page.getByRole("button", { name: "Spin the roulette wheel" }).click();
     await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
     await page.getByRole("button", { name: "Rebet" }).click();
     await expect(page.locator(".rl-money")).toContainText("$5.00");
@@ -329,7 +379,7 @@ test.describe("roulette table", () => {
 
     // Nor when a result lands and the marquee gains a number.
     await page.locator('[data-cell="red"]').click();
-    await page.getByRole("button", { name: "Spin", exact: true }).click();
+    await page.getByRole("button", { name: "Spin the roulette wheel" }).click();
     await expect(page.locator(".rl-result")).toBeVisible({ timeout: 25_000 });
     await page.waitForTimeout(2800);
     expect(await height(), "nor when a spin settles").toBe(settled);
@@ -352,10 +402,9 @@ test.describe("roulette table", () => {
     // this page would also move with a line of copy above it.
     await expect(page.locator(".rl-board [data-cell]")).toHaveCount(37 + 3 + 3 + 6);
     const box = await page.locator(".rl-board").boundingBox();
-    const spin = await page.locator(".rl-spin").boundingBox();
+    const toolbar = await page.locator(".rl-toolbar").boundingBox();
     const view = page.viewportSize();
-    expect(spin.y + spin.height, "the spin button must sit on screen").toBeLessThanOrEqual(view.height);
-    expect(spin.height, "and stay a full-size primary control").toBeGreaterThanOrEqual(44);
+    expect(toolbar.y + toolbar.height, "the controls must sit on screen").toBeLessThanOrEqual(view.height);
     // A square has to be worth aiming at with a thumb.
     // The felt gets whatever the controls leave, and what matters about the
     // result is that a square is still worth aiming at with a thumb -- which is

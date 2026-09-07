@@ -62,6 +62,34 @@ function Result({ spin }) {
   </div>`;
 }
 
+function BuyInDialog({ amounts, index, pending, onIndex, onCancel, onConfirm }) {
+  const amount = amounts[index];
+  return html`<div class="rl-buy-in-backdrop" onClick=${onCancel}>
+  <dialog class="rl-buy-in-dialog" open aria-labelledby="rl-buy-in-title"
+    onClick=${(event) => event.stopPropagation()}>
+    <form method="dialog" onSubmit=${(event) => {
+      event.preventDefault();
+      onConfirm(amount);
+    }}>
+      <header>
+        <h2 id="rl-buy-in-title">Choose your stack</h2>
+        <button class="rl-dialog-close" type="button" aria-label="Cancel buy-in" onClick=${onCancel}>×</button>
+      </header>
+      <p>Your chips stay at this table until you cash out.</p>
+      <output for="roulette-buy-in">${money(amount)}</output>
+      <input id="roulette-buy-in" type="range" min="0" max=${amounts.length - 1} step="1"
+        value=${index} onInput=${(event) => onIndex(Number(event.currentTarget.value))} />
+      <div class="rl-buy-in-rungs" aria-hidden="true">
+        ${amounts.map((value) => html`<span key=${value}>${money(value).replace(".00", "")}</span>`)}
+      </div>
+      <footer>
+        <button type="button" onClick=${onCancel}>Cancel</button>
+        <button type="submit" disabled=${pending}>Buy in for ${money(amount)}</button>
+      </footer>
+    </form>
+  </dialog></div>`;
+}
+
 function App() {
   const frame = useRef(null);
   const wheel = useRef(null);
@@ -73,11 +101,9 @@ function App() {
   const [pending, run] = usePending();
   // The number the server has already drawn, held back until the ball lands.
   const [spinning, setSpinning] = useState(false);
-  // The felt is taller than a phone, and a board that swallows every touch (it
-  // has to, to let a thumb slide onto a line) cannot also be scrolled past. So
-  // the wheel and the felt take turns on one stage: the wheel comes out for the
-  // spin, which is the only time it has anything to say, and hands back.
-  const [stage, setStage] = useState("board");
+  const [wheelOpen, setWheelOpen] = useState(false);
+  const [buyInOpen, setBuyInOpen] = useState(false);
+  const [buyInIndex, setBuyInIndex] = useState(0);
   const settled = useRef(null);
   const [shown, setShown] = useState(() => read("roulette-state", null)?.last ?? null);
 
@@ -94,8 +120,6 @@ function App() {
         settled.current = null;
         setSpinning(false);
         refreshBank();
-        // Long enough to read the number off the wheel it landed in.
-        setTimeout(() => setStage("board"), 2600);
       },
     });
     window.rouletteWheel = wheel.current;
@@ -142,9 +166,20 @@ function App() {
         setShown(null);
         settled.current = next.last;
         setSpinning(true);
-        setStage("wheel");
+        setWheelOpen(true);
         sound.current.begin();
         wheel.current.spin({ number: next.last.number, seed: next.last.seed });
+      } catch (failure) {
+        setError(failure.message);
+      }
+    });
+
+  const buyIn = (amount) =>
+    run("buy-in", async () => {
+      try {
+        apply(await post("/roulette/buy-in", { amount }));
+        setBuyInOpen(false);
+        refreshBank();
       } catch (failure) {
         setError(failure.message);
       }
@@ -155,9 +190,10 @@ function App() {
   const seated = table.stack > 0 || table.staked > 0;
   const aimed = aim ? BOARD.get(aim) : null;
   const busy = pending != null || spinning;
+  const buyIns = table.buy_ins ?? [table.buy_in];
 
   return html`<div class="rl-table">
-    <div class="rl-top">
+    <section class="rl-dashboard" aria-label="Table status">
       <div class="rl-readout" role="status">
         ${aimed
           ? html`<span class="rl-aim"><b>${aimed.numbers.length > 6 ? `${aimed.numbers.length} numbers` : aimed.numbers.join(" · ")}</b>
@@ -168,14 +204,31 @@ function App() {
               ? html`<${Result} spin=${shown} />`
               : html`<span class="rl-waiting rl-aim">Press the felt to aim, lift to place a chip</span>`}
       </div>
-      <${Marquee} history=${table.history} />
-    </div>
+      <div class=${`rl-wheel-dock ${wheelOpen ? "open" : ""} ${spinning ? "spinning" : ""}`}>
+        <button class="rl-wheel-trigger" type="button" disabled=${busy || table.staked === 0}
+          aria-label=${spinning ? "Roulette wheel spinning" : "Spin the roulette wheel"} onClick=${spin}>
+          <canvas class="roulette-canvas" ref=${frame} aria-hidden="true"></canvas>
+          <span>${spinning ? "Spinning…" : table.staked ? "Spin" : "Place a bet"}</span>
+        </button>
+        ${wheelOpen && !spinning
+          ? html`<button class="rl-wheel-close" type="button" aria-label="Close wheel"
+              onClick=${() => setWheelOpen(false)}>×</button>`
+          : null}
+      </div>
+      <div class="rl-summary">
+        <${Marquee} history=${table.history} />
+        <div class="rl-money">
+          <span><b>${money(table.stack)}</b> stack</span>
+          <span><b>${money(table.staked)}</b> on felt</span>
+          <span><b>${money(table.available)}</b> to bet</span>
+          <button class="rl-cash-out" type="button" disabled=${busy || !seated || table.staked > 0}
+            onClick=${() => act("cash-out", "/roulette/cash-out")}>Cash out</button>
+        </div>
+      </div>
+    </section>
 
     <div class="rl-stage">
-      <div class="rl-wheel" hidden=${stage !== "wheel"}>
-        <canvas class="roulette-canvas" ref=${frame} aria-label="Roulette wheel"></canvas>
-      </div>
-      <div class="rl-felt" hidden=${stage === "wheel"}>
+      <div class="rl-felt">
       ${seated
         ? html`<${Board} aim=${aim} spots=${table.spots} lit=${aimed ? aimed.numbers : []}
             winner=${shown && !spinning ? shown.number : null} money=${money}
@@ -183,46 +236,38 @@ function App() {
         : html`<div class="rl-buy-in">
             <p>Buy chips to play. Your stack stays at the table until you cash out.</p>
             <button type="button" disabled=${busy}
-              onClick=${() => act("buy-in", "/roulette/buy-in", {})}>
-              Buy in for ${money(table.buy_in)}
+              onClick=${() => setBuyInOpen(true)}>
+              Choose buy-in
             </button>
           </div>`}
       </div>
     </div>
 
-    <div class="rl-money">
-      <span><b>${money(table.stack)}</b> stack</span>
-      <span><b>${money(table.staked)}</b> on the felt</span>
-      <span><b>${money(table.available)}</b> to bet</span>
-      <button class="rl-cash-out" type="button" disabled=${busy || !seated || table.staked > 0}
-        onClick=${() => act("cash-out", "/roulette/cash-out")}>Cash out</button>
+    <div class="rl-toolbar">
+      <div class="rl-tray" role="group" aria-label="Chip value">
+        ${table.chips.map(
+          (value) => html`<button key=${value} type="button"
+            class=${`rl-chip-button ${chip === value ? "on" : ""}`}
+            aria-pressed=${chip === value} disabled=${!seated}
+            onClick=${() => setChip(value)}>${money(value)}</button>`,
+        )}
+      </div>
+      <div class="rl-actions" role="group" aria-label="Bet controls">
+        <button type="button" disabled=${busy || table.staked === 0}
+          onClick=${() => act("undo", "/roulette/undo")}>Undo</button>
+        <button type="button" disabled=${busy || table.staked === 0}
+          onClick=${() => act("clear", "/roulette/clear")}>Clear</button>
+        <button type="button" disabled=${busy || !table.last || table.last.chips.length === 0}
+          onClick=${() => act("rebet", "/roulette/rebet")}>Rebet</button>
+      </div>
     </div>
 
-    <div class="rl-tray" role="group" aria-label="Chips">
-      ${table.chips.map(
-        (value) => html`<button key=${value} type="button"
-          class=${`rl-chip-button ${chip === value ? "on" : ""}`}
-          aria-pressed=${chip === value} disabled=${!seated}
-          onClick=${() => setChip(value)}>${money(value)}</button>`,
-      )}
-    </div>
+    ${buyInOpen
+      ? html`<${BuyInDialog} amounts=${buyIns} index=${buyInIndex} pending=${busy}
+          onIndex=${setBuyInIndex} onCancel=${() => setBuyInOpen(false)} onConfirm=${buyIn} />`
+      : null}
 
-    <div class="rl-actions">
-      <button type="button" disabled=${busy || table.staked === 0}
-        onClick=${() => act("undo", "/roulette/undo")}>Undo</button>
-      <button type="button" disabled=${busy || table.staked === 0}
-        onClick=${() => act("clear", "/roulette/clear")}>Clear</button>
-      <button type="button" disabled=${busy || !table.last || table.last.chips.length === 0}
-        onClick=${() => act("rebet", "/roulette/rebet")}>Rebet</button>
-      <button type="button" disabled=${spinning}
-        onClick=${() => setStage((at) => (at === "wheel" ? "board" : "wheel"))}>
-        ${stage === "wheel" ? "Felt" : "Wheel"}
-      </button>
-    </div>
-    <button class="rl-spin" type="button" disabled=${busy || table.staked === 0}
-      onClick=${spin}>${spinning ? "Spinning…" : "Spin"}</button>
-
-    ${error ? html`<p class="error" role="alert">${error}</p>` : null}
+    ${error ? html`<p class="error rl-error" role="alert">${error}</p>` : null}
   </div>`;
 }
 

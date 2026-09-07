@@ -308,6 +308,7 @@ pub fn bet(id: &str) -> Option<&'static BetSpec> {
 /// spot cap is what bounds the table's exposure: thirty-five to one on the cap
 /// is the largest single payout the house can owe.
 pub const BUY_IN: Cents = 100_000;
+pub const BUY_INS: [Cents; 4] = [100_000, 1_000_000, 10_000_000, 100_000_000];
 pub const MAX_SPOT: Cents = 20_000;
 /// The chips in the tray. Every stake is a whole number of these.
 pub const CHIPS: [Cents; 4] = [100, 500, 2_500, 10_000];
@@ -571,6 +572,7 @@ pub struct RouletteView {
     pub spins: u64,
     pub bank_balance: Cents,
     pub buy_in: Cents,
+    pub buy_ins: [Cents; 4],
     pub max_spot: Cents,
     pub chips: [Cents; 4],
     pub max_chips: usize,
@@ -673,6 +675,7 @@ impl RouletteStore {
             spins: table.spins,
             bank_balance,
             buy_in: BUY_IN,
+            buy_ins: BUY_INS,
             max_spot: MAX_SPOT,
             chips: CHIPS,
             max_chips: MAX_CHIPS,
@@ -752,8 +755,8 @@ impl RouletteStore {
         bank: &crate::bank::BankStore,
         amount: Cents,
     ) -> Result<RouletteView, anyhow::Error> {
-        if amount < 1 {
-            return Err(anyhow::anyhow!("a buy-in must be positive"));
+        if !BUY_INS.contains(&amount) {
+            return Err(anyhow::anyhow!("that is not a buy-in this table takes"));
         }
         let id = table_id(owner);
         bank.roulette_buy_in(crate::bank::AccountOwner::User(owner), id, amount)
