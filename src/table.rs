@@ -811,6 +811,9 @@ pub struct Table {
     pub updated_at: DateTime<Utc>,
     pub hand: Option<Hand>,
     pub last_hand: Option<HandSummary>,
+    /// Identity belongs to the completed hand, even after a seat changes hands.
+    #[serde(default)]
+    pub last_hand_occupants: Vec<(usize, SeatOccupant)>,
     pub next_action_at: Option<DateTime<Utc>>,
     /// Which rung of the standing cash ladder this is, if it is one of them.
     #[serde(default)]
@@ -936,6 +939,7 @@ impl Table {
             updated_at: now,
             hand: None,
             last_hand: None,
+            last_hand_occupants: Vec::new(),
             cash_tier: None,
             bot_hands_requested: 0,
             next_action_at: None,
@@ -1237,6 +1241,11 @@ pub fn settle_finished_hand(table: &mut Table) -> Option<HandRecord> {
             .collect(),
         summary: summary.clone(),
     };
+    table.last_hand_occupants = record
+        .seats
+        .iter()
+        .map(|seat| (seat.seat, seat.occupant.clone()))
+        .collect();
     table.last_hand = Some(summary);
     table.turn_clock = None;
     table.next_action_at = Some(

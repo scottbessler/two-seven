@@ -473,11 +473,14 @@ function winnerLines(summary, seats) {
   });
 }
 
-function TableLog({ events, seats, summary, settled, status }) {
+function TableLog({ events, seats, summary, settled, status, previous = [] }) {
   const results = settled ? winnerLines(summary, seats) : [];
   // Awards are the punchline; they wait for the last card like everything else.
   const shown = settled ? events : events.filter((event) => event.kind !== "Award");
-  return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}</ol></section>`;
+  return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}${previous.map((hand) => {
+    const label = hand.winners.map((winner) => `${winner.name} ${money(winner.amount)} · ${winner.how}`).join("; ");
+    return html`<li class="previous-hand-log" key=${hand.hand_no}><span>#${hand.hand_no}</span><b title=${label}>${hand.winners.map((winner, index) => html`${index > 0 ? "; " : ""}${winner.name} ${money(winner.amount)} <small>· ${winner.how}</small>`)}</b></li>`;
+  })}</ol></section>`;
 }
 
 function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {
@@ -752,7 +755,10 @@ function TableApp() {
   // Nobody is seated, so no next hand is coming on its own: once the result
   // has had its moment, hand the table back to whoever is watching.
   const awaitingDeal = state.can_deal && (!showdown || remaining <= 0);
-  const result = settled ? winnerLines(showdown, state.seats).join(" · ") : "";
+  const resultSeats = state.last_hand_seats ?? state.seats;
+  const playedLastHand = (seat) => !showdown || state.last_hand_seats == null
+    || resultSeats.some((participant) => participant.index === seat.index && participant.matches_current);
+  const result = settled ? winnerLines(showdown, resultSeats).join(" · ") : "";
   const tournamentComplete = Boolean(state.tournament?.finished && (!showdown || settled));
   const champion = tournamentComplete ? tournamentChampion(state) : null;
   const status = showdown
@@ -761,7 +767,7 @@ function TableApp() {
       ? { street: streetName(hand.street), label: `${currentName} to act${hand.to_call ? ` · ${money(hand.to_call)} to call` : ""}` }
       : { street: "Table", label: state.can_deal ? "Nobody seated · deal a hand" : "Waiting for players" };
   const turnClock = state.turn_deadline ? { remaining: turnRemaining, duration: turnDuration } : null;
-  const renderSeat = (seat) => html`<${Seat} holeCards=${holeCards} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${hand?.events || showdown?.events || []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${showdown} revealed=${revealedBySeat.get(seat.index)} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} dismissEmote=${dismissEmote} />`;
+  const renderSeat = (seat) => html`<${Seat} holeCards=${holeCards} seat=${seat} player=${hand?.players?.find((player) => player.seat === seat.index)} events=${playedLastHand(seat) ? hand?.events || showdown?.events || [] : []} street=${hand?.street} current=${hand?.current_player === seat.index} viewer=${seat.index === state.viewer_seat} viewerCards=${hand?.your_hole_cards || []} button=${state.button} showdown=${playedLastHand(seat) ? showdown : null} revealed=${playedLastHand(seat) ? revealedBySeat.get(seat.index) : undefined} leading=${runout.leaders.includes(seat.index)} settled=${settled} champion=${champion?.index === seat.index} clock=${hand?.current_player === seat.index ? turnClock : null} emotes=${emotes.filter((emote) => emote.seat === seat.index)} dismissEmote=${dismissEmote} />`;
   return html`<div class=${`table-shell ${settings.paranoid ? "paranoid-cards" : ""}`} data-hole-cards=${holeCards}>
     <section class="table-stage" aria-label="Poker table">
       <div class="seats other-seats" data-seat-total=${otherSeats.length}>${otherSeats.map(renderSeat)}</div>
@@ -797,7 +803,7 @@ function TableApp() {
           ? html`<${DealHouseHand} refresh=${refresh} />`
           : null}</section>
     <aside class="table-side-rail">
-      <${TableLog} events=${handEvents} seats=${state.seats} summary=${showdown} settled=${settled} status=${status} />
+      <${TableLog} events=${handEvents} seats=${showdown ? resultSeats : state.seats} summary=${showdown} settled=${settled} status=${status} previous=${state.recent_hands || []} />
       <nav class="table-controls"><p id="table-error" class="error" role="alert"></p>${state.viewer_seat != null && html`<${EmoteControls} />`}<a class="table-history-link" href=${`/tables/${tableId}/history`}>History</a><${SeatBot} state=${state} openSeats=${openSeats} refresh=${refresh} /><${TableCommands} state=${state} openSeats=${openSeats} refresh=${refresh} /></nav>
     </aside>
   </div>`;

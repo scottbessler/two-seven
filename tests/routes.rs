@@ -1380,6 +1380,14 @@ async fn every_finished_hand_lands_in_the_table_history() {
     }
     assert!(!hand["summary"]["events"].as_array().unwrap().is_empty());
 
+    // V78: the historical human still has a name after leaving their seat.
+    t.tables
+        .update(id, |table| {
+            table.seats[0].occupant = two_seven::table::SeatOccupant::Empty;
+            Ok(())
+        })
+        .await
+        .unwrap();
     // The page names the table and lists the hand.
     let page = t
         .router
@@ -1399,6 +1407,10 @@ async fn every_finished_hand_lands_in_the_table_history() {
     assert!(page.contains("Logged"));
     assert!(page.contains("Hand 1"));
     assert!(page.contains("hand-record"));
+    assert!(
+        page.contains("Historian"),
+        "recorded user must resolve after departure"
+    );
 }
 
 #[tokio::test]
@@ -3087,7 +3099,16 @@ async fn v57_joining_mid_hand_keeps_the_whole_buy_in() {
         seat.stack, buy_in,
         "the buy-in must survive the hand that was already running"
     );
+    // V78: persistence keeps the bot's identity after the pending arrival seats.
+    let reloaded: two_seven::table::Table =
+        serde_json::from_str(&serde_json::to_string(&*table).unwrap()).unwrap();
+    assert_eq!(reloaded.last_hand_occupants, table.last_hand_occupants);
     drop(table);
+    let view = public_table_state(&t, id).await;
+    let former = &view["last_hand_seats"][0];
+    assert_eq!(former["display_name"], Bot::new(BotKind::Fish, 0).name());
+    assert_eq!(former["matches_current"], false);
+    assert_eq!(view["seats"][0]["display_name"], "Latecomer");
     assert_eq!(
         table_money(&t, id).await,
         before,
@@ -3939,4 +3960,181 @@ async fn an_unknown_variant_is_refused() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+async fn public_table_state(t: &T, id: Uuid) -> serde_json::Value {
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/state"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn v77_v78_previous_hands_are_bounded_public_and_use_recorded_owners() {
+    use two_seven::table::{Bot, BotKind, SeatOccupant, maybe_start_hand, settle_finished_hand};
+    let t = appx().await;
+    let id = seat_table(&t, "Previous hands", 2, 10_000, false).await;
+    let mut record = None;
+    t.tables
+        .update(id, |table| {
+            for (index, seat) in table.seats.iter_mut().enumerate() {
+                seat.occupant = SeatOccupant::bot(Bot::new(BotKind::Fish, index as u8));
+                seat.stack = 10_000;
+            }
+            table.bot_hands_requested = 1;
+            maybe_start_hand(table);
+            table.hand.as_mut().unwrap().fold_seat(1).unwrap();
+            record = settle_finished_hand(table);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let mut record = record.unwrap();
+    // Side pots aggregate by recipient; different ranks are not called a split.
+    let mut side_pots = record.clone();
+    side_pots.summary.awards = vec![
+        two_seven::poker::Award {
+            seat: 0,
+            amount: 300,
+        },
+        two_seven::poker::Award {
+            seat: 1,
+            amount: 200,
+        },
+        two_seven::poker::Award {
+            seat: 0,
+            amount: 100,
+        },
+    ];
+    side_pots.summary.results = vec![
+        two_seven::poker::SeatResult {
+            seat: 0,
+            hand: Some(
+                serde_json::from_value(serde_json::json!({
+                    "rank": {"category": "Flush", "kickers": [14]}, "cards": [], "label": "Flush"
+                }))
+                .unwrap(),
+            ),
+        },
+        two_seven::poker::SeatResult {
+            seat: 1,
+            hand: Some(
+                serde_json::from_value(serde_json::json!({
+                    "rank": {"category": "Pair", "kickers": [14]}, "cards": [], "label": "Pair"
+                }))
+                .unwrap(),
+            ),
+        },
+    ];
+    let projected = two_seven::view::hand_result_view(&side_pots, &Default::default());
+    assert_eq!(projected.winners.len(), 2);
+    assert_eq!(projected.winners[0].amount, 400);
+    assert_eq!(projected.winners[0].how, "Flush");
+    assert_eq!(projected.winners[1].how, "Pair");
+    side_pots.summary.results[1].hand = side_pots.summary.results[0].hand.clone();
+    let tied = two_seven::view::hand_result_view(&side_pots, &Default::default());
+    assert_eq!(
+        tied.winners.len(),
+        2,
+        "ties preserve all winners on one row"
+    );
+    assert!(tied.winners.iter().all(|winner| winner.how == "Flush"));
+    for number in 1..=55 {
+        record.hand_no = number;
+        t.state.history.append(id, &record).await.unwrap();
+    }
+    t.tables
+        .update(id, |table| {
+            table.hand_no = 55;
+            // Exercise recovery of identities for tables persisted before V78.
+            table.last_hand_occupants.clear();
+            table.seats[0].occupant = SeatOccupant::bot(Bot::new(BotKind::Shark, 0));
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let view = public_table_state(&t, id).await;
+    let tail = view["recent_hands"].as_array().unwrap();
+    assert_eq!(tail.len(), 50);
+    assert_eq!(tail[0]["hand_no"], 54);
+    assert_eq!(tail[49]["hand_no"], 5);
+    assert_eq!(
+        tail[0]["winners"][0]["name"],
+        Bot::new(BotKind::Fish, 0).name()
+    );
+    assert_eq!(tail[0]["winners"][0]["how"], "Folds");
+    assert_eq!(
+        tail[0]["winners"][0]["amount"],
+        record.summary.awards[0].amount
+    );
+    assert!(!view["recent_hands"].to_string().contains("hole_cards"));
+    assert_eq!(view["last_hand_seats"][0]["matches_current"], false);
+    assert_eq!(
+        view,
+        public_table_state(&t, id).await,
+        "reload preserves results"
+    );
+    t.tables
+        .update(id, |table| {
+            table.next_action_at = None;
+            table.bot_hands_requested = 1;
+            maybe_start_hand(table);
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let advanced = public_table_state(&t, id).await;
+    assert!(!advanced["hand"].is_null());
+    assert_eq!(advanced["recent_hands"][0]["hand_no"], 55);
+
+    // Public SSE uses the same projection on reconnect, with no login required.
+    use futures_util::StreamExt;
+    let response = t
+        .router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/tables/{id}/events"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut body = response.into_body().into_data_stream();
+    let frame = body.next().await.unwrap().unwrap();
+    let frame = std::str::from_utf8(&frame).unwrap();
+    let data = frame
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .unwrap();
+    let streamed: serde_json::Value = serde_json::from_str(data).unwrap();
+    assert_eq!(streamed["recent_hands"], advanced["recent_hands"]);
+    t.tables
+        .update(id, |table| {
+            table.last_hand_occupants.clear();
+            Ok(())
+        })
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(2), body.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let frame = std::str::from_utf8(&frame).unwrap();
+    let data = frame
+        .lines()
+        .find_map(|line| line.strip_prefix("data: "))
+        .unwrap();
+    let updated: serde_json::Value = serde_json::from_str(data).unwrap();
+    assert_eq!(updated["recent_hands"], advanced["recent_hands"]);
 }

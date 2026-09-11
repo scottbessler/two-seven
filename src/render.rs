@@ -1185,18 +1185,10 @@ pub fn table_history(
     name: &str,
     total: usize,
     hands: &[crate::table::HandRecord],
-    names: &std::collections::HashMap<usize, String>,
+    names: &std::collections::HashMap<Uuid, String>,
 ) -> String {
-    // Two bots of the same kind are otherwise indistinguishable, so every
-    // label carries its seat.
     let seat_label = |seat: usize, occupant: &crate::table::SeatOccupant| -> String {
-        let who = names.get(&seat).cloned().unwrap_or_else(|| match occupant {
-            crate::table::SeatOccupant::Bot { kind, seat } => {
-                crate::table::Bot::new(*kind, *seat).name().to_string()
-            }
-            _ => "empty".to_string(),
-        });
-        format!("{seat} · {who}")
+        format!("{seat} · {}", crate::view::occupant_name(occupant, names))
     };
     let rows = hands
         .iter()
