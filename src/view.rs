@@ -95,6 +95,8 @@ pub struct TableView {
     pub runout_floor_ms: i64,
     pub hand: Option<HandView>,
     pub last_hand: Option<HandSummary>,
+    pub last_hand_seats: Vec<HandSeatView>,
+    pub recent_hands: Vec<HandResultView>,
     pub next_hand_at: Option<DateTime<Utc>>,
     pub result_pause_seconds: i64,
     /// When the person to act runs out of time and the table acts for them.
@@ -107,6 +109,100 @@ pub struct TableView {
     /// Nobody is sitting at this table, so it only plays when asked to.
     pub can_deal: bool,
     pub tournament: Option<TournamentView>,
+}
+
+/// Public identity for a completed hand; contains no private cards or ledger.
+#[derive(Clone, Debug, Serialize)]
+pub struct HandSeatView {
+    pub index: usize,
+    pub display_name: String,
+    pub matches_current: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct HandWinnerView {
+    pub name: String,
+    pub amount: Cents,
+    pub how: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct HandResultView {
+    pub hand_no: u64,
+    pub winners: Vec<HandWinnerView>,
+}
+
+pub fn hand_result_view(
+    record: &crate::table::HandRecord,
+    names: &std::collections::HashMap<uuid::Uuid, String>,
+) -> HandResultView {
+    let mut totals = std::collections::BTreeMap::new();
+    for award in &record.summary.awards {
+        *totals.entry(award.seat).or_insert(0) += award.amount;
+    }
+    HandResultView {
+        hand_no: record.hand_no,
+        winners: totals
+            .into_iter()
+            .filter(|(_, amount)| *amount > 0)
+            .map(|(index, amount)| {
+                let name = record
+                    .seats
+                    .iter()
+                    .find(|seat| seat.seat == index)
+                    .map_or_else(
+                        || "Unknown".into(),
+                        |seat| occupant_name(&seat.occupant, names),
+                    );
+                let how = record
+                    .summary
+                    .results
+                    .iter()
+                    .find(|result| result.seat == index)
+                    .and_then(|result| result.hand.as_ref())
+                    .map_or_else(
+                        || {
+                            if record.summary.results.is_empty() {
+                                "Folds"
+                            } else {
+                                "Showdown"
+                            }
+                            .into()
+                        },
+                        |hand| {
+                            use crate::eval::Category;
+                            match hand.rank.category {
+                                Category::HighCard => "High card",
+                                Category::Pair => "Pair",
+                                Category::TwoPair => "Two pair",
+                                Category::ThreeOfAKind => "Trips",
+                                Category::Straight => "Straight",
+                                Category::Flush => "Flush",
+                                Category::FullHouse => "Full house",
+                                Category::FourOfAKind => "Quads",
+                                Category::StraightFlush => "Straight flush",
+                            }
+                            .into()
+                        },
+                    );
+                HandWinnerView { name, amount, how }
+            })
+            .collect(),
+    }
+}
+
+pub fn occupant_name(
+    occupant: &SeatOccupant,
+    names: &std::collections::HashMap<uuid::Uuid, String>,
+) -> String {
+    match occupant {
+        SeatOccupant::Human { user_id } => names
+            .get(user_id)
+            .cloned()
+            .unwrap_or_else(|| "Unknown".into()),
+        SeatOccupant::Bot { kind, seat } => crate::table::Bot::new(*kind, *seat).name().into(),
+        SeatOccupant::Empty => "empty".into(),
+    }
 }
 
 /// One row of the leaderboard: the money, and how sharp they are at reading a
@@ -393,6 +489,8 @@ pub fn table_view_with_banks(
             .as_ref()
             .map(|hand| hand_view(hand, viewer, &x_ray)),
         last_hand: table.last_hand.clone(),
+        last_hand_seats: Vec::new(),
+        recent_hands: Vec::new(),
         next_hand_at: if table.hand.is_none() && table.last_hand.is_some() {
             table.next_action_at
         } else {

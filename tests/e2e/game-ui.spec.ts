@@ -2482,3 +2482,48 @@ test("Omaha deals four cards to a hand and still fits the seat", async ({ page }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight), "V23: the table must not scroll the page").toBe(true);
 });
+
+
+test("V77 previous hands stay one row each below current actions across reloads", async ({ page }) => {
+  const previous = [
+    { hand_no: 42, winners: [{ name: "Mina", amount: 8400, how: "Flush" }] },
+    { hand_no: 41, winners: [{ name: "Dev", amount: 1600, how: "Folds" }] },
+    { hand_no: 40, winners: [{ name: "Mina", amount: 3000, how: "Pair" }, { name: "Ari", amount: 3000, how: "Pair" }] },
+  ];
+  await mountTable(page, tableState);
+  const before = await page.locator(".game-log").boundingBox();
+  await mountTable(page, { ...tableState, recent_hands: previous });
+  const rows = page.locator(".previous-hand-log");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toHaveText("#42Mina $84 · Flush");
+  await expect(rows.last()).toContainText("Mina $30 · Pair; Ari $30 · Pair");
+  await expect(page.locator(".game-log li").last()).toHaveClass("previous-hand-log");
+  expect((await page.locator(".game-log").boundingBox()).height).toBe(before.height);
+  await mountTable(page, { ...tableState, recent_hands: previous });
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toContainText("#42");
+});
+
+test("V78 replacement never inherits a completed bot hand", async ({ page }) => {
+  const state = {
+    ...tournamentCompleteRailState,
+    tournament: null,
+    viewer_seat: 0,
+    seats: tournamentCompleteRailState.seats.map((seat) => seat.index === 0
+      ? { ...seat, display_name: "Newcomer", occupant: "human", user_id: "newcomer" } : seat),
+    last_hand_seats: tournamentCompleteRailState.seats.map((seat) => ({
+      index: seat.index, display_name: seat.index === 0 ? "Old Bot" : seat.display_name,
+      matches_current: seat.index !== 0,
+    })),
+  };
+  await mountTable(page, state);
+  await expect(page.locator(".showdown-result")).toContainText("Old Bot wins $122");
+  await expect(page.locator(".game-log")).toContainText("Old Bot wins $122");
+  await expect(page.locator(".game-log")).not.toContainText("Newcomer");
+  const replacement = page.locator('[data-seat-index="0"]');
+  await expect(replacement).toContainText("Newcomer");
+  await expect(replacement).not.toHaveClass(/winner/);
+  await expect(replacement.locator(".revealed,.winner-role")).toHaveCount(0);
+  await expect(replacement.locator(".seat-role").filter({ hasText: "BB" })).toHaveCount(0);
+  await expect(page.locator('[data-seat-index="1"] .revealed')).toHaveCount(1);
+});

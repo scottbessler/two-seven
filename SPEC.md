@@ -213,7 +213,7 @@ is `Ord`, so ties are exact equality.
 ```
 Table { id, name, variant: Variant, stakes: Stakes, mode: TableMode,
         max_seats, min_buy_in, max_buy_in, seats: Vec<Seat>, button, hand: Option<Hand>,
-        last_hand: Option<HandSummary>, hand_no, next_action_at, turn_clock: Option<TurnClock>,
+        last_hand: Option<HandSummary>, last_hand_occupants, hand_no, next_action_at, turn_clock: Option<TurnClock>,
         created_at, updated_at }
 TurnClock { seat, hand_no, decision, deadline }
 Variant   = Holdem | Omaha
@@ -297,6 +297,7 @@ and the board) — the same redacted view a human gets (§V3).
 | GET | `/tables/{id}` | SSR table page + island mount |
 | GET | `/tables/{id}/state` | Redacted `TableView` JSON (SSE fallback) |
 | GET | `/tables/{id}/events` | SSE stream of `TableView` |
+| GET | `/tables/{id}/history` | Signed-in hand records; HTML or JSON |
 | POST | `/tables/{id}/join` | Buy in to the first open seat: `{}` (bank-checked) |
 | POST | `/tables/{id}/leave` | Stand up and cash out |
 | POST | `/tables/{id}/rebuy` | Top up the seat stack from the bank |
@@ -732,6 +733,15 @@ Mark each milestone done here as it lands.
   A four-card hand is drawn smaller so it takes the room two cards had ∴ ⊥
   Hold'em geometry moves.
 
+- **V77** Live table log: current hand detail → ≤50 previous hands, newest first,
+  one row per hand; each winner named by recorded occupant + summed awards +
+  compact hand category or folds. Multiple side-pot recipients ≠ automatic tie.
+  Reload + SSE preserve tail; ⊥ current hand duplicated, ⊥ private cards in tail;
+  log footprint unchanged (§V22). State/events add `recent_hands`, `last_hand_seats`.
+- **V78** Settled hand participant identities survive seat replacement + restart.
+  Result/action names use hand occupants; replacement inherits ⊥ prior cards,
+  blind roles or winner badge. History page resolves recorded user IDs, ⊥ current seats.
+
 ## §T Build tasks
 
 id|status|task|cites
@@ -797,6 +807,8 @@ T53|x|return blackjack to one game per player, sat down with a max-bet slider|V2
 T54|x|fix roulette buy-in, bet anchors, wheel interaction and control layout|V1,V2,V68,V69,V70,V71,V73,V74
 T55|x|draw the wheel on a rebuild, so reduced motion does not leave an empty disc|V75
 T56|x|drop the blackjack buy-in, run the max bet up to the whole bank and cut five wagers from it|V1,V2,V9,V10,V24,V25,V27,V63,V76
+
+T57|x|append compact previous-hand log + preserve result identity across replacement|V1,V3,V22,V33,V57,V59,V64,V77,V78; §9 state/events/history
 
 ## §B Bug log
 
@@ -955,3 +967,5 @@ B28|2026-09-04|emote drift came from live `:nth-child`, so sibling removal jumpe
 B29|2026-09-04|every table state read and every SSE push carried each seat's whole bank ledger — the client renders 3 lines, the server sent all of them — so a state read grew a line per hand forever: 228KB in prod (98% ledger), 1.7MB against a table seating the oldest house accounts. `elapsed_ms` never showed it ∵ it stops when the handler returns, ⊥ when the bytes land|V64
 B30|2026-09-06|wheel-study controls sized from host font metrics → 1px desktop geometry drift|V74
 B31|2026-09-07|the roulette wheel painted only from the rAF loop, and `prefers-reduced-motion: reduce` stops that loop once the ball is at rest — so the observer's first delivery, sized to the same box, cleared the canvas by resizing it and nothing ever redrew: a phone with Reduce Motion on showed an empty disc in the dock and an empty disc when it opened for a spin, while the sound, the result and the payout all arrived normally ∵ `pump` re-requests its frame before it draws|V75
+
+B32|2026-09-10|pending arrival replaces bot during result pause; seat-index result rendering credits newcomer with bot actions/cards/award|V78

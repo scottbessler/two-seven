@@ -1324,10 +1324,14 @@ pub async fn table_history(
         }
         return Ok(response);
     }
-    let names = {
-        let table = table.lock().await;
-        seat_names(&s, &table).await
-    };
+    let names = hand_names(
+        &s,
+        hands
+            .iter()
+            .flat_map(|hand| hand.seats.iter().map(|seat| seat.occupant.clone()))
+            .collect(),
+    )
+    .await;
     Ok(Html(render::table_history(id, &name, total, &hands, &names)).into_response())
 }
 
@@ -1349,6 +1353,100 @@ fn history_json_filename(id: Uuid, name: &str) -> String {
     format!("{safe_name}-{id}.json")
 }
 
+async fn hand_names(
+    state: &AppState,
+    occupants: Vec<SeatOccupant>,
+) -> std::collections::HashMap<Uuid, String> {
+    let ids: std::collections::HashSet<_> = occupants
+        .iter()
+        .filter_map(|occupant| match occupant {
+            SeatOccupant::Human { user_id } => Some(*user_id),
+            _ => None,
+        })
+        .collect();
+    let mut names = std::collections::HashMap::new();
+    for id in ids {
+        if let Some(user) = state.users.get(id).await {
+            names.insert(id, user.display_name);
+        }
+    }
+    names
+}
+
+/// One projection for initial state, reconnects and subsequent SSE updates.
+async fn live_table_view(
+    state: &AppState,
+    table: &Table,
+    user: Option<Uuid>,
+    bank_balance: Option<crate::money::Cents>,
+    see_bot_cards: bool,
+) -> crate::view::TableView {
+    let viewer = user.and_then(|uid| table.human_seat(uid));
+    let banks = seat_banks(state, table).await;
+    let names = seat_names(state, table).await;
+    let mut view = table_view_with_banks(
+        table,
+        viewer,
+        user,
+        bank_balance,
+        &banks,
+        &names,
+        see_bot_cards,
+    );
+    // One extra row allows the result still displayed in detail to be excluded.
+    let hands = state
+        .history
+        .recent(table.id, crate::history::HISTORY_PAGE + 1)
+        .await;
+    let last_no = table
+        .hand_no
+        .saturating_sub(u64::from(table.hand.is_some()));
+    // Older table files predate the identity snapshot; recover it from history.
+    let occupants = if table.last_hand_occupants.is_empty() {
+        hands
+            .iter()
+            .find(|hand| hand.hand_no == last_no)
+            .map(|hand| {
+                hand.seats
+                    .iter()
+                    .map(|seat| (seat.seat, seat.occupant.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        table.last_hand_occupants.clone()
+    };
+    let names = hand_names(
+        state,
+        hands
+            .iter()
+            .flat_map(|hand| hand.seats.iter().map(|seat| &seat.occupant))
+            .chain(occupants.iter().map(|(_, occupant)| occupant))
+            .cloned()
+            .collect(),
+    )
+    .await;
+    view.last_hand_seats = occupants
+        .iter()
+        .map(|(index, occupant)| crate::view::HandSeatView {
+            index: *index,
+            display_name: crate::view::occupant_name(occupant, &names),
+            matches_current: table
+                .seats
+                .get(*index)
+                .is_some_and(|seat| seat.occupant == *occupant),
+        })
+        .collect();
+    view.recent_hands = hands
+        .iter()
+        .rev()
+        .filter(|hand| hand.hand_no < table.hand_no)
+        .take(crate::history::HISTORY_PAGE)
+        .map(|hand| crate::view::hand_result_view(hand, &names))
+        .collect();
+    view
+}
+
 pub async fn table_state(
     MaybeUser(user): MaybeUser,
     State(s): State<AppState>,
@@ -1365,18 +1463,9 @@ pub async fn table_state(
     };
     let see_bot_cards = wants_bot_cards(&s, user).await;
     let table = table.lock().await;
-    let viewer = user.and_then(|uid| table.human_seat(uid));
-    let banks = seat_banks(&s, &table).await;
-    let names = seat_names(&s, &table).await;
-    Ok(Json(table_view_with_banks(
-        &table,
-        viewer,
-        user,
-        bank_balance,
-        &banks,
-        &names,
-        see_bot_cards,
-    )))
+    Ok(Json(
+        live_table_view(&s, &table, user, bank_balance, see_bot_cards).await,
+    ))
 }
 
 pub async fn table_events(
@@ -1396,19 +1485,8 @@ pub async fn table_events(
     let see_bot_cards = wants_bot_cards(&s, user).await;
     let snapshot = {
         let table = table.lock().await;
-        let viewer = user.and_then(|uid| table.human_seat(uid));
-        let banks = seat_banks(&s, &table).await;
-        let names = seat_names(&s, &table).await;
-        serde_json::to_string(&table_view_with_banks(
-            &table,
-            viewer,
-            user,
-            bank_balance,
-            &banks,
-            &names,
-            see_bot_cards,
-        ))
-        .map_err(AppError::internal)?
+        serde_json::to_string(&live_table_view(&s, &table, user, bank_balance, see_bot_cards).await)
+            .map_err(AppError::internal)?
     };
     let rx = s.tables.subscribe();
     let emotes = s.tables.subscribe_emotes();
@@ -1436,18 +1514,7 @@ pub async fn table_events(
                                         None => None,
                                     };
                                     let table = table.lock().await;
-                                    let viewer = user.and_then(|uid| table.human_seat(uid));
-                                    let banks = seat_banks(&state, &table).await;
-                                    let names = seat_names(&state, &table).await;
-                                    let data = serde_json::to_string(&table_view_with_banks(
-                                        &table,
-                                        viewer,
-                                        user,
-                                        bank_balance,
-                                        &banks,
-                                        &names,
-                                        see_bot_cards,
-                                    ))
+                                    let data = serde_json::to_string(&live_table_view(&state, &table, user, bank_balance, see_bot_cards).await)
                                     .unwrap_or_else(|_| "{}".into());
                                     return Some((
                                         Ok(Event::default().event("state").data(data)),
