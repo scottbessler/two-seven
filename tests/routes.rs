@@ -4035,13 +4035,26 @@ async fn v77_v78_previous_hands_are_bounded_public_and_use_recorded_owners() {
             ),
         },
     ];
-    let projected = two_seven::view::hand_result_view(&side_pots, &Default::default());
+    let projected = two_seven::view::hand_result_view(&side_pots, &Default::default(), None);
     assert_eq!(projected.winners.len(), 2);
     assert_eq!(projected.winners[0].amount, 400);
     assert_eq!(projected.winners[0].how, "Flush");
     assert_eq!(projected.winners[1].how, "Pair");
+    let viewer = Uuid::new_v4();
+    let mut owned = side_pots.clone();
+    owned.seats[0].occupant = SeatOccupant::Human { user_id: viewer };
+    let names =
+        std::collections::HashMap::from([(viewer, Bot::new(BotKind::Fish, 1).name().to_string())]);
+    let highlighted = two_seven::view::hand_result_view(&owned, &names, Some(viewer));
+    assert_eq!(highlighted.winners[0].name, highlighted.winners[1].name);
+    assert!(highlighted.winners[0].is_viewer);
+    assert!(
+        !highlighted.winners[1].is_viewer,
+        "same name does not mean same player"
+    );
+    assert!(!two_seven::view::hand_result_view(&owned, &names, None).winners[0].is_viewer);
     side_pots.summary.results[1].hand = side_pots.summary.results[0].hand.clone();
-    let tied = two_seven::view::hand_result_view(&side_pots, &Default::default());
+    let tied = two_seven::view::hand_result_view(&side_pots, &Default::default(), None);
     assert_eq!(
         tied.winners.len(),
         2,

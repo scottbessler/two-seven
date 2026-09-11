@@ -735,7 +735,8 @@ Mark each milestone done here as it lands.
 
 - **V77** Live table log: current hand detail → ≤50 previous hands, newest first,
   one row per hand; each winner named by recorded occupant + summed awards +
-  compact hand category or folds. Multiple side-pot recipients ≠ automatic tie.
+  compact hand category or folds. Names left; hand type + amount right; viewer
+  name bold by recorded user ID, ⊥ display-name match. Multiple side-pot recipients ≠ automatic tie.
   Reload + SSE preserve tail; ⊥ current hand duplicated, ⊥ private cards in tail;
   log footprint unchanged (§V22). State/events add `recent_hands`, `last_hand_seats`.
 - **V78** Settled hand participant identities survive seat replacement + restart.

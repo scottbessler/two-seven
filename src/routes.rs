@@ -1442,7 +1442,7 @@ async fn live_table_view(
         .rev()
         .filter(|hand| hand.hand_no < table.hand_no)
         .take(crate::history::HISTORY_PAGE)
-        .map(|hand| crate::view::hand_result_view(hand, &names))
+        .map(|hand| crate::view::hand_result_view(hand, &names, user))
         .collect();
     view
 }
