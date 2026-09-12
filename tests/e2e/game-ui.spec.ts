@@ -2486,7 +2486,7 @@ test("Omaha deals four cards to a hand and still fits the seat", async ({ page }
 
 test("V77 previous hands stay one row each below current actions across reloads", async ({ page }) => {
   const previous = [
-    { hand_no: 42, winners: [{ name: "Mina", amount: 8400, how: "Flush" }] },
+    { hand_no: 42, winners: [{ name: "Mina", is_viewer: true, amount: 8400, how: "Flush" }] },
     { hand_no: 41, winners: [{ name: "Dev", amount: 1600, how: "Folds" }] },
     { hand_no: 40, winners: [{ name: "Mina", amount: 3000, how: "Pair" }, { name: "Ari", amount: 3000, how: "Pair" }] },
   ];
@@ -2495,8 +2495,18 @@ test("V77 previous hands stay one row each below current actions across reloads"
   await mountTable(page, { ...tableState, recent_hands: previous });
   const rows = page.locator(".previous-hand-log");
   await expect(rows).toHaveCount(3);
-  await expect(rows.first()).toHaveText("#42Mina $84 · Flush");
-  await expect(rows.last()).toContainText("Mina $30 · Pair; Ari $30 · Pair");
+  await expect(rows.first().locator("strong")).toHaveText("Mina");
+  await expect(rows.first().locator("strong")).toHaveCSS("font-weight", "700");
+  await expect(rows.first().locator(".hand-log-outcomes")).toHaveText("Flush $84");
+  await expect(rows.nth(1).locator("strong")).toHaveCount(0);
+  const edges = await rows.evaluateAll((elements) => elements.map((row) => ({
+    right: row.querySelector(".hand-log-outcomes").getBoundingClientRect().right,
+    nameRight: row.querySelector(".hand-log-names").getBoundingClientRect().right,
+    outcomeLeft: row.querySelector(".hand-log-outcomes").getBoundingClientRect().left,
+  })));
+  expect(edges.every((edge) => Math.abs(edge.right - edges[0].right) < 1 && edge.nameRight < edge.outcomeLeft)).toBe(true);
+  await expect(rows.last().locator(".hand-log-names")).toHaveText("Mina, Ari");
+  await expect(rows.last().locator(".hand-log-outcomes")).toHaveText("Pair $30; Pair $30");
   await expect(page.locator(".game-log li").last()).toHaveClass("previous-hand-log");
   expect((await page.locator(".game-log").boundingBox()).height).toBe(before.height);
   await mountTable(page, { ...tableState, recent_hands: previous });

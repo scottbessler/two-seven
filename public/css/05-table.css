@@ -219,7 +219,11 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:500}
 .game-log .status-log b{color:var(--accent)}
 .game-log .result-log b{color:var(--gold-hi)}
-.game-log .previous-hand-log small{font-size:inherit;color:var(--muted)}
+.game-log .hand-log-result{display:flex;align-items:baseline;gap:.65rem;min-width:0}
+.game-log .hand-log-names{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.game-log .hand-log-names strong{font-weight:700}
+.game-log .hand-log-outcomes{flex:0 1 auto;max-width:70%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
+.game-log .hand-log-outcomes small{font-size:inherit;color:var(--muted)}
 .table-controls{justify-content:flex-end;padding-bottom:0}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .table-controls button,.table-controls .table-command-link{background:var(--felt-800);color:var(--muted)}

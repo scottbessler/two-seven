@@ -26,16 +26,45 @@ pub fn act(bot: Bot, view: &HandView, legal: &LegalActions, seed: u64) -> Action
         BotKind::Grinder => grinder(view, legal),
         BotKind::Shark => shark_with(&SharkParams::for_regular(bot.seat), view, legal, seed),
     };
+    let action = if matches!(bot.kind, BotKind::Shark) {
+        action
+    } else {
+        raise_once_per_street(action, view, legal)
+    };
     avoid_excessive_raise(avoid_free_fold(action, legal), view, legal)
 }
 
-fn avoid_excessive_raise(action: Action, view: &HandView, legal: &LegalActions) -> Action {
-    let street = match view.board.len() {
+fn current_street(view: &HandView) -> crate::poker::Street {
+    match view.board.len() {
         0 => crate::poker::Street::Preflop,
         3 => crate::poker::Street::Flop,
         4 => crate::poker::Street::Turn,
         _ => crate::poker::Street::River,
-    };
+    }
+}
+
+/// The simple kinds put their own money in at most once a street: raised over
+/// their own wager, they call rather than trade raises with whoever answered
+/// it (§V79). The shark reads the raise and decides for itself.
+fn raise_once_per_street(action: Action, view: &HandView, legal: &LegalActions) -> Action {
+    let street = current_street(view);
+    let already_wagered = view.events.iter().any(|event| {
+        event.street == street
+            && event.seat == Some(legal.seat)
+            && matches!(
+                event.kind,
+                crate::poker::HandEventKind::Bet | crate::poker::HandEventKind::Raise
+            )
+    });
+    if already_wagered && matches!(action, Action::Raise { .. }) {
+        first_calling(legal)
+    } else {
+        action
+    }
+}
+
+fn avoid_excessive_raise(action: Action, view: &HandView, legal: &LegalActions) -> Action {
+    let street = current_street(view);
     let raises = view
         .events
         .iter()
@@ -87,7 +116,7 @@ fn rock(view: &HandView, legal: &LegalActions) -> Action {
         return first(legal, Action::Fold);
     }
     if premium || made {
-        return wager_or_call(legal);
+        return wager_or_call(view, legal);
     }
     first_calling(legal)
 }
@@ -100,11 +129,11 @@ fn grinder(view: &HandView, legal: &LegalActions) -> Action {
                 || all_broadway(cards)
         });
     if preflop_strong {
-        return wager_or_call(legal);
+        return wager_or_call(view, legal);
     }
     let strong = made_category(view).is_some_and(|category| category >= Category::TwoPair);
     if strong {
-        return wager_or_call(legal);
+        return wager_or_call(view, legal);
     }
     if legal.to_call > 0 && made_category(view).is_none() {
         return first(legal, Action::Fold);
@@ -149,12 +178,29 @@ fn made_category(view: &HandView) -> Option<Category> {
     )
 }
 
-fn wager_or_call(legal: &LegalActions) -> Action {
+/// Bets or raises three quarters of the pot after calling, rounded up to the
+/// big blind -- a wager that means something, rather than the minimum that
+/// invites the minimum back -- or calls when no wager is offered.
+fn wager_or_call(view: &HandView, legal: &LegalActions) -> Action {
+    let unit = view.big_blind.max(1);
+    let target = legal.to_call + (view.pot + legal.to_call) * 3 / 4;
+    let target = (target + unit - 1) / unit * unit;
+    let amount = |offered| match legal.wager {
+        Some(bounds) => target.clamp(bounds.min, bounds.max),
+        None => offered,
+    };
     legal
         .actions
         .iter()
-        .copied()
-        .find(|action| matches!(action, Action::Raise { .. } | Action::Bet { .. }))
+        .find_map(|action| match *action {
+            Action::Bet { amount: offered } => Some(Action::Bet {
+                amount: amount(offered),
+            }),
+            Action::Raise { amount: offered } => Some(Action::Raise {
+                amount: amount(offered),
+            }),
+            _ => None,
+        })
         .unwrap_or_else(|| first_calling(legal))
 }
 
@@ -366,6 +412,105 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Two rocks holding something used to min-raise each other until the
+    /// three-raise backstop stopped them, on every street (§B33).
+    #[test]
+    fn simple_bots_never_raise_over_their_own_street_wager() {
+        for kind in [BotKind::Fish, BotKind::Rock, BotKind::Grinder] {
+            for seed in 0..200 {
+                let mut hand = Hand::new(
+                    Stakes::NoLimit {
+                        small_blind: 1,
+                        big_blind: 2,
+                    },
+                    &[1_000, 1_000, 1_000],
+                    0,
+                    seed,
+                );
+                for turn in 0..200 {
+                    if hand.complete {
+                        break;
+                    }
+                    if hand.advance_runout() {
+                        continue;
+                    }
+                    let legal = hand.legal_actions().expect("action");
+                    let view = hand_view(&hand, Some(legal.seat), &[]);
+                    hand.apply_action(kind.act(&view, &legal, seed + turn))
+                        .unwrap();
+                }
+                for event in &hand.events {
+                    let wagers = hand
+                        .events
+                        .iter()
+                        .filter(|other| {
+                            other.street == event.street
+                                && other.seat == event.seat
+                                && matches!(
+                                    other.kind,
+                                    crate::poker::HandEventKind::Bet
+                                        | crate::poker::HandEventKind::Raise
+                                )
+                        })
+                        .count();
+                    assert!(
+                        wagers <= 1,
+                        "{kind:?} seed {seed}: seat {:?} wagered {wagers} times on {:?}",
+                        event.seat,
+                        event.street
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rocks_and_grinders_size_their_wagers_off_the_pot() {
+        let view = HandView {
+            variant: crate::table::Variant::Holdem,
+            street: "Preflop".into(),
+            button: 0,
+            big_blind: 2,
+            board: Vec::new(),
+            your_hole_cards: Some(vec![
+                Card::from_str("Ac").unwrap(),
+                Card::from_str("Ad").unwrap(),
+            ]),
+            seats: Vec::new(),
+            pot: 300,
+            current_player: Some(0),
+            legal_actions: None,
+            summary: None,
+            players: Vec::new(),
+            events: Vec::new(),
+            last_bet: 200,
+            to_call: 200,
+            awaiting_advance: false,
+            runout_leaders: Vec::new(),
+            runout_odds: Vec::new(),
+        };
+        let legal = LegalActions {
+            seat: 0,
+            actions: vec![
+                Action::Fold,
+                Action::Call,
+                Action::Raise { amount: 400 },
+                Action::AllIn,
+            ],
+            to_call: 200,
+            wager: Some(WagerBounds {
+                min: 400,
+                max: 10_000,
+                fixed: None,
+            }),
+            wagers_capped: false,
+        };
+        // Call 200, then three quarters of the 500 that makes: 575, rounded
+        // up to the big blind.
+        assert_eq!(rock(&view, &legal), Action::Raise { amount: 576 });
+        assert_eq!(grinder(&view, &legal), Action::Raise { amount: 576 });
     }
 
     #[test]

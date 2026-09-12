@@ -478,8 +478,11 @@ function TableLog({ events, seats, summary, settled, status, previous = [] }) {
   // Awards are the punchline; they wait for the last card like everything else.
   const shown = settled ? events : events.filter((event) => event.kind !== "Award");
   return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}${previous.map((hand) => {
-    const label = hand.winners.map((winner) => `${winner.name} ${money(winner.amount)} · ${winner.how}`).join("; ");
-    return html`<li class="previous-hand-log" key=${hand.hand_no}><span>#${hand.hand_no}</span><b title=${label}>${hand.winners.map((winner, index) => html`${index > 0 ? "; " : ""}${winner.name} ${money(winner.amount)} <small>· ${winner.how}</small>`)}</b></li>`;
+    const label = hand.winners.map((winner) => `${winner.name}: ${winner.how} ${money(winner.amount)}`).join("; ");
+    return html`<li class="previous-hand-log" key=${hand.hand_no}><span>#${hand.hand_no}</span><div class="hand-log-result" title=${label}>
+      <span class="hand-log-names">${hand.winners.map((winner, index) => html`${index > 0 ? ", " : ""}${winner.is_viewer ? html`<strong>${winner.name}</strong>` : winner.name}`)}</span>
+      <span class="hand-log-outcomes">${hand.winners.map((winner, index) => html`${index > 0 ? "; " : ""}<small>${winner.how}</small> <b>${money(winner.amount)}</b>`)}</span>
+    </div></li>`;
   })}</ol></section>`;
 }
 

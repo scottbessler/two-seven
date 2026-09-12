@@ -122,6 +122,7 @@ pub struct HandSeatView {
 #[derive(Clone, Debug, Serialize)]
 pub struct HandWinnerView {
     pub name: String,
+    pub is_viewer: bool,
     pub amount: Cents,
     pub how: String,
 }
@@ -135,6 +136,7 @@ pub struct HandResultView {
 pub fn hand_result_view(
     record: &crate::table::HandRecord,
     names: &std::collections::HashMap<uuid::Uuid, String>,
+    viewer: Option<uuid::Uuid>,
 ) -> HandResultView {
     let mut totals = std::collections::BTreeMap::new();
     for award in &record.summary.awards {
@@ -185,7 +187,17 @@ pub fn hand_result_view(
                             .into()
                         },
                     );
-                HandWinnerView { name, amount, how }
+                let is_viewer = record.seats.iter().any(|seat| {
+                    seat.seat == index
+                        && matches!(seat.occupant,
+                        SeatOccupant::Human { user_id } if Some(user_id) == viewer)
+                });
+                HandWinnerView {
+                    name,
+                    is_viewer,
+                    amount,
+                    how,
+                }
             })
             .collect(),
     }
