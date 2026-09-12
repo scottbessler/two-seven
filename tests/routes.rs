@@ -2524,7 +2524,18 @@ async fn blackjack_routes_seat_for_free_and_wager_against_the_bank() {
         .sum();
     let played = t.state.blackjack.view(Some(user), account.balance).await;
     assert_eq!(account.balance, 100_000 - 2_000 + returned);
-    assert_eq!(played.staked, if returned > 0 { 0 } else { 2_000 });
+    // A settled round has nothing left on the felt, whether it settled by
+    // paying out or by losing the stake outright — a dealer natural against a
+    // non-natural writes no payout entry at all, so the payout cannot stand in
+    // for "the round is over".
+    assert_eq!(
+        played.staked,
+        if played.phase == two_seven::blackjack::Phase::Settled {
+            0
+        } else {
+            2_000
+        }
+    );
 
     let second_sit = t
         .router
