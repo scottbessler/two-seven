@@ -263,6 +263,11 @@ $500,000 up sharks only. The cash-ladder mix runs 60/20/10/10 fish/grinder/rock/
 shark at the cheapest rung and slides evenly from there: the fish are gone by
 the $50,000 rung, and the top two rungs are sharks alone.
 
+Rocks and grinders size a bet or raise at three quarters of the pot after the
+call, rounded up to the big blind. Fish, rocks and grinders wager at most once
+a street: raised over their own bet or raise, they call or fold rather than
+raise again (§V79).
+
 Bots see only what a player in that seat legitimately sees (their own hole cards
 and the board) — the same redacted view a human gets (§V3).
 
@@ -742,6 +747,9 @@ Mark each milestone done here as it lands.
 - **V78** Settled hand participant identities survive seat replacement + restart.
   Result/action names use hand occupants; replacement inherits ⊥ prior cards,
   blind roles or winner badge. History page resolves recorded user IDs, ⊥ current seats.
+- **V79** Fish/rock/grinder: ≤1 `Bet`|`Raise` per seat per street; raised over own
+  wager → call|fold. Rock/grinder wager = to_call + ¾(pot + to_call), ↑ big blind,
+  clamped to bounds; ⊥ reflexive min-raise. Shark exempt (own sizing).
 
 ## §T Build tasks
 
@@ -810,6 +818,7 @@ T55|x|draw the wheel on a rebuild, so reduced motion does not leave an empty dis
 T56|x|drop the blackjack buy-in, run the max bet up to the whole bank and cut five wagers from it|V1,V2,V9,V10,V24,V25,V27,V63,V76
 
 T57|x|append compact previous-hand log + preserve result identity across replacement|V1,V3,V22,V33,V57,V59,V64,V77,V78; §9 state/events/history
+T58|x|simple bots wager once a street, sized off the pot|V13,V79
 
 ## §B Bug log
 
@@ -970,3 +979,4 @@ B30|2026-09-06|wheel-study controls sized from host font metrics → 1px desktop
 B31|2026-09-07|the roulette wheel painted only from the rAF loop, and `prefers-reduced-motion: reduce` stops that loop once the ball is at rest — so the observer's first delivery, sized to the same box, cleared the canvas by resizing it and nothing ever redrew: a phone with Reduce Motion on showed an empty disc in the dock and an empty disc when it opened for a spin, while the sound, the result and the payout all arrived normally ∵ `pump` re-requests its frame before it draws|V75
 
 B32|2026-09-10|pending arrival replaces bot during result pause; seat-index result rendering credits newcomer with bot actions/cards/award|V78
+B33|2026-09-10|two rocks with made hands min-raised each other to the 3-raise backstop every street ∵ `wager_or_call` took the first offered wager (the minimum) and nothing stopped a bot raising over its own raise|V79
