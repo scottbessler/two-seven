@@ -739,9 +739,10 @@ Mark each milestone done here as it lands.
   Hold'em geometry moves.
 
 - **V77** Live table log: current hand detail → ≤50 previous hands, newest first,
-  one row per hand; each winner named by recorded occupant + summed awards +
-  compact hand category or folds. Names left; hand type + amount right; viewer
-  name bold by recorded user ID, ⊥ display-name match. Multiple side-pot recipients ≠ automatic tie.
+  one entry per hand, one line per winner; each winner named by recorded occupant + summed awards +
+  compact hand category or folds. Columns name | hand type | amount, aligned across hands; viewer
+  name marked (dot + gold, ⊥ weight alone) by recorded user ID, ⊥ display-name match.
+  `split` iff ≥2 winners hold equal rank → "(split)" under hand no. Multiple side-pot recipients ≠ split.
   Reload + SSE preserve tail; ⊥ current hand duplicated, ⊥ private cards in tail;
   log footprint unchanged (§V22). State/events add `recent_hands`, `last_hand_seats`.
 - **V78** Settled hand participant identities survive seat replacement + restart.

@@ -477,13 +477,11 @@ function TableLog({ events, seats, summary, settled, status, previous = [] }) {
   const results = settled ? winnerLines(summary, seats) : [];
   // Awards are the punchline; they wait for the last card like everything else.
   const shown = settled ? events : events.filter((event) => event.kind !== "Award");
-  return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}${previous.map((hand) => {
+  return html`<section class="game-log" aria-live="polite"><ol>${status && html`<li class="status-log"><span>${status.street}</span><b>${status.label}</b></li>`}${results.map((result) => html`<li class="result-log"><span>Result</span><b>${result}</b></li>`)}${shown.slice(-16).toReversed().map((event) => html`<li><span>${streetName(event.street)}</span><b>${eventLabel(event, seats)}</b></li>`)}${previous.length > 0 && html`<li class="previous-hands"><ol>${previous.map((hand) => {
     const label = hand.winners.map((winner) => `${winner.name}: ${winner.how} ${money(winner.amount)}`).join("; ");
-    return html`<li class="previous-hand-log" key=${hand.hand_no}><span>#${hand.hand_no}</span><div class="hand-log-result" title=${label}>
-      <span class="hand-log-names">${hand.winners.map((winner, index) => html`${index > 0 ? ", " : ""}${winner.is_viewer ? html`<strong>${winner.name}</strong>` : winner.name}`)}</span>
-      <span class="hand-log-outcomes">${hand.winners.map((winner, index) => html`${index > 0 ? "; " : ""}<small>${winner.how}</small> <b>${money(winner.amount)}</b>`)}</span>
-    </div></li>`;
-  })}</ol></section>`;
+    // One line per winner; the nested grid's columns are shared so hand types line up across hands.
+    return html`<li class="previous-hand-log" key=${hand.hand_no} title=${label}><span class="hand-log-no">#${hand.hand_no}</span>${hand.split && html`<span class="hand-log-split">(split)</span>`}${hand.winners.map((winner) => html`<span class=${winner.is_viewer ? "hand-log-name viewer" : "hand-log-name"}>${winner.name}</span><span class="hand-log-how">${winner.how}</span><b class="hand-log-amount">${money(winner.amount)}</b>`)}</li>`;
+  })}</ol></li>`}</ol></section>`;
 }
 
 function ShowdownAdvance({ remaining, duration, canContinue, refresh }) {

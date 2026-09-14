@@ -4051,6 +4051,7 @@ async fn v77_v78_previous_hands_are_bounded_public_and_use_recorded_owners() {
     assert_eq!(projected.winners[0].amount, 400);
     assert_eq!(projected.winners[0].how, "Flush");
     assert_eq!(projected.winners[1].how, "Pair");
+    assert!(!projected.split, "side pots won with different hands");
     let viewer = Uuid::new_v4();
     let mut owned = side_pots.clone();
     owned.seats[0].occupant = SeatOccupant::Human { user_id: viewer };
@@ -4066,11 +4067,8 @@ async fn v77_v78_previous_hands_are_bounded_public_and_use_recorded_owners() {
     assert!(!two_seven::view::hand_result_view(&owned, &names, None).winners[0].is_viewer);
     side_pots.summary.results[1].hand = side_pots.summary.results[0].hand.clone();
     let tied = two_seven::view::hand_result_view(&side_pots, &Default::default(), None);
-    assert_eq!(
-        tied.winners.len(),
-        2,
-        "ties preserve all winners on one row"
-    );
+    assert_eq!(tied.winners.len(), 2, "ties preserve all winners");
+    assert!(tied.split);
     assert!(tied.winners.iter().all(|winner| winner.how == "Flush"));
     for number in 1..=55 {
         record.hand_no = number;
