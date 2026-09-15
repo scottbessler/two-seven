@@ -226,7 +226,7 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .game-log .hand-log-split{grid-area:2/1}
 .game-log .hand-log-name{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .game-log .hand-log-name.viewer{color:var(--gold-hi);font-weight:700}
-.game-log .hand-log-name.viewer::before{content:"●";margin-right:.3em;font-size:.7em;vertical-align:.15em}
+.game-log .hand-log-name.viewer::before{content:"●";margin-right:.3em;font-size:var(--text-label);vertical-align:.15em}
 .game-log .hand-log-how{grid-column:3;white-space:nowrap}
 .game-log .hand-log-amount{grid-column:4;text-align:right}
 .table-controls{justify-content:flex-end;padding-bottom:0}

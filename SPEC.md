@@ -981,3 +981,5 @@ B31|2026-09-07|the roulette wheel painted only from the rAF loop, and `prefers-r
 
 B32|2026-09-10|pending arrival replaces bot during result pause; seat-index result rendering credits newcomer with bot actions/cards/award|V78
 B33|2026-09-10|two rocks with made hands min-raised each other to the 3-raise backstop every street ∵ `wager_or_call` took the first offered wager (the minimum) and nothing stopped a bot raising over its own raise|V79
+
+B34|2026-09-14|viewer dot used raw `.7em` font size → failed existing type-scale contract; use `--text-label`; existing asset test covers recurrence|V77
