@@ -219,11 +219,16 @@ html:has(.table-shell),body:has(.table-shell){height:100vh;overflow:hidden}
 .game-log li b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:500}
 .game-log .status-log b{color:var(--accent)}
 .game-log .result-log b{color:var(--gold-hi)}
-.game-log .hand-log-result{display:flex;align-items:baseline;gap:.65rem;min-width:0}
-.game-log .hand-log-names{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
-.game-log .hand-log-names strong{font-weight:700}
-.game-log .hand-log-outcomes{flex:0 1 auto;max-width:70%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right}
-.game-log .hand-log-outcomes small{font-size:inherit;color:var(--muted)}
+.game-log .previous-hands{display:block;min-width:0}
+.game-log .previous-hands ol{grid-template-columns:4.25rem minmax(0,1fr) auto auto;column-gap:.45rem}
+.game-log .previous-hand-log{grid-column:1/-1;grid-template-columns:subgrid;gap:.1rem .45rem}
+.game-log .hand-log-no{grid-area:1/1}
+.game-log .hand-log-split{grid-area:2/1}
+.game-log .hand-log-name{grid-column:2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.game-log .hand-log-name.viewer{color:var(--gold-hi);font-weight:700}
+.game-log .hand-log-name.viewer::before{content:"●";margin-right:.3em;font-size:var(--text-label);vertical-align:.15em}
+.game-log .hand-log-how{grid-column:3;white-space:nowrap}
+.game-log .hand-log-amount{grid-column:4;text-align:right}
 .table-controls{justify-content:flex-end;padding-bottom:0}
 .table-controls #table-error{min-width:0;margin:0 auto 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .table-controls button,.table-controls .table-command-link{background:var(--felt-800);color:var(--muted)}

@@ -130,6 +130,8 @@ pub struct HandWinnerView {
 #[derive(Clone, Debug, Serialize)]
 pub struct HandResultView {
     pub hand_no: u64,
+    /// Two winners held an equal hand; side pots won with different hands are not a split.
+    pub split: bool,
     pub winners: Vec<HandWinnerView>,
 }
 
@@ -142,8 +144,25 @@ pub fn hand_result_view(
     for award in &record.summary.awards {
         *totals.entry(award.seat).or_insert(0) += award.amount;
     }
+    let ranks: Vec<_> = totals
+        .iter()
+        .filter(|(_, amount)| **amount > 0)
+        .filter_map(|(index, _)| {
+            record
+                .summary
+                .results
+                .iter()
+                .find(|result| result.seat == *index)
+                .and_then(|result| result.hand.as_ref())
+                .map(|hand| &hand.rank)
+        })
+        .collect();
     HandResultView {
         hand_no: record.hand_no,
+        split: ranks
+            .iter()
+            .enumerate()
+            .any(|(index, rank)| ranks[..index].contains(rank)),
         winners: totals
             .into_iter()
             .filter(|(_, amount)| *amount > 0)

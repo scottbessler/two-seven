@@ -2484,29 +2484,38 @@ test("Omaha deals four cards to a hand and still fits the seat", async ({ page }
 });
 
 
-test("V77 previous hands stay one row each below current actions across reloads", async ({ page }) => {
+test("V77 previous hands line up by column below current actions across reloads", async ({ page }) => {
   const previous = [
-    { hand_no: 42, winners: [{ name: "Mina", is_viewer: true, amount: 8400, how: "Flush" }] },
-    { hand_no: 41, winners: [{ name: "Dev", amount: 1600, how: "Folds" }] },
-    { hand_no: 40, winners: [{ name: "Mina", amount: 3000, how: "Pair" }, { name: "Ari", amount: 3000, how: "Pair" }] },
+    { hand_no: 42, split: false, winners: [{ name: "Mina", is_viewer: true, amount: 8400, how: "Flush" }] },
+    { hand_no: 41, split: false, winners: [{ name: "Dev", amount: 1600, how: "Folds" }] },
+    { hand_no: 40, split: true, winners: [{ name: "Mina", amount: 3000, how: "Straight flush" }, { name: "Ari", amount: 123400, how: "Straight flush" }] },
   ];
   await mountTable(page, tableState);
   const before = await page.locator(".game-log").boundingBox();
   await mountTable(page, { ...tableState, recent_hands: previous });
   const rows = page.locator(".previous-hand-log");
   await expect(rows).toHaveCount(3);
-  await expect(rows.first().locator("strong")).toHaveText("Mina");
-  await expect(rows.first().locator("strong")).toHaveCSS("font-weight", "700");
-  await expect(rows.first().locator(".hand-log-outcomes")).toHaveText("Flush $84");
-  await expect(rows.nth(1).locator("strong")).toHaveCount(0);
-  const edges = await rows.evaluateAll((elements) => elements.map((row) => ({
-    right: row.querySelector(".hand-log-outcomes").getBoundingClientRect().right,
-    nameRight: row.querySelector(".hand-log-names").getBoundingClientRect().right,
-    outcomeLeft: row.querySelector(".hand-log-outcomes").getBoundingClientRect().left,
-  })));
-  expect(edges.every((edge) => Math.abs(edge.right - edges[0].right) < 1 && edge.nameRight < edge.outcomeLeft)).toBe(true);
-  await expect(rows.last().locator(".hand-log-names")).toHaveText("Mina, Ari");
-  await expect(rows.last().locator(".hand-log-outcomes")).toHaveText("Pair $30; Pair $30");
+  const viewer = rows.first().locator(".hand-log-name.viewer");
+  await expect(viewer).toHaveText("Mina");
+  expect(await viewer.evaluate((node) => getComputedStyle(node, "::before").content), "the viewer carries a marker, not just weight").not.toBe("none");
+  await expect(rows.first().locator(".hand-log-how")).toHaveText("Flush");
+  await expect(rows.first().locator(".hand-log-amount")).toHaveText("$84");
+  await expect(rows.first().locator(".hand-log-split")).toHaveCount(0);
+  await expect(rows.nth(1).locator(".viewer")).toHaveCount(0);
+  const cells = await rows.evaluateAll((elements) => elements.flatMap((row) => [...row.querySelectorAll(".hand-log-name")].map((name) => ({
+    nameRight: name.getBoundingClientRect().right,
+    nameTop: name.getBoundingClientRect().top,
+    howLeft: name.nextElementSibling.getBoundingClientRect().left,
+    amountRight: name.nextElementSibling.nextElementSibling.getBoundingClientRect().right,
+  }))));
+  expect(cells).toHaveLength(4);
+  expect(cells.every((cell) => Math.abs(cell.howLeft - cells[0].howLeft) < 1), "hand types share one column").toBe(true);
+  expect(cells.every((cell) => Math.abs(cell.amountRight - cells[0].amountRight) < 1), "amounts share one right edge").toBe(true);
+  expect(cells.every((cell) => cell.nameRight <= cell.howLeft)).toBe(true);
+  await expect(rows.last().locator(".hand-log-name")).toHaveText(["Mina", "Ari"]);
+  await expect(rows.last().locator(".hand-log-amount")).toHaveText(["$30", "$1,234"]);
+  await expect(rows.last().locator(".hand-log-split")).toHaveText("(split)");
+  expect(cells[3].nameTop, "a split puts each winner on its own line").toBeGreaterThan(cells[2].nameTop);
   await expect(page.locator(".game-log li").last()).toHaveClass("previous-hand-log");
   expect((await page.locator(".game-log").boundingBox()).height).toBe(before.height);
   await mountTable(page, { ...tableState, recent_hands: previous });
